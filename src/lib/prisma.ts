@@ -1,6 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
-import { diagnosticarUrlPostgres, env, envObrigatorio, identificador } from "@/lib/env";
+import { diagnosticarUrlPostgres, env, identificador, urlDeConexao } from "@/lib/env";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -19,7 +19,15 @@ const globalForPrisma = globalThis as unknown as {
 export const DB_SCHEMA = identificador("DB_SCHEMA", env("DB_SCHEMA", "crm")!);
 
 function createClient() {
-  const connectionString = envObrigatorio("DATABASE_URL");
+  const { url: connectionString, reparado } = urlDeConexao("DATABASE_URL");
+  if (!connectionString) throw new Error("DATABASE_URL não configurada — veja .env.example.");
+  if (reparado) {
+    urlReparada = true;
+    console.warn(
+      "⚠ DATABASE_URL tinha espaço ou quebra de linha; foi emendada para conectar.\n" +
+        "  Corrija o valor no painel: um caractere invisível ali quebra quem mais ler essa variável.",
+    );
+  }
   const defeito = diagnosticarUrlPostgres(connectionString);
   if (defeito) throw new Error(`DATABASE_URL inválida: ${defeito}.`);
 
@@ -29,6 +37,9 @@ function createClient() {
   const adapter = new PrismaPg({ connectionString, max: 1 }, { schema: DB_SCHEMA });
   return new PrismaClient({ adapter });
 }
+
+/** Lido pela rota de saúde: o aviso some do log, o sintoma não. */
+export let urlReparada = false;
 
 let client: PrismaClient | undefined;
 

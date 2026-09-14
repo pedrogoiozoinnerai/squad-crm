@@ -1,4 +1,4 @@
-import { DB_SCHEMA, prisma } from "@/lib/prisma";
+import { DB_SCHEMA, prisma, urlReparada } from "@/lib/prisma";
 
 /**
  * Diz se o app enxerga o banco. Pública de propósito: existe para conferir um
@@ -32,6 +32,9 @@ export async function GET() {
       usuarios,
       // Sem usuário nenhum, o primeiro cadastro vira ADMIN — vale avisar.
       pronto: etapas > 0,
+      ...(urlReparada
+        ? { aviso: "DATABASE_URL tinha espaço ou quebra de linha; foi emendada. Corrija no painel." }
+        : {}),
       primeiroCadastroViraAdmin: usuarios === 0,
     });
   } catch (erro) {

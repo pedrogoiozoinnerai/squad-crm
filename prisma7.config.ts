@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
-import { env, identificador } from "./src/lib/env";
+import { env, identificador, urlDeConexao } from "./src/lib/env";
 
 /**
  * A migração roda na conexão DIRETA (5432): o pooler em modo transaction não
@@ -18,7 +18,7 @@ import { env, identificador } from "./src/lib/env";
  * undefined; quem realmente precisa dela é o `migrate`, e aí o Prisma reclama.
  */
 function migrationUrl() {
-  const base = env("DIRECT_URL") ?? env("DATABASE_URL");
+  const base = urlDeConexao("DIRECT_URL").url ?? urlDeConexao("DATABASE_URL").url;
   if (!base) return undefined;
 
   let url: URL;

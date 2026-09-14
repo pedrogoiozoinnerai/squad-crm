@@ -58,3 +58,21 @@ export function diagnosticarUrlPostgres(valor: string): string | null {
   if (/^[a-z]+:\/\//.test(valor)) return "o protocolo não é postgresql://";
   return "não começa com postgresql://";
 }
+
+/**
+ * Lê uma string de conexão e remove espaços e quebras de linha de dentro dela.
+ *
+ * Um espaço literal nunca é válido numa URL — o que for legítimo aparece
+ * percent-encoded (`%20`). Então, quando ele existe, é resto de paste: o campo
+ * do painel quebrou a linha, ou veio um `\n` junto do clipboard. Emendar é
+ * seguro e evita que o deploy fique parado por um caractere invisível.
+ *
+ * `reparado` volta junto de propósito: consertar calado esconde uma
+ * configuração errada que ainda vai machucar em outro lugar.
+ */
+export function urlDeConexao(nome: string): { url?: string; reparado: boolean } {
+  const bruto = env(nome);
+  if (!bruto) return { reparado: false };
+  const url = bruto.replace(/\s+/g, "");
+  return { url, reparado: url !== bruto };
+}
