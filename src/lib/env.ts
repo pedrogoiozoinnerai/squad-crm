@@ -45,9 +45,6 @@ export function identificador(nome: string, valor: string): string {
  * Retorna `null` quando o valor está bom.
  */
 export function diagnosticarUrlPostgres(valor: string): string | null {
-  // Espaço vem antes do protocolo: `postgresql://…  ` passa no teste de
-  // protocolo e quebra depois, na conexão, longe daqui.
-  if (/\s/.test(valor)) return "há espaço ou quebra de linha no meio do valor";
   // O Supabase mostra a conexão dentro de um comando pronto para o terminal.
   // Copiar o botão inteiro traz o `psql` e as aspas junto — e é o engano mais
   // comum de todos, porque o campo do painel não mostra o começo do valor.
@@ -57,6 +54,9 @@ export function diagnosticarUrlPostgres(valor: string): string | null {
   if (/\[[^\]]*(password|senha)[^\]]*\]/i.test(valor)) {
     return "a senha ainda é o texto de exemplo entre colchetes — troque pela senha real do banco";
   }
+  // Espaço só depois dos dois acima: o comando psql também tem espaço, e
+  // dizer "há um espaço" a quem colou o comando inteiro não ajuda em nada.
+  if (/\s/.test(valor)) return "há espaço ou quebra de linha no meio do valor";
   if (/^postgres(ql)?:\/\//.test(valor)) return null;
   if (/^[A-Za-z_][A-Za-z0-9_]*\s*=/.test(valor)) {
     return "o nome da variável foi colado junto com o valor — o campo recebe só o que vem depois do =";
