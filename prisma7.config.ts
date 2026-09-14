@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
+import { env, identificador } from "./src/lib/env";
 
 /**
  * A migração roda na conexão DIRETA (5432): o pooler em modo transaction não
@@ -9,24 +10,9 @@ import { defineConfig } from "prisma/config";
  * O schema vai na URL porque é assim que o CLI do Prisma o recebe; o runtime
  * lê a mesma variável e a passa ao adapter. Uma fonte de verdade só.
  */
-
-/**
- * Limpa o valor vindo do ambiente antes de tratá-lo como URL.
- *
- * No `.env` os valores ficam entre aspas e o dotenv as remove ao ler. Painéis
- * como o da Vercel **não** removem: quem copia `"postgres://…"` do arquivo
- * acaba gravando as aspas junto, e `new URL()` morre com um "Invalid URL" que
- * não diz onde está o problema. Aqui a gente tolera e, quando não dá, explica.
- */
-function limpar(valor: string | undefined) {
-  return valor?.trim().replace(/^['"]|['"]$/g, "") || undefined;
-}
-
 function migrationUrl() {
-  const base = limpar(process.env["DIRECT_URL"]) ?? limpar(process.env["DATABASE_URL"]);
+  const base = env("DIRECT_URL") ?? env("DATABASE_URL");
   if (!base) return undefined;
-
-  const schema = limpar(process.env["DB_SCHEMA"]) ?? "crm";
 
   let url: URL;
   try {
@@ -39,7 +25,7 @@ function migrationUrl() {
     );
   }
 
-  url.searchParams.set("schema", schema);
+  url.searchParams.set("schema", identificador("DB_SCHEMA", env("DB_SCHEMA", "crm")!));
   return url.toString();
 }
 

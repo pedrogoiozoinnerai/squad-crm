@@ -1,5 +1,6 @@
 import "server-only";
 
+import { env, identificador } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -33,24 +34,18 @@ export type FunnelLead = {
   createdAt: string | null;
 };
 
-/** Schema do funil dentro do banco compartilhado: `type` ou `type_dev`. */
-function funnelSchema() {
-  return process.env.TYPE_DB_SCHEMA || "type";
-}
-
 /**
- * Nome de schema não pode ser bind param — ele entra no SQL por interpolação.
- * Por isso é validado: só identificador Postgres simples passa.
+ * Schema do funil dentro do banco compartilhado: `type` ou `type_dev`.
+ *
+ * Nome de schema não pode ser bind param — entra no SQL por interpolação —,
+ * então `identificador` o valida antes de qualquer consulta.
  */
-function assertIdentificadorSeguro(nome: string) {
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(nome)) {
-    throw new Error(`TYPE_DB_SCHEMA inválido: "${nome}".`);
-  }
-  return nome;
+function funnelSchema() {
+  return identificador("TYPE_DB_SCHEMA", env("TYPE_DB_SCHEMA", "type")!);
 }
 
 export function funnelConfigured() {
-  return Boolean(process.env.DATABASE_URL && process.env.TYPE_DB_SCHEMA);
+  return Boolean(env("DATABASE_URL") && env("TYPE_DB_SCHEMA"));
 }
 
 /** Postgres devolve timestamp como Date; o resto do fluxo espera ISO. */
@@ -61,11 +56,7 @@ function iso(v: unknown): string | null {
 }
 
 export async function readFunnelLeads(): Promise<FunnelLead[]> {
-  if (!process.env.DATABASE_URL) {
-    throw new Error("DATABASE_URL não configurada — veja .env.example.");
-  }
-
-  const schema = assertIdentificadorSeguro(funnelSchema());
+  const schema = funnelSchema();
 
   // Identificadores vão entre aspas: sem elas o Postgres rebaixa para minúsculo
   // e `sessionId` / `fullName` — criados com maiúscula pelo Prisma — somem.

@@ -2,6 +2,8 @@ import "server-only";
 
 import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
+
+import { env } from "@/lib/env";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 
@@ -21,7 +23,7 @@ export type SessionUser = {
 };
 
 export function allowedDomain() {
-  return (process.env.ALLOWED_EMAIL_DOMAIN || "innerai.com").toLowerCase();
+  return env("ALLOWED_EMAIL_DOMAIN", "innerai.com")!.toLowerCase();
 }
 
 export function isEmailAllowed(email: string) {

@@ -5,10 +5,12 @@
  * a menos. O que importa aqui é paginar direito e respeitar o rate limit
  * (429), porque a migração puxa milhares de registros de uma vez.
  */
+import { env } from "../src/lib/env";
+
 const BASE = "https://api.hubapi.com";
 
 function token() {
-  const t = process.env.HUBSPOT_ACCESS_TOKEN;
+  const t = env("HUBSPOT_ACCESS_TOKEN");
   if (!t) {
     throw new Error(
       "HUBSPOT_ACCESS_TOKEN não configurado.\n" +

@@ -3,6 +3,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { PrismaClient } from "../src/generated/prisma/client";
+import { env, envObrigatorio, identificador } from "../src/lib/env";
 
 /**
  * Seed de CATÁLOGO — o que a operação precisa para existir, e nada mais.
@@ -15,9 +16,12 @@ import { PrismaClient } from "../src/generated/prisma/client";
  * Nenhum usuário é criado de propósito: o PRIMEIRO cadastro na tela de login
  * vira ADMIN. Assim não existe senha conhecida no repositório.
  */
-const schema = process.env.DB_SCHEMA ?? "crm";
+const schema = identificador("DB_SCHEMA", env("DB_SCHEMA", "crm")!);
 const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL!, max: 1 }, { schema }),
+  adapter: new PrismaPg(
+    { connectionString: envObrigatorio("DATABASE_URL"), max: 1 },
+    { schema },
+  ),
 });
 
 const STAGES = [

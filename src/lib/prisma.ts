@@ -1,5 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
+import { env, envObrigatorio, identificador } from "@/lib/env";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -15,18 +16,10 @@ const globalForPrisma = globalThis as unknown as {
  * `crm_dev` na máquina. É a mesma variável que o prisma7.config.ts usa
  * para direcionar as migrações.
  */
-export const DB_SCHEMA = process.env.DB_SCHEMA || "crm";
-
-/** Mesma limpeza do prisma7.config.ts: aspas coladas de painel quebram a URL. */
-function limpar(valor: string | undefined) {
-  return valor?.trim().replace(/^['"]|['"]$/g, "") || undefined;
-}
+export const DB_SCHEMA = identificador("DB_SCHEMA", env("DB_SCHEMA", "crm")!);
 
 function createClient() {
-  const connectionString = limpar(process.env.DATABASE_URL);
-  if (!connectionString) {
-    throw new Error("DATABASE_URL não configurada — veja .env.example.");
-  }
+  const connectionString = envObrigatorio("DATABASE_URL");
   if (!/^postgres(ql)?:\/\//.test(connectionString)) {
     throw new Error(
       `DATABASE_URL não parece uma URL de Postgres: "${connectionString.slice(0, 18)}…". ` +

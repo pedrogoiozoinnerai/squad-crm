@@ -4,14 +4,15 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
 
 import { PrismaClient } from "../src/generated/prisma/client";
+import { env, identificador } from "../src/lib/env";
 
 // ─────────────────────────── Trava de segurança ───────────────────────────
 // Este seed APAGA a base inteira. Com os três apps dentro do mesmo projeto
 // Supabase, o que separa desenvolvimento de produção é o SCHEMA — então é o
 // schema que a trava olha. Só passa quem termina em `_dev` (ou um arquivo
 // local, se algum dia alguém voltar a rodar SQLite).
-const DB = process.env.DATABASE_URL ?? "file:./dev.db";
-const SCHEMA = process.env.DB_SCHEMA ?? "crm";
+const DB = env("DATABASE_URL", "file:./dev.db")!;
+const SCHEMA = identificador("DB_SCHEMA", env("DB_SCHEMA", "crm")!);
 if (!DB.startsWith("file:") && !SCHEMA.endsWith("_dev")) {
   console.error(
     `\n✗ Recusando rodar: DB_SCHEMA="${SCHEMA}" não é um schema de desenvolvimento.\n` +
