@@ -28,7 +28,7 @@ function createClient() {
         "  Corrija o valor no painel: um caractere invisível ali quebra quem mais ler essa variável.",
     );
   }
-  const defeito = diagnosticarUrlPostgres(connectionString);
+  const defeito = diagnosticarUrlPostgres(env("DATABASE_URL")!);
   if (defeito) throw new Error(`DATABASE_URL inválida: ${defeito}.`);
 
   // Runtime usa a URL do pooler (6543). `max: 1` porque cada instância

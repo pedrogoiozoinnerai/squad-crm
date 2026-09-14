@@ -48,6 +48,15 @@ export function diagnosticarUrlPostgres(valor: string): string | null {
   // Espaço vem antes do protocolo: `postgresql://…  ` passa no teste de
   // protocolo e quebra depois, na conexão, longe daqui.
   if (/\s/.test(valor)) return "há espaço ou quebra de linha no meio do valor";
+  // O Supabase mostra a conexão dentro de um comando pronto para o terminal.
+  // Copiar o botão inteiro traz o `psql` e as aspas junto — e é o engano mais
+  // comum de todos, porque o campo do painel não mostra o começo do valor.
+  if (/^psql/i.test(valor)) {
+    return "o valor é o comando psql inteiro — copie só a URL de dentro das aspas, a que começa em postgresql://";
+  }
+  if (/\[[^\]]*(password|senha)[^\]]*\]/i.test(valor)) {
+    return "a senha ainda é o texto de exemplo entre colchetes — troque pela senha real do banco";
+  }
   if (/^postgres(ql)?:\/\//.test(valor)) return null;
   if (/^[A-Za-z_][A-Za-z0-9_]*\s*=/.test(valor)) {
     return "o nome da variável foi colado junto com o valor — o campo recebe só o que vem depois do =";
