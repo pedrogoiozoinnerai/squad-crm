@@ -13,9 +13,12 @@ function token() {
   const t = env("HUBSPOT_ACCESS_TOKEN");
   if (!t) {
     throw new Error(
-      "HUBSPOT_ACCESS_TOKEN não configurado.\n" +
-        "  HubSpot → Settings → Integrations → Private Apps → Create,\n" +
-        "  com escopos de leitura de contacts, deals, companies, owners e schemas.",
+      "HUBSPOT_ACCESS_TOKEN não configurado.\n\n" +
+        "  HubSpot → Desenvolvimento → Chaves → Chaves de serviço → Criar chave.\n" +
+        "  Escopos de leitura: contacts, deals, companies, owners, notes e schemas.\n" +
+        "  Exige ser super admin, ou ter 'Developer tools access' nas permissões.\n\n" +
+        "  A chave começa com pat-na1- e vai no .env deste projeto.\n" +
+        "  Aplicativo privado antigo também serve — mesma API, mesmo header.",
     );
   }
   return t;
@@ -98,12 +101,39 @@ export async function owners() {
   return r.results;
 }
 
-/** Confere token e escopos antes de qualquer trabalho pesado. */
+/**
+ * Confere acesso antes de qualquer trabalho pesado.
+ *
+ * A introspecção (`/oauth/v1/access-tokens`) só existe para token de aplicativo
+ * privado; chave de serviço não a tem. Então, em vez de perguntar quais escopos
+ * existem, a gente TENTA ler um registro de cada objeto. Vale para os dois tipos
+ * de credencial e é mais honesto: escopo concedido no painel e leitura que de
+ * fato funciona nem sempre são a mesma coisa.
+ */
 export async function verificarAcesso() {
   const info = await req<{ user?: string; hub_id?: number; scopes?: string[] }>(
     `/oauth/v1/access-tokens/${token()}`,
   ).catch(() => null);
-  return info;
+
+  const alvos: { rotulo: string; path: string; escopo: string }[] = [
+    { rotulo: "contatos", path: "/crm/v3/objects/contacts?limit=1", escopo: "crm.objects.contacts.read" },
+    { rotulo: "negócios", path: "/crm/v3/objects/deals?limit=1", escopo: "crm.objects.deals.read" },
+    { rotulo: "empresas", path: "/crm/v3/objects/companies?limit=1", escopo: "crm.objects.companies.read" },
+    { rotulo: "responsáveis", path: "/crm/v3/owners?limit=1", escopo: "crm.objects.owners.read" },
+    { rotulo: "anotações", path: "/crm/v3/objects/notes?limit=1", escopo: "crm.objects.notes.read" },
+    { rotulo: "propriedades", path: "/crm/v3/properties/contacts?limit=1", escopo: "crm.schemas.contacts.read" },
+  ];
+
+  const leituras = [];
+  for (const alvo of alvos) {
+    try {
+      await req(alvo.path);
+      leituras.push({ ...alvo, ok: true, erro: "" });
+    } catch (e) {
+      leituras.push({ ...alvo, ok: false, erro: (e as Error).message.slice(0, 70) });
+    }
+  }
+  return { info, leituras };
 }
 
 export async function contar(objeto: "contacts" | "deals" | "companies") {

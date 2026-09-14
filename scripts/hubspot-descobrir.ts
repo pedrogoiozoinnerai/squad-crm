@@ -14,20 +14,18 @@ import { contar, listar, owners, pipelines, propriedadesDe, verificarAcesso } fr
  */
 async function main() {
   console.log("\n═══ ACESSO ═══");
-  const acesso = await verificarAcesso();
-  if (acesso) {
-    console.log(`  hub ${acesso.hub_id ?? "?"} · usuário ${acesso.user ?? "?"}`);
-    const faltando = [
-      "crm.objects.contacts.read",
-      "crm.objects.deals.read",
-      "crm.objects.companies.read",
-      "crm.objects.owners.read",
-    ].filter((s) => acesso.scopes && !acesso.scopes.includes(s));
-    console.log(
-      faltando.length
-        ? `  ⚠ escopos faltando: ${faltando.join(", ")}`
-        : "  ✓ escopos de leitura presentes",
-    );
+  const { info, leituras } = await verificarAcesso();
+  console.log(
+    info
+      ? `  hub ${info.hub_id ?? "?"} · usuário ${info.user ?? "?"} · aplicativo privado`
+      : "  chave de serviço (não tem introspecção — testando por leitura real)",
+  );
+  for (const l of leituras) {
+    console.log(l.ok ? `  ✓ ${l.rotulo}` : `  ✗ ${l.rotulo.padEnd(14)} falta ${l.escopo}\n      ${l.erro}`);
+  }
+  if (leituras.some((l) => !l.ok)) {
+    console.log("\n  Acrescente os escopos que faltam à credencial e rode de novo.");
+    console.log("  Sem eles a migração fica incompleta em silêncio.\n");
   }
 
   console.log("\n═══ VOLUME ═══");
