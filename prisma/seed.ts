@@ -1,22 +1,29 @@
 import "dotenv/config";
 
-import { PrismaLibSql } from "@prisma/adapter-libsql";
+import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
 
 import { PrismaClient } from "../src/generated/prisma/client";
 
 // ─────────────────────────── Trava de segurança ───────────────────────────
-// Este seed APAGA a base inteira. Só pode rodar contra arquivo local.
+// Este seed APAGA a base inteira. Com os três apps dentro do mesmo projeto
+// Supabase, o que separa desenvolvimento de produção é o SCHEMA — então é o
+// schema que a trava olha. Só passa quem termina em `_dev` (ou um arquivo
+// local, se algum dia alguém voltar a rodar SQLite).
 const DB = process.env.DATABASE_URL ?? "file:./dev.db";
-if (!DB.startsWith("file:")) {
+const SCHEMA = process.env.DB_SCHEMA ?? "crm";
+if (!DB.startsWith("file:") && !SCHEMA.endsWith("_dev")) {
   console.error(
-    `\n✗ Recusando rodar: DATABASE_URL não é um arquivo local (${DB.slice(0, 24)}…).\n` +
-      `  Este seed apaga todas as tabelas. Em produção isso destrói a operação.\n`,
+    `\n✗ Recusando rodar: DB_SCHEMA="${SCHEMA}" não é um schema de desenvolvimento.\n` +
+      `  Este seed apaga todas as tabelas. Em produção isso destrói a operação.\n` +
+      `  Para semear produção de propósito, faça-o explicitamente e com backup.\n`,
   );
   process.exit(1);
 }
 
-const prisma = new PrismaClient({ adapter: new PrismaLibSql({ url: DB }) });
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: DB }, { schema: SCHEMA }),
+});
 
 // ─────────────────────── Aleatoriedade determinística ───────────────────────
 // PRNG com semente fixa: o mesmo seed sempre gera a mesma base. Isso é o que
