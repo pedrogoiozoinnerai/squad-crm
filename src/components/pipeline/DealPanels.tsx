@@ -1,0 +1,477 @@
+"use client";
+
+import { useActionState, useEffect, useState } from "react";
+import {
+  CheckCircle2,
+  ClipboardList,
+  History,
+  Loader2,
+  MessageCircle,
+  Pencil,
+  Sparkles,
+  Trash2,
+  Video,
+} from "lucide-react";
+
+import { deleteTask, toggleTask } from "@/app/actions/tasks";
+import { addNote } from "@/app/actions/notes";
+import { createTask } from "@/app/actions/tasks";
+import { Field } from "@/components/ui/Field";
+import { FormFeedback } from "@/components/ui/FormFeedback";
+import type { FormState } from "@/lib/guard";
+
+export type PanelTask = {
+  id: string;
+  subject: string;
+  type: string;
+  status: "PENDING" | "DONE" | "CANCELED";
+  priority: "LOW" | "MEDIUM" | "HIGH";
+  dueAt: Date | null;
+  createdAt: Date;
+};
+
+export type PanelActivity = {
+  id: string;
+  title: string;
+  detail: string | null;
+  createdAt: Date;
+  author: { name: string } | null;
+};
+
+export type PanelCase = {
+  id: string;
+  title: string;
+  client: string;
+  segment: string;
+  highlight: string;
+  metric: string;
+  summary: string;
+  link: string | null;
+  exact: boolean;
+};
+
+type Tab = "task" | "note" | "activities" | "chat" | "nina" | "cases" | "plan";
+
+const TABS: { key: Tab; label: string }[] = [
+  { key: "task", label: "Nova Tarefa" },
+  { key: "note", label: "Anotação" },
+  { key: "activities", label: "Atividades" },
+  { key: "chat", label: "Chat" },
+  { key: "nina", label: "Chat Nina" },
+  { key: "cases", label: "Cases" },
+  { key: "plan", label: "Plano de Ação" },
+];
+
+const PRIORITY_LABEL = { HIGH: "ALTA", MEDIUM: "MÉDIA", LOW: "BAIXA" } as const;
+
+export function DealPanels({
+  dealId,
+  leadId,
+  leadName,
+  leadPhone,
+  leadSegment,
+  tasks,
+  activities,
+  cases,
+}: {
+  dealId: string;
+  leadId: string;
+  leadName: string;
+  leadPhone: string | null;
+  leadSegment: string | null;
+  tasks: PanelTask[];
+  activities: PanelActivity[];
+  cases: PanelCase[];
+}) {
+  const [tab, setTab] = useState<Tab>("activities");
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-line pb-3">
+        {TABS.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() => setTab(item.key)}
+            aria-current={tab === item.key ? "true" : undefined}
+            className={`chip border transition ${
+              tab === item.key
+                ? "border-waz-50 bg-waz-95 text-waz-20"
+                : "border-transparent text-muted hover:bg-surface-2 hover:text-foreground"
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto pt-4">
+        {tab === "task" && <TaskForm dealId={dealId} leadId={leadId} onDone={() => setTab("activities")} />}
+        {tab === "note" && <NoteForm dealId={dealId} leadId={leadId} onDone={() => setTab("activities")} />}
+        {tab === "activities" && <Activities tasks={tasks} activities={activities} />}
+        {tab === "chat" && <ChatEmpty leadName={leadName} leadPhone={leadPhone} />}
+        {tab === "nina" && <NinaEmpty />}
+        {tab === "cases" && <Cases cases={cases} segment={leadSegment} />}
+        {tab === "plan" && <PlanEmpty />}
+      </div>
+    </div>
+  );
+}
+
+function useCloseOnSuccess(ok: boolean | undefined, onDone: () => void) {
+  useEffect(() => {
+    if (ok) onDone();
+  }, [ok, onDone]);
+}
+
+function TaskForm({ dealId, leadId, onDone }: { dealId: string; leadId: string; onDone: () => void }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(createTask, null);
+  useCloseOnSuccess(state?.ok, onDone);
+
+  return (
+    <form action={action} className="flex flex-col gap-3">
+      <input type="hidden" name="dealId" value={dealId} />
+      <input type="hidden" name="leadId" value={leadId} />
+      <Field label="Assunto">
+        <input name="subject" required placeholder="Follow-up" className="field" />
+      </Field>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Field label="Tipo">
+          <select name="type" className="field">
+            <option value="follow_up">Follow-up</option>
+            <option value="call_individual">Call individual</option>
+            <option value="call">Call coletiva</option>
+            <option value="message">Mensagem</option>
+          </select>
+        </Field>
+        <Field label="Prioridade">
+          <select name="priority" defaultValue="MEDIUM" className="field">
+            <option value="HIGH">Alta</option>
+            <option value="MEDIUM">Média</option>
+            <option value="LOW">Baixa</option>
+          </select>
+        </Field>
+        <Field label="Prazo">
+          <input name="dueAt" type="datetime-local" className="field" />
+        </Field>
+      </div>
+      <FormFeedback state={state} />
+      <button type="submit" disabled={pending} className="btn-primary self-start">
+        {pending && <Loader2 className="size-4 animate-spin" />}
+        Criar tarefa
+      </button>
+    </form>
+  );
+}
+
+function NoteForm({ dealId, leadId, onDone }: { dealId: string; leadId: string; onDone: () => void }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(addNote, null);
+  useCloseOnSuccess(state?.ok, onDone);
+
+  return (
+    <form action={action} className="flex flex-col gap-3">
+      <input type="hidden" name="dealId" value={dealId} />
+      <input type="hidden" name="leadId" value={leadId} />
+      <Field label="Anotação">
+        <textarea name="content" rows={5} required className="field resize-y" />
+      </Field>
+      <FormFeedback state={state} />
+      <button type="submit" disabled={pending} className="btn-primary self-start">
+        {pending && <Loader2 className="size-4 animate-spin" />}
+        Salvar anotação
+      </button>
+    </form>
+  );
+}
+
+type Filter = "all" | "tasks" | "history";
+
+function Activities({ tasks, activities }: { tasks: PanelTask[]; activities: PanelActivity[] }) {
+  const [filter, setFilter] = useState<Filter>("all");
+
+  const showTasks = filter === "all" || filter === "tasks";
+  const showHistory = filter === "all" || filter === "history";
+
+  const filters: { key: Filter; label: string; count: number }[] = [
+    { key: "all", label: "Tudo", count: tasks.length + activities.length },
+    { key: "tasks", label: "Tarefas", count: tasks.length },
+    { key: "history", label: "Histórico", count: activities.length },
+  ];
+
+  const empty = (showTasks ? tasks.length : 0) + (showHistory ? activities.length : 0) === 0;
+
+  return (
+    <>
+      <div className="mb-4 flex flex-wrap gap-1.5">
+        {filters.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() => setFilter(item.key)}
+            className={`chip border transition ${
+              filter === item.key
+                ? "border-waz-50 bg-waz-95 text-waz-20"
+                : "border-line bg-surface text-muted hover:text-foreground"
+            }`}
+          >
+            {item.key === "tasks" && <ClipboardList className="size-3" />}
+            {item.key === "history" && <History className="size-3" />}
+            {item.label} ({item.count})
+          </button>
+        ))}
+      </div>
+
+      {empty && (
+        <p className="rounded-xl border border-dashed border-line px-3 py-10 text-center text-xs text-muted">
+          Nada registrado ainda.
+        </p>
+      )}
+
+      <div className="flex flex-col gap-3">
+        {showTasks &&
+          tasks.map((task) => <TaskRow key={task.id} task={task} />)}
+
+        {showHistory &&
+          activities.map((activity) => (
+            <article key={activity.id} className="flex gap-3">
+              <div className="w-[54px] shrink-0 pt-0.5 text-right">
+                <p className="font-mono text-xs font-semibold">
+                  {activity.createdAt.toLocaleTimeString("pt-BR", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </p>
+                <p className="text-[10px] tracking-wider text-muted uppercase">
+                  {relativeDay(activity.createdAt)}
+                </p>
+              </div>
+              <div className="min-w-0 flex-1 border-l border-line pb-3 pl-4">
+                <p className="text-sm font-medium">{activity.title}</p>
+                {activity.detail && (
+                  <p className="mt-0.5 text-xs text-muted">{activity.detail}</p>
+                )}
+                {activity.author && (
+                  <p className="mt-1 text-[11px] text-muted">{activity.author.name}</p>
+                )}
+              </div>
+            </article>
+          ))}
+      </div>
+    </>
+  );
+}
+
+function TaskRow({ task }: { task: PanelTask }) {
+  const done = task.status === "DONE";
+
+  return (
+    <article className={`flex gap-3 ${done ? "opacity-55" : ""}`}>
+      <div className="w-[54px] shrink-0 pt-0.5 text-right">
+        <p className="font-mono text-xs font-semibold">
+          {task.createdAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+        </p>
+        <p className="text-[10px] tracking-wider text-muted uppercase">
+          {relativeDay(task.createdAt)}
+        </p>
+      </div>
+
+      <div className="min-w-0 flex-1 rounded-xl border border-line bg-surface-2/40 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className={`text-sm font-semibold ${done ? "line-through" : ""}`}>{task.subject}</p>
+            {task.dueAt && (
+              <p className="mt-0.5 text-xs text-muted">
+                vence{" "}
+                {task.dueAt.toLocaleString("pt-BR", {
+                  day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+                })}
+              </p>
+            )}
+          </div>
+          <span className="shrink-0 text-[10px] font-semibold tracking-wider text-muted uppercase">
+            — {done ? "Feito" : "A fazer"} · {PRIORITY_LABEL[task.priority]}
+          </span>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-line pt-2.5">
+          <span className="chip text-muted">
+            <Video className="size-3" />
+            Abrir minha sala
+          </span>
+          <form action={toggleTask}>
+            <input type="hidden" name="taskId" value={task.id} />
+            <button type="submit" className="chip text-muted transition hover:text-waz-20">
+              <CheckCircle2 className="size-3" />
+              {done ? "Reabrir" : "Concluir"}
+            </button>
+          </form>
+          <span className="chip text-muted/60">
+            <Pencil className="size-3" />
+            Editar
+          </span>
+          <form action={deleteTask}>
+            <input type="hidden" name="taskId" value={task.id} />
+            <button type="submit" className="chip text-red-700 transition hover:bg-red-50">
+              <Trash2 className="size-3" />
+              Excluir
+            </button>
+          </form>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function relativeDay(date: Date) {
+  const today = new Date();
+  const sameDay =
+    date.getDate() === today.getDate() &&
+    date.getMonth() === today.getMonth() &&
+    date.getFullYear() === today.getFullYear();
+
+  if (sameDay) return "Hoje";
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+}
+
+function ChatEmpty({ leadName, leadPhone }: { leadName: string; leadPhone: string | null }) {
+  return (
+    <div className="grid place-items-center py-16 text-center">
+      <span className="grid size-14 place-items-center rounded-full bg-surface-2 text-muted">
+        <MessageCircle className="size-6" />
+      </span>
+      <p className="mt-4 text-base font-semibold">Nenhuma conversa ativa</p>
+      <p className="mt-1 text-sm text-muted">{leadName}</p>
+      {leadPhone && <p className="font-mono text-sm text-muted">{leadPhone}</p>}
+      {leadPhone ? (
+        <a
+          href={`https://wa.me/${leadPhone.replace(/\D/g, "")}`}
+          target="_blank"
+          rel="noreferrer"
+          className="btn-ghost mt-5"
+        >
+          <MessageCircle className="size-4" />
+          Iniciar Conversa via WhatsApp
+        </a>
+      ) : (
+        <p className="mt-5 text-xs text-muted">Cadastre um telefone para abrir a conversa.</p>
+      )}
+    </div>
+  );
+}
+
+function NinaEmpty() {
+  return (
+    <div className="grid place-items-center py-16 text-center">
+      <span className="grid size-14 place-items-center rounded-full bg-surface-2 text-muted">
+        <Sparkles className="size-6" />
+      </span>
+      <p className="mt-4 text-base font-semibold">Nina ainda não está conectada</p>
+      <p className="mt-1 max-w-sm text-sm text-muted">
+        Quando a instância de WhatsApp estiver no ar, as mensagens automáticas da Nina
+        aparecem aqui — confirmação de agendamento, retomada e pedido de ligação.
+      </p>
+    </div>
+  );
+}
+
+function PlanEmpty() {
+  return (
+    <>
+      <div className="flex items-start justify-between gap-4 rounded-xl border border-line bg-surface-2/40 p-4">
+        <div>
+          <p className="text-sm font-semibold">Apresentação de vendas</p>
+          <p className="mt-0.5 text-xs text-muted">
+            Personalizada por IA — cruza o lead, o resumo da call, cases e soluções.
+          </p>
+        </div>
+        <span className="chip shrink-0 border border-line bg-surface text-muted/60">
+          <Sparkles className="size-3" />
+          Gerar apresentação
+        </span>
+      </div>
+
+      <div className="grid place-items-center py-14 text-center">
+        <span className="grid size-14 place-items-center rounded-full bg-surface-2 text-muted">
+          <ClipboardList className="size-6" />
+        </span>
+        <p className="mt-4 text-base font-semibold">Sem plano de ação</p>
+        <p className="mt-1 max-w-sm text-sm text-muted">
+          O plano é gerado automaticamente após uma call individual com transcrição.
+        </p>
+      </div>
+    </>
+  );
+}
+
+function Cases({ cases, segment }: { cases: PanelCase[]; segment: string | null }) {
+  const [query, setQuery] = useState("");
+
+  const filtered = cases.filter((item) =>
+    `${item.title} ${item.client} ${item.segment}`.toLowerCase().includes(query.toLowerCase()),
+  );
+
+  return (
+    <>
+      <div className="mb-4">
+        <p className="text-sm font-semibold">Cases relevantes</p>
+        <p className="text-xs text-muted">
+          {cases.filter((c) => c.exact).length} match(es) pro setor{" "}
+          <strong className="text-foreground">{segment ?? "não informado"}</strong>
+        </p>
+      </div>
+
+      <input
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Buscar por título, cliente, setor…"
+        className="field mb-3"
+      />
+
+      <div className="flex flex-col gap-2">
+        {filtered.length === 0 && (
+          <p className="rounded-xl border border-dashed border-line px-3 py-10 text-center text-xs text-muted">
+            Nenhum case encontrado.
+          </p>
+        )}
+
+        {filtered.map((item) => (
+          <article key={item.id} className="rounded-xl border border-line bg-surface-2/40 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">{item.title}</p>
+                <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted">
+                  {item.client}
+                  <span className="chip bg-surface ring-1 ring-line">{item.segment}</span>
+                </p>
+              </div>
+              {item.exact && (
+                <span className="chip shrink-0 bg-waz-95 text-[10px] tracking-wider text-waz-20 uppercase">
+                  Match exato
+                </span>
+              )}
+            </div>
+
+            <p className="mt-2 flex items-center gap-1.5 text-sm">
+              <Sparkles className="size-3.5 text-waz-40" />
+              <strong>{item.highlight}</strong>
+              <span className="text-muted">{item.metric}</span>
+            </p>
+
+            <p className="mt-1.5 text-xs text-muted">{item.summary}</p>
+
+            {item.link && (
+              <a
+                href={item.link}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 inline-block text-xs font-semibold text-waz-30 underline-offset-4 hover:underline"
+              >
+                Ver case
+              </a>
+            )}
+          </article>
+        ))}
+      </div>
+    </>
+  );
+}

@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+:root {
+  --background: #faf9f7;
+  --foreground: #0f172a;
+
+  /* Superfícies */
+  --surface: #ffffff;
+  --surface-2: #f3f2ef;
+  --border: #e7e5e0;
+  --muted: #78716c;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--border);
+  --color-muted: var(--muted);
+
+  --font-sans: var(--font-fustat);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Waz — paleta oficial do manual de marca Squad.com */
+  --color-waz-10: #092a16;
+  --color-waz-20: #13532c;
+  --color-waz-30: #1c7d42;
+  --color-waz-40: #26a659;
+  --color-waz-50: #2dc86a;
+  --color-waz-60: #59d98c;
+  --color-waz-70: #82e3a9;
+  --color-waz-80: #acecc6;
+  --color-waz-90: #d5f6e2;
+  --color-waz-95: #eafaf1;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* ── Primitivas reutilizadas em todas as telas ───────────────────────── */
+
+@utility card {
+  @apply rounded-2xl border border-line bg-surface;
+}
+
+@utility field {
+  @apply w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm
+         outline-none transition
+         placeholder:text-muted/70
+         focus:border-waz-50 focus:ring-4 focus:ring-waz-90;
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5
+         text-sm font-semibold transition disabled:opacity-50
+         disabled:cursor-not-allowed;
+}
+
+@utility btn-primary {
+  @apply btn bg-waz-30 text-white hover:bg-waz-20 active:bg-waz-10;
+}
+
+@utility btn-ghost {
+  @apply btn border border-line bg-surface text-foreground hover:bg-surface-2;
+}
+
+@utility chip {
+  @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1
+         text-xs font-medium;
+}
+
+/* Barra de rolagem discreta, no tom da marca */
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+}

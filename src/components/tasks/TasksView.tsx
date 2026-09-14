@@ -1,0 +1,171 @@
+import { Check, Circle } from "lucide-react";
+
+import { toggleTask } from "@/app/actions/tasks";
+import { PageHeader } from "@/components/shell/PageHeader";
+import { StatBar } from "@/components/ui/Stat";
+
+type Task = {
+  id: string;
+  subject: string;
+  type: string;
+  status: "PENDING" | "DONE" | "CANCELED";
+  priority: "LOW" | "MEDIUM" | "HIGH";
+  dueAt: Date | null;
+  lead: { name: string; phone: string | null } | null;
+  deal: { code: string; stage: { name: string; color: string } } | null;
+  owner: { name: string };
+};
+
+const PRIORITY: Record<Task["priority"], { label: string; tone: string }> = {
+  HIGH: { label: "Alta", tone: "bg-red-50 text-red-700" },
+  MEDIUM: { label: "Média", tone: "bg-amber-50 text-amber-800" },
+  LOW: { label: "Baixa", tone: "bg-surface-2 text-muted" },
+};
+
+const TYPE_LABEL: Record<string, string> = {
+  follow_up: "Follow-up",
+  call: "Call",
+  call_individual: "Call individual",
+  message: "Mensagem",
+};
+
+function dueLabel(dueAt: Date | null, now: number) {
+  if (!dueAt) return { text: "—", overdue: false };
+
+  const diffDays = Math.round((dueAt.getTime() - now) / 86_400_000);
+  const date = dueAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+
+  if (diffDays < 0) return { text: `${date} · atrasada`, overdue: true };
+  if (diffDays === 0) return { text: `${date} · hoje`, overdue: true };
+  if (diffDays === 1) return { text: `${date} · amanhã`, overdue: false };
+  return { text: `${date} · em ${diffDays} dias`, overdue: false };
+}
+
+export function TasksView({
+  tasks,
+  showOwner,
+  now,
+}: {
+  tasks: Task[];
+  showOwner: boolean;
+  /** Instante único vindo do servidor: todas as linhas comparam com o mesmo "agora". */
+  now: Date;
+}) {
+  const reference = now.getTime();
+  const pending = tasks.filter((t) => t.status === "PENDING");
+  const overdue = pending.filter((t) => t.dueAt && t.dueAt.getTime() < reference);
+
+  return (
+    <>
+      <PageHeader title="Tarefas" subtitle="Sua fila de trabalho do dia" />
+
+      <StatBar
+        items={[
+          { label: "Pendentes", value: pending.length },
+          {
+            label: "Atrasadas",
+            value: <span className={overdue.length ? "text-red-600" : ""}>{overdue.length}</span>,
+          },
+          { label: "Concluídas", value: tasks.filter((t) => t.status === "DONE").length },
+        ]}
+      />
+
+      <div className="card overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-line text-left text-xs font-semibold text-muted">
+              <th className="w-12 px-4 py-3" />
+              <th className="px-4 py-3">Assunto</th>
+              <th className="px-4 py-3">Tipo</th>
+              <th className="px-4 py-3">Prioridade</th>
+              <th className="px-4 py-3">Prazo</th>
+              <th className="px-4 py-3">Lead</th>
+              <th className="px-4 py-3">Etapa</th>
+              {showOwner && <th className="px-4 py-3">Responsável</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {tasks.length === 0 && (
+              <tr>
+                <td colSpan={showOwner ? 8 : 7} className="px-4 py-14 text-center text-muted">
+                  Nenhuma tarefa por aqui.
+                </td>
+              </tr>
+            )}
+
+            {tasks.map((task) => {
+              const due = dueLabel(task.dueAt, reference);
+              const done = task.status === "DONE";
+
+              return (
+                <tr
+                  key={task.id}
+                  className={`border-b border-line last:border-b-0 transition hover:bg-surface-2/50 ${done ? "opacity-55" : ""}`}
+                >
+                  <td className="px-4 py-3">
+                    <form action={toggleTask}>
+                      <input type="hidden" name="taskId" value={task.id} />
+                      <button
+                        type="submit"
+                        aria-label={done ? "Reabrir tarefa" : "Concluir tarefa"}
+                        className={`grid size-6 place-items-center rounded-full border transition ${
+                          done
+                            ? "border-waz-50 bg-waz-50 text-white"
+                            : "border-line text-transparent hover:border-waz-50"
+                        }`}
+                      >
+                        {done ? <Check className="size-3.5" /> : <Circle className="size-3" />}
+                      </button>
+                    </form>
+                  </td>
+                  <td className={`px-4 py-3 font-medium ${done ? "line-through" : ""}`}>
+                    {task.subject}
+                  </td>
+                  <td className="px-4 py-3 text-muted">
+                    {TYPE_LABEL[task.type] ?? task.type}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`chip ${PRIORITY[task.priority].tone}`}>
+                      {PRIORITY[task.priority].label}
+                    </span>
+                  </td>
+                  <td
+                    className={`px-4 py-3 ${due.overdue && !done ? "font-semibold text-red-600" : "text-muted"}`}
+                  >
+                    {due.text}
+                  </td>
+                  <td className="px-4 py-3">
+                    {task.lead ? (
+                      <>
+                        <span className="block">{task.lead.name}</span>
+                        {task.lead.phone && (
+                          <span className="block text-xs text-muted">{task.lead.phone}</span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {task.deal ? (
+                      <span className="inline-flex items-center gap-1.5 text-muted">
+                        <span
+                          className="size-2 rounded-full"
+                          style={{ backgroundColor: task.deal.stage.color }}
+                        />
+                        {task.deal.stage.name}
+                      </span>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
+                  </td>
+                  {showOwner && <td className="px-4 py-3 text-muted">{task.owner.name}</td>}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}

@@ -1,0 +1,557 @@
+// Prisma schema — CRM (Squad.com)
+// Local dev: SQLite (zero infra). Produção: trocar `provider` para "postgresql"
+// e apontar DATABASE_URL para o Postgres gerenciado — o mesmo banco do Funil
+// do Type, para que o CRM leia os leads do funil sem camada de integração.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ─────────────────────────────── Acesso ───────────────────────────────
+
+enum Role {
+  ADMIN
+  USER
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role     @default(USER)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions AuthSession[]
+  leads      Lead[]
+  deals      Deal[]
+  tasks      Task[]
+  meetings   Meeting[]
+  notes            Note[]
+  activities       Activity[]
+  sessionTemplates  SessionTemplate[]
+  sessionInstances  SessionInstance[]
+  whatsappInstances WhatsappInstance[]
+
+  @@index([role])
+}
+
+/// Permissão por feature. Mudar quem vê o quê não exige deploy.
+model RolePermission {
+  id       String  @id @default(cuid())
+  role     Role    @unique
+  /// Lista de features liberadas, separadas por vírgula.
+  features String
+  active   Boolean @default(true)
+  updatedAt DateTime @updatedAt
+}
+
+model AuthSession {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ─────────────────────────────── Leads ────────────────────────────────
+
+enum LeadStatus {
+  INCOMPLETE // recém-captado, falta qualificação
+  COMPLETE // dados completos, pronto pra contato
+  CONVERTED
+  LOST
+}
+
+model Lead {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name         String
+  email        String?
+  phone        String?
+  company      String?
+  jobTitle     String?
+  segment      String?
+  revenueRange String?
+  collaborators String?
+  score        String? // A–E
+  status       LeadStatus @default(INCOMPLETE)
+  notes        String?
+
+  ownerId String?
+  owner   User?   @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  // Atribuição (espelha o funil do Type)
+  source      String?
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmTerm     String?
+  utmContent  String?
+
+  /// Link rastreado enviado ao lead + quantas vezes foi aberto.
+  trackedLink   String?
+  linkClicks    Int      @default(0)
+  lastLinkClick DateTime?
+
+  // Ponte com o Funil do Type — preenchido pelo import
+  typeLeadId    String? @unique
+  typeSessionId String? @unique
+
+  deal       Deal?
+  tasks      Task[]
+  meetings    Meeting[]
+  noteEntries  Note[]
+  activities   Activity[]
+  sessionSeats SessionParticipant[]
+  outbox       SendQueue[]
+
+  @@index([status])
+  @@index([ownerId])
+  @@index([createdAt])
+}
+
+// ───────────────────────────── Pipeline ───────────────────────────────
+
+model Stage {
+  id    String @id @default(cuid())
+  key   String @unique
+  name  String
+  order Int
+  color String
+
+  /// Papel que opera esta etapa (SDR, closer, CS…). Null = qualquer um.
+  targetRole String?
+
+  deals       Deal[]
+  automations TaskAutomation[]
+
+  @@index([order])
+}
+
+/// Motivos de perda padronizados — sem isso não dá para analisar perda.
+model LossReason {
+  id         String  @id @default(cuid())
+  name       String  @unique
+  orderIndex Int     @default(0)
+  active     Boolean @default(true)
+
+  deals Deal[]
+
+  @@index([orderIndex])
+}
+
+enum DealStatus {
+  OPEN
+  WON
+  LOST
+}
+
+/// Presença do lead na demo agendada.
+enum Attendance {
+  AGENDADO
+  PARTICIPOU
+  NAO_COMPARECEU
+}
+
+/// Etapa obrigatória antes de marcar o negócio como ganho.
+enum MentorshipStatus {
+  PENDENTE
+  AGENDADA
+  CONCLUIDA
+}
+
+model Deal {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  code   String @unique
+  leadId String @unique
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  stageId String
+  stage   Stage  @relation(fields: [stageId], references: [id])
+
+  status      DealStatus @default(OPEN)
+  /// Sempre em CENTAVOS. Float em dinheiro acumula erro de arredondamento.
+  valueCents  Int        @default(0)
+  product     String?
+  probability Int        @default(20)
+  expectedAt  DateTime?
+  /// Texto livre complementar; o motivo estruturado é `lossReason`.
+  lostNote     String?
+  lossReasonId String?
+  lossReason   LossReason? @relation(fields: [lossReasonId], references: [id], onDelete: SetNull)
+  wonAt       DateTime?
+  lostAt      DateTime?
+
+  attendance       Attendance       @default(AGENDADO)
+  paymentMethod    String?
+  paymentLink      String?
+  mentorshipStatus MentorshipStatus @default(PENDENTE)
+  mentorshipAt     DateTime?
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id])
+
+  tasks       Task[]
+  history     DealStageHistory[]
+  noteEntries Note[]
+  activities  Activity[]
+
+  @@index([stageId])
+  @@index([ownerId])
+  @@index([status])
+}
+
+model DealStageHistory {
+  id        String   @id @default(cuid())
+  dealId    String
+  deal      Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  fromStage String?
+  toStage   String
+  movedBy   String?
+  createdAt DateTime @default(now())
+
+  @@index([dealId])
+}
+
+// ─────────────────────────────── Tarefas ──────────────────────────────
+
+enum TaskStatus {
+  PENDING
+  DONE
+  CANCELED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+/// Modelo de tarefa reaproveitável (assunto, prioridade, mensagem pronta).
+model TaskTemplate {
+  id             String       @id @default(cuid())
+  name           String
+  description    String?
+  type           String       @default("follow_up")
+  priority       TaskPriority @default(MEDIUM)
+  /// Mensagem sugerida ao lead quando a tarefa é criada.
+  messageText    String?
+  meetingEnabled Boolean      @default(false)
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+
+  tasks       Task[]
+  automations TaskAutomation[]
+}
+
+/// Ao entrar numa etapa, cria a tarefa do template automaticamente.
+model TaskAutomation {
+  id           String   @id @default(cuid())
+  templateId   String
+  template     TaskTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  targetStageId String
+  targetStage  Stage    @relation(fields: [targetStageId], references: [id], onDelete: Cascade)
+  /// Prazo da tarefa = entrada na etapa + este número de dias.
+  dueInDays    Int      @default(1)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@unique([templateId, targetStageId])
+  @@index([targetStageId])
+}
+
+model Task {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subject     String
+  type        String       @default("follow_up")
+  status      TaskStatus   @default(PENDING)
+  priority    TaskPriority @default(MEDIUM)
+  dueAt       DateTime?
+  completedAt DateTime?
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  dealId String?
+  deal   Deal?   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  leadId String?
+  lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  templateId String?
+  template   TaskTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  /// Marca as tarefas nascidas de automação, para não parecerem manuais.
+  automated  Boolean @default(false)
+
+  @@index([ownerId, status])
+  @@index([dueAt])
+}
+
+// ───────────────────── Sessões recorrentes ────────────────────────────
+
+/// Série recorrente ("toda terça 10h"). Não é um evento — é a regra.
+model SessionTemplate {
+  id        String   @id @default(cuid())
+  name      String
+  /// Dias da semana em que ocorre: 1=segunda … 7=domingo, separados por vírgula.
+  weekdays  String
+  time      String   // "HH:MM"
+  durationMin Int    @default(45)
+  capacity  Int      @default(20)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  instances SessionInstance[]
+  overrides SessionOverride[]
+}
+
+/// Ocorrência concreta de uma sessão num dia. Materializada a partir do template.
+model SessionInstance {
+  id       String        @id @default(cuid())
+  date     DateTime      // dia (00:00)
+  time     String        // "HH:MM"
+  durationMin Int        @default(45)
+  capacity Int           @default(20)
+  status   MeetingStatus @default(SCHEDULED)
+  roomId   String?       // sala do LiveKit, quando o Meet entrar
+
+  templateId String?
+  template   SessionTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  participants SessionParticipant[]
+
+  @@unique([templateId, date, time])
+  @@index([date])
+  @@index([ownerId, date])
+}
+
+/// Exceção pontual da série: trocou o closer ou cancelou só aquele dia.
+model SessionOverride {
+  id           String   @id @default(cuid())
+  templateId   String
+  template     SessionTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  overrideDate DateTime
+  newOwnerId   String?
+  isCancelled  Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@unique([templateId, overrideDate])
+  @@index([overrideDate])
+}
+
+/// Inscrição de um lead numa sessão, com o tempo real de permanência.
+model SessionParticipant {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  sessionInstanceId String
+  sessionInstance   SessionInstance @relation(fields: [sessionInstanceId], references: [id], onDelete: Cascade)
+
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  /// Presença é derivada do tempo, não marcada na mão.
+  joinedAt     DateTime?
+  leftAt       DateTime?
+  joinCount    Int @default(0)
+  totalSeconds Int @default(0)
+  attended     Boolean @default(false)
+
+  @@unique([sessionInstanceId, leadId])
+  @@index([leadId])
+}
+
+// ────────────────────────────── Calendário ────────────────────────────
+
+enum MeetingType {
+  GROUP
+  ONE_ON_ONE
+}
+
+enum MeetingStatus {
+  SCHEDULED
+  DONE
+  NO_SHOW
+  CANCELED
+}
+
+model Meeting {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  title    String
+  startsAt DateTime
+  endsAt   DateTime
+  type     MeetingType   @default(ONE_ON_ONE)
+  status   MeetingStatus @default(SCHEDULED)
+
+  // Reservado pro projeto 3 (Meet com LiveKit)
+  roomId String?
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  leadId String?
+  lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([startsAt])
+  @@index([ownerId, startsAt])
+}
+
+// ──────────────────────── Anotações e atividades ──────────────────────
+
+model Note {
+  id        String   @id @default(cuid())
+  content   String
+  createdAt DateTime @default(now())
+
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  leadId String?
+  lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  dealId String?
+  deal   Deal?   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([dealId])
+}
+
+enum ActivityKind {
+  LEAD_CREATED
+  LEAD_UPDATED
+  DEAL_CREATED
+  DEAL_UPDATED
+  STAGE_CHANGED
+  DEAL_WON
+  DEAL_LOST
+  TASK_CREATED
+  TASK_DONE
+  NOTE_ADDED
+  MEETING_SCHEDULED
+  IMPORTED
+}
+
+/// Linha do tempo unificada do lead/negócio.
+model Activity {
+  id        String       @id @default(cuid())
+  kind      ActivityKind
+  title     String
+  detail    String?
+  createdAt DateTime     @default(now())
+
+  authorId String?
+  author   User?   @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  leadId String?
+  lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  dealId String?
+  deal   Deal?   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, createdAt])
+  @@index([dealId, createdAt])
+}
+
+
+// ────────────────────────── Cases de sucesso ──────────────────────────
+
+/// Cases usados como prova social, sugeridos pelo setor do lead.
+model Case {
+  id        String   @id @default(cuid())
+  title     String
+  client    String
+  segment   String
+  highlight String // métrica de destaque, ex.: "200x"
+  metric    String // o que a métrica mede, ex.: "Redução de Preço"
+  summary   String
+  link      String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([segment])
+}
+
+
+// ──────────────── WhatsApp: instâncias e fila de envio ────────────────
+
+enum SendStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+}
+
+/// Uma instância de WhatsApp por vendedor, pareada por QR.
+model WhatsappInstance {
+  id           String   @id @default(cuid())
+  instanceName String   @unique
+  phoneNumber  String?
+  provider     String   @default("evolution")
+  status       String   @default("disconnected") // disconnected | pairing | connected
+  isDefault    Boolean  @default(false)
+  active       Boolean  @default(true)
+  lastSeenAt   DateTime?
+  createdAt    DateTime @default(now())
+
+  ownerId String?
+  owner   User?   @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  queue SendQueue[]
+
+  @@index([ownerId])
+}
+
+/// Padrão outbox: a UI insere aqui, um worker entrega e marca o resultado.
+/// Humano e IA usam a MESMA fila, diferenciados por `fromType`.
+model SendQueue {
+  id        String     @id @default(cuid())
+  createdAt DateTime   @default(now())
+
+  instanceId String
+  instance   WhatsappInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  content     String
+  messageType String     @default("text") // text | audio | image | template
+  mediaUrl    String?
+  fromType    String     @default("human") // human | ai
+  /// Menor número sai primeiro — confirmação de reunião fura a fila.
+  priority    Int        @default(5)
+  status      SendStatus @default(PENDING)
+  attempts    Int        @default(0)
+  lastError   String?
+  sentAt      DateTime?
+
+  @@index([status, priority, createdAt])
+  @@index([leadId])
+}
