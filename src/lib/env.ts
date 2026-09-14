@@ -45,26 +45,28 @@ export function identificador(nome: string, valor: string): string {
  * Retorna `null` quando o valor está bom.
  */
 export function diagnosticarUrlPostgres(valor: string): string | null {
-  // O Supabase mostra a conexão dentro de um comando pronto para o terminal.
-  // Copiar o botão inteiro traz o `psql` e as aspas junto — e é o engano mais
-  // comum de todos, porque o campo do painel não mostra o começo do valor.
-  if (/^psql/i.test(valor)) {
+  // Classifica o valor já sem espaços. Espaço é sintoma, não causa: quase todo
+  // engano de paste traz um junto, e relatá-lo primeiro esconde o que de fato
+  // está errado — o `psql` do começo, o nome da variável, a senha de exemplo.
+  const limpo = valor.replace(/\s+/g, "");
+
+  if (/^psql/i.test(limpo)) {
     return "o valor é o comando psql inteiro — copie só a URL de dentro das aspas, a que começa em postgresql://";
   }
-  if (/\[[^\]]*(password|senha)[^\]]*\]/i.test(valor)) {
+  if (/\[[^\]]*(password|senha)[^\]]*\]/i.test(limpo)) {
     return "a senha ainda é o texto de exemplo entre colchetes — troque pela senha real do banco";
   }
-  // Espaço só depois dos dois acima: o comando psql também tem espaço, e
-  // dizer "há um espaço" a quem colou o comando inteiro não ajuda em nada.
-  if (/\s/.test(valor)) return "há espaço ou quebra de linha no meio do valor";
-  if (/^postgres(ql)?:\/\//.test(valor)) return null;
-  if (/^[A-Za-z_][A-Za-z0-9_]*\s*=/.test(valor)) {
+  if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(limpo)) {
     return "o nome da variável foi colado junto com o valor — o campo recebe só o que vem depois do =";
   }
-  if (/^https?:\/\//.test(valor)) {
+  if (/^https?:\/\//.test(limpo)) {
     return "isso é uma URL de site, não a string de conexão do Postgres — pegue a de Connect → ORMs no Supabase";
   }
-  if (/^[a-z]+:\/\//.test(valor)) return "o protocolo não é postgresql://";
+  if (/^postgres(ql)?:\/\//.test(limpo)) {
+    // Conteúdo certo: aí sim o espaço é a única coisa a consertar.
+    return /\s/.test(valor) ? "há espaço ou quebra de linha no meio do valor" : null;
+  }
+  if (/^[a-z]+:\/\//i.test(limpo)) return "o protocolo não é postgresql://";
   return "não começa com postgresql://";
 }
 
