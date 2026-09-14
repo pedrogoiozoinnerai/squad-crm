@@ -178,7 +178,7 @@ async function main() {
           ownerId,
         };
 
-        await prisma.deal.upsert({
+        const salvo = await prisma.deal.upsert({
           where: { hubspotDealId: negocio.id },
           update: comum,
           create: {
@@ -187,9 +187,25 @@ async function main() {
             code: codigoDe(negocio.id),
             leadId: lead.id,
             createdAt: criadoEm,
-            // A etapa de origem some no de-para; guardada aqui, a operação
-            // continua sabendo de onde cada negócio veio.
-            lostNote: `Importado de ${meta.nome} · etapa "${rotuloOrigem}"`,
+          },
+        });
+
+        // A etapa de origem some no de-para — oito pipelines viram um. Vai como
+        // anotação, não em `lostNote`: aquele campo é do motivo de perda, e a
+        // ação de marcar ganho o limpa (src/app/actions/deals.ts) — a origem
+        // seria apagada na primeira vez que alguém mexesse no negócio.
+        await prisma.note.upsert({
+          where: { hubspotNoteId: `origem-${negocio.id}` },
+          update: {},
+          create: {
+            hubspotNoteId: `origem-${negocio.id}`,
+            content:
+              `Importado do HubSpot · pipeline "${meta.nome}" · etapa "${rotuloOrigem}"` +
+              (negocio.props.description ? `\n\n${negocio.props.description}` : ""),
+            createdAt: criadoEm,
+            authorId: naoAtribuido,
+            dealId: salvo.id,
+            leadId: lead.id,
           },
         });
       }
