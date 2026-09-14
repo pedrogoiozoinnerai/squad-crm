@@ -68,6 +68,18 @@ colar as variáveis acima → Deploy.
 
 Root Directory fica na raiz. Nada de override no comando de build.
 
+## 3.5. Conferir antes de tentar entrar
+
+    curl https://squad-crm.vercel.app/api/saude
+
+`{"banco":"ok", …}` significa que a aplicação enxerga o banco. Qualquer outra
+coisa vem com a causa escrita — a rota existe porque a tela de login **não**
+toca o banco: ela responde 200 mesmo com a conexão quebrada, e o erro só
+aparece quando alguém tenta entrar.
+
+`primeiroCadastroViraAdmin: true` confirma que ainda não há usuário. O primeiro
+cadastro pelo site assume o papel de ADMIN; não existe senha no repositório.
+
 ## 4. Depois do primeiro deploy
 
 - [ ] Criar o usuário admin de produção pela tela de cadastro (o primeiro vira ADMIN)
