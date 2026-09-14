@@ -32,6 +32,22 @@ Copie os valores do `.env` local — **exceto os dois schemas, que mudam**:
 > Com um banco só, é a única fronteira que existe — por isso o seed recusa
 > rodar em schema que não termine em `_dev`.
 
+### Três coisas que já quebraram aqui
+
+**Cole sem aspas.** No `.env` os valores ficam entre aspas e o dotenv as
+remove; a Vercel guarda exatamente o que você colar. `DATABASE_URL` com aspas
+derruba o build (`Invalid URL`); `DB_SCHEMA` com aspas é pior — passa no build
+e faz *toda* consulta falhar em produção, sem dizer por quê. O app hoje tolera
+(`src/lib/env.ts` limpa tudo o que vem do ambiente), mas continue colando
+limpo: quem lê essas variáveis fora daqui não tolera.
+
+**Não marque as variáveis como Sensitive.** Sensitive só é exposta em runtime,
+e o build precisa delas.
+
+**Node é `22.x`, não uma faixa.** O `engines.node` do `package.json` tem de
+nomear um major que a Vercel reconheça. Uma faixa aberta como `>=20.9.0` diz o
+que o projeto tolera, não o que a plataforma deve escolher — e reprova o build.
+
 ## 2. Criar o schema de produção e migrar
 
 As migrações **não rodam no build** (o pooler não suporta DDL). Rode da máquina,
