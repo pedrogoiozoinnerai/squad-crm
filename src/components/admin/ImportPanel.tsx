@@ -37,9 +37,9 @@ export function ImportPanel({ configured }: { configured: boolean }) {
       {!configured && (
         <p className="mt-5 flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
           <AlertCircle className="mt-0.5 size-4 shrink-0" />
-          Configure <code className="font-mono">TYPE_DATABASE_URL</code> no{" "}
-          <code className="font-mono">.env</code> apontando para o banco do funil
-          antes de importar.
+          Configure <code className="font-mono">TYPE_DB_SCHEMA</code> no{" "}
+          <code className="font-mono">.env</code> (o schema do funil dentro do
+          banco compartilhado) antes de importar.
         </p>
       )}
 
