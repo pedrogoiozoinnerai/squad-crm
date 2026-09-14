@@ -1,6 +1,6 @@
 import "dotenv/config";
 
-import { contar, owners, pipelines, propriedadesDe, verificarAcesso } from "./hubspot-client";
+import { contar, listar, owners, pipelines, propriedadesDe, verificarAcesso } from "./hubspot-client";
 
 /**
  * Passo 1 da migração: DESCOBRIR a conta antes de tocar em qualquer dado.
@@ -73,7 +73,71 @@ async function main() {
     console.log();
   }
 
+  await conferirFormato();
+
   console.log("Nada foi escrito. Me mande esta saída e eu monto o de-para.\n");
+}
+
+/** Teto de negócios varridos; acima disso a amostra já responde as perguntas. */
+const TETO = 5000;
+
+/**
+ * As três perguntas que o NOSSO schema obriga a responder antes de importar.
+ * Nenhuma delas se responde olhando o HubSpot isolado — só confrontando os
+ * dois modelos. Por isso elas vivem aqui, e não na cabeça de alguém.
+ */
+async function conferirFormato() {
+  console.log("═══ O QUE O NOSSO MODELO EXIGE DECIDIR ═══\n");
+
+  const porContato = new Map<string, number>();
+  let negocios = 0;
+  let semDono = 0;
+  let semContato = 0;
+  let cortou = false;
+
+  for await (const pagina of listar("deals", ["dealname", "hubspot_owner_id"], ["contacts"])) {
+    for (const d of pagina) {
+      if (negocios >= TETO) { cortou = true; break; }
+      negocios++;
+      if (!d.properties.hubspot_owner_id) semDono++;
+      const contatos = d.associations?.contacts?.results ?? [];
+      if (contatos.length === 0) semContato++;
+      for (const c of contatos) porContato.set(c.id, (porContato.get(c.id) ?? 0) + 1);
+    }
+    if (cortou) break;
+  }
+
+  const multiplos = [...porContato.values()].filter((n) => n > 1).length;
+  const maior = Math.max(0, ...porContato.values());
+
+  console.log(`  negócios examinados      ${negocios}${cortou ? ` (parei no teto de ${TETO})` : ""}`);
+  console.log(`  contatos distintos       ${porContato.size}`);
+  console.log();
+  console.log(`  ▸ contatos com mais de um negócio: ${multiplos}${maior > 1 ? ` (o maior tem ${maior})` : ""}`);
+  console.log(`      Deal.leadId é @unique no nosso schema: hoje é UM negócio por lead.`);
+  console.log(
+    multiplos === 0
+      ? "      ✓ nenhum caso — a restrição não atrapalha, importo direto."
+      : "      ⚠ decisão sua: afrouxar para 1:N (mexe na UI) ou importar o mais\n" +
+        "        recente e anexar os outros como anotação no lead.",
+  );
+  console.log();
+  console.log(`  ▸ negócios sem responsável: ${semDono}`);
+  console.log(`      Deal.ownerId é obrigatório aqui.`);
+  console.log(
+    semDono === 0
+      ? "      ✓ nenhum caso."
+      : "      ⚠ decisão sua: a quem atribuir — um usuário 'Sem dono' ou você.",
+  );
+  console.log();
+  console.log(`  ▸ negócios sem contato associado: ${semContato}`);
+  console.log(`      Deal exige Lead aqui; negócio órfão não tem onde entrar.`);
+  console.log(
+    semContato === 0
+      ? "      ✓ nenhum caso."
+      : "      ⚠ decisão sua: criar um lead a partir do nome do negócio, ou pular.",
+  );
+  console.log();
 }
 
 /** Propriedades nativas que já sei mapear sem perguntar. */
