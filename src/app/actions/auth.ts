@@ -47,6 +47,17 @@ export async function signIn(_prev: AuthState, formData: FormData): Promise<Auth
   const invalid = { error: "E-mail ou senha incorretos.", values: typed };
   if (!user || !user.active) return invalid;
 
+  // Conta criada pela importação do HubSpot: existe, tem negócios atrelados,
+  // mas ninguém escolheu senha ainda. Dizer isso não vaza nada que a própria
+  // tela de cadastro não revelaria, e sem essa dica a pessoa fica tentando
+  // senhas para uma conta que nunca teve nenhuma.
+  if (!user.passwordHash) {
+    return {
+      error: "Esta conta veio da migração e ainda não tem senha. Use \"Criar conta\" com este mesmo e-mail.",
+      values: typed,
+    };
+  }
+
   const ok = await verifyPassword(parsed.data.password, user.passwordHash);
   if (!ok) return invalid;
 
@@ -77,21 +88,36 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
   }
 
   const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) {
+  if (existing && existing.passwordHash) {
     return { error: "Já existe uma conta com esse e-mail.", values: typed };
   }
 
-  // O primeiro cadastro do sistema vira ADMIN — evita ficar sem administrador.
-  const isFirstUser = (await prisma.user.count()) === 0;
+  // Sem nenhuma conta COM SENHA, quem se cadastra vira ADMIN — senão o sistema
+  // fica sem administrador. Contas sem senha não contam: a importação do
+  // HubSpot cria uma para cada responsável, e contá-las tiraria o primeiro
+  // administrador de quem chegasse depois da migração.
+  const isFirstUser = (await prisma.user.count({ where: { NOT: { passwordHash: "" } } })) === 0;
 
-  const user = await prisma.user.create({
-    data: {
-      name,
-      email,
-      passwordHash: await hashPassword(password),
-      role: isFirstUser ? "ADMIN" : "USER",
-    },
-  });
+  // Conta importada: assumir a existente preserva os negócios, leads e tarefas
+  // que já apontam para ela. Criar outra deixaria tudo órfão.
+  const user = existing
+    ? await prisma.user.update({
+        where: { id: existing.id },
+        data: {
+          name,
+          passwordHash: await hashPassword(password),
+          active: true,
+          ...(isFirstUser ? { role: "ADMIN" as const } : {}),
+        },
+      })
+    : await prisma.user.create({
+        data: {
+          name,
+          email,
+          passwordHash: await hashPassword(password),
+          role: isFirstUser ? "ADMIN" : "USER",
+        },
+      });
 
   await createSession(user.id);
   redirect(homeFor(user.role));
