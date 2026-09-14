@@ -17,10 +17,21 @@ const globalForPrisma = globalThis as unknown as {
  */
 export const DB_SCHEMA = process.env.DB_SCHEMA || "crm";
 
+/** Mesma limpeza do prisma7.config.ts: aspas coladas de painel quebram a URL. */
+function limpar(valor: string | undefined) {
+  return valor?.trim().replace(/^['"]|['"]$/g, "") || undefined;
+}
+
 function createClient() {
-  const connectionString = process.env.DATABASE_URL;
+  const connectionString = limpar(process.env.DATABASE_URL);
   if (!connectionString) {
     throw new Error("DATABASE_URL não configurada — veja .env.example.");
+  }
+  if (!/^postgres(ql)?:\/\//.test(connectionString)) {
+    throw new Error(
+      `DATABASE_URL não parece uma URL de Postgres: "${connectionString.slice(0, 18)}…". ` +
+        "Confira se não colou com aspas.",
+    );
   }
 
   // Runtime usa a URL do pooler (6543). `max: 1` porque cada instância
