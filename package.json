@@ -13,7 +13,9 @@
     "clean:icloud": "find .next -name '* [0-9].*' -delete 2>/dev/null || true",
     "predev": "npm run clean:icloud",
     "prebuild": "npm run clean:icloud",
-    "prelint": "npm run clean:icloud"
+    "prelint": "npm run clean:icloud",
+    "db:seed:demo": "tsx prisma/seed-demo.ts",
+    "hubspot:descobrir": "tsx scripts/hubspot-descobrir.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
