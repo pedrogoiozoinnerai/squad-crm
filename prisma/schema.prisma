@@ -215,6 +215,7 @@ model Deal {
   @@index([stageId])
   @@index([ownerId])
   @@index([status])
+  @@index([lossReasonId])
 }
 
 model DealStageHistory {
@@ -304,6 +305,9 @@ model Task {
 
   @@index([ownerId, status])
   @@index([dueAt])
+  @@index([dealId])
+  @@index([leadId])
+  @@index([templateId])
 }
 
 // ───────────────────── Sessões recorrentes ────────────────────────────
@@ -325,6 +329,7 @@ model SessionTemplate {
 
   instances SessionInstance[]
   overrides SessionOverride[]
+  @@index([ownerId])
 }
 
 /// Ocorrência concreta de uma sessão num dia. Materializada a partir do template.
@@ -422,6 +427,7 @@ model Meeting {
 
   @@index([startsAt])
   @@index([ownerId, startsAt])
+  @@index([leadId])
 }
 
 // ──────────────────────── Anotações e atividades ──────────────────────
@@ -442,6 +448,7 @@ model Note {
 
   @@index([leadId])
   @@index([dealId])
+  @@index([authorId])
 }
 
 enum ActivityKind {
@@ -477,6 +484,7 @@ model Activity {
   deal   Deal?   @relation(fields: [dealId], references: [id], onDelete: Cascade)
 
   @@index([leadId, createdAt])
+  @@index([authorId])
   @@index([dealId, createdAt])
 }
 
@@ -554,4 +562,5 @@ model SendQueue {
 
   @@index([status, priority, createdAt])
   @@index([leadId])
+  @@index([instanceId])
 }
