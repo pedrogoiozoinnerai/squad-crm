@@ -13,7 +13,8 @@ export const dynamic = "force-dynamic";
 function categoria(erro: unknown): string {
   const m = String(erro);
   if (/não configurada|not configured/i.test(m)) return "variável de ambiente ausente";
-  if (/não parece uma URL|Invalid URL/i.test(m)) return "DATABASE_URL malformada — confira aspas e o nome da variável colado junto";
+  const url = m.match(/DATABASE_URL inválida: ([^.]+)\./);
+  if (url) return `DATABASE_URL: ${url[1]}`;
   if (/inválido/i.test(m)) return "DB_SCHEMA inválido";
   if (/does not exist|não existe/i.test(m)) return `schema "${DB_SCHEMA}" ou suas tabelas não existem — falta migrar`;
   if (/ECONNREFUSED|ETIMEDOUT|Can't reach/i.test(m)) return "banco inalcançável a partir desta região";

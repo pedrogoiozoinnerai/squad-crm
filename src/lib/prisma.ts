@@ -1,6 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
-import { env, envObrigatorio, identificador } from "@/lib/env";
+import { diagnosticarUrlPostgres, env, envObrigatorio, identificador } from "@/lib/env";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -20,12 +20,8 @@ export const DB_SCHEMA = identificador("DB_SCHEMA", env("DB_SCHEMA", "crm")!);
 
 function createClient() {
   const connectionString = envObrigatorio("DATABASE_URL");
-  if (!/^postgres(ql)?:\/\//.test(connectionString)) {
-    throw new Error(
-      `DATABASE_URL não parece uma URL de Postgres: "${connectionString.slice(0, 18)}…". ` +
-        "Confira se não colou com aspas.",
-    );
-  }
+  const defeito = diagnosticarUrlPostgres(connectionString);
+  if (defeito) throw new Error(`DATABASE_URL inválida: ${defeito}.`);
 
   // Runtime usa a URL do pooler (6543). `max: 1` porque cada instância
   // serverless é um processo próprio: pool grande ali multiplica conexões
