@@ -1,5 +1,5 @@
 // Prisma schema — CRM (Squad.com)
-// Local dev: SQLite (zero infra). Produção: trocar `provider` para "postgresql"
+// Postgres (Supabase) em dev e em produção — projetos distintos, mesma estrutura.
 // e apontar DATABASE_URL para o Postgres gerenciado — o mesmo banco do Funil
 // do Type, para que o CRM leia os leads do funil sem camada de integração.
 
@@ -9,7 +9,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 // ─────────────────────────────── Acesso ───────────────────────────────

@@ -1,4 +1,4 @@
-import { PrismaLibSql } from "@prisma/adapter-libsql";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
 
 const globalForPrisma = globalThis as unknown as {
@@ -6,7 +6,14 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createClient() {
-  const adapter = new PrismaLibSql({ url: process.env.DATABASE_URL ?? "file:./dev.db" });
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error("DATABASE_URL não configurada — veja .env.example.");
+  }
+
+  // Runtime usa a URL do pooler (6543). `max: 1` porque cada instância
+  // serverless é um processo próprio: pool grande multiplica conexões.
+  const adapter = new PrismaPg({ connectionString, max: 1 });
   return new PrismaClient({ adapter });
 }
 
