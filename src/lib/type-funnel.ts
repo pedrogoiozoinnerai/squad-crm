@@ -35,7 +35,7 @@ export type FunnelLead = {
 
 /** Schema do funil dentro do banco compartilhado: `type` ou `type_dev`. */
 function funnelSchema() {
-  return process.env.TYPE_DB_SCHEMA ?? "type";
+  return process.env.TYPE_DB_SCHEMA || "type";
 }
 
 /**

@@ -21,7 +21,7 @@ export type SessionUser = {
 };
 
 export function allowedDomain() {
-  return (process.env.ALLOWED_EMAIL_DOMAIN ?? "innerai.com").toLowerCase();
+  return (process.env.ALLOWED_EMAIL_DOMAIN || "innerai.com").toLowerCase();
 }
 
 export function isEmailAllowed(email: string) {
