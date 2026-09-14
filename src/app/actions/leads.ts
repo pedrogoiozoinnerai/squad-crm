@@ -116,11 +116,18 @@ export async function convertLead(_prev: FormState, formData: FormData): Promise
 
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
-    select: { id: true, name: true, ownerId: true, deal: { select: { id: true } } },
+    select: {
+      id: true,
+      name: true,
+      ownerId: true,
+      // Só os abertos bloqueiam: um lead cujo negócio foi ganho ou perdido
+      // pode voltar ao pipeline — é renovação, upsell, segunda tentativa.
+      deals: { where: { status: "OPEN" }, select: { id: true } },
+    },
   });
   if (!lead) return { error: "Lead não encontrado." };
   assertOwns(user, lead.ownerId);
-  if (lead.deal) return { error: "Este lead já tem um negócio no pipeline." };
+  if (lead.deals.length) return { error: "Este lead já tem um negócio aberto no pipeline." };
 
   const stage = await prisma.stage.findFirst({ orderBy: { order: "asc" } });
   if (!stage) return { error: "Nenhuma etapa de pipeline configurada." };

@@ -118,7 +118,7 @@ model Lead {
   /// duplicaria tudo, e não haveria como reimportar só o que mudou.
   hubspotContactId String? @unique
 
-  deal         Deal?
+  deals        Deal[]
   tasks        Task[]
   meetings     Meeting[]
   noteEntries  Note[]
@@ -189,8 +189,13 @@ model Deal {
   code          String  @unique
   /// Ver Lead.hubspotContactId — mesma razão, do lado do negócio.
   hubspotDealId String? @unique
-  leadId        String  @unique
-  lead          Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  /// Um lead pode ter vários negócios: a mesma pessoa compra de novo,
+  /// renova, faz upsell. Era 1:1 enquanto os dados eram nossos; no histórico
+  /// real do HubSpot 10% dos contatos têm mais de um, e recortar isso
+  /// subcontaria conversão, receita e ciclo de venda para sempre.
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
   stageId String
   stage   Stage  @relation(fields: [stageId], references: [id])
@@ -222,6 +227,7 @@ model Deal {
   noteEntries Note[]
   activities  Activity[]
 
+  @@index([leadId])
   @@index([stageId])
   @@index([ownerId])
   @@index([status])

@@ -15,11 +15,11 @@ type Panel = "task" | "meeting" | "convert" | "note" | null;
 
 export function LeadActions({
   leadId,
-  hasDeal,
+  hasOpenDeal,
   isClosed,
 }: {
   leadId: string;
-  hasDeal: boolean;
+  hasOpenDeal: boolean;
   isClosed: boolean;
 }) {
   const [panel, setPanel] = useState<Panel>(null);
@@ -41,7 +41,7 @@ export function LeadActions({
         <ActionButton active={panel === "note"} onClick={() => toggle("note")} icon={StickyNote}>
           Anotação
         </ActionButton>
-        {!hasDeal && !isClosed && (
+        {!hasOpenDeal && !isClosed && (
           <ActionButton active={panel === "convert"} onClick={() => toggle("convert")} icon={ArrowRightLeft}>
             Converter em negócio
           </ActionButton>

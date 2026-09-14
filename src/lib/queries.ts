@@ -81,7 +81,12 @@ export async function getLeadDetail(user: SessionUser, id: string) {
   return prisma.lead.findFirst({
     where: { id, ...ownerScope(user) },
     include: {
-      deal: { select: { id: true } },
+      // Vários negócios por lead: renovação, upsell, segunda compra. Mais
+      // recente primeiro, que é o que o time procura ao abrir o drawer.
+      deals: {
+        select: { id: true, code: true, status: true, valueCents: true, createdAt: true },
+        orderBy: { createdAt: "desc" },
+      },
       activities: {
         include: { author: { select: { name: true } } },
         orderBy: { createdAt: "desc" },

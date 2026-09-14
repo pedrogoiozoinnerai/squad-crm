@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { LeadActions } from "@/components/leads/LeadActions";
 import { LeadForm } from "@/components/leads/LeadForm";
 import { Drawer } from "@/components/ui/Drawer";
@@ -13,6 +15,14 @@ const STATUS_LABEL = {
   LOST: { text: "Perdido", tone: "bg-red-50 text-red-700" },
 } as const;
 
+const DEAL_TONE = {
+  OPEN: "bg-sky-50 text-sky-700",
+  WON: "bg-waz-90 text-waz-20",
+  LOST: "bg-red-50 text-red-700",
+} as const;
+
+const DEAL_LABEL = { OPEN: "Aberto", WON: "Ganho", LOST: "Perdido" } as const;
+
 export async function LeadDrawer({
   leadId,
   user,
@@ -23,6 +33,8 @@ export async function LeadDrawer({
   closeHref: string;
 }) {
   const isNew = leadId === "new";
+  // O drawer é usado nos dois espaços de rota; o negócio abre no pipeline do mesmo.
+  const pipelineHref = user.role === "ADMIN" ? "/admin/pipeline" : "/user/pipeline";
   const owners = user.role === "ADMIN" ? await getOwners() : null;
   const lead = isNew ? null : await getLeadDetail(user, leadId);
 
@@ -79,9 +91,41 @@ export async function LeadDrawer({
         <>
           <LeadActions
             leadId={lead.id}
-            hasDeal={Boolean(lead.deal)}
+            hasOpenDeal={lead.deals.some((deal) => deal.status === "OPEN")}
             isClosed={lead.status === "LOST" || lead.status === "CONVERTED"}
           />
+
+          {lead.deals.length > 0 && (
+            <section className="mt-7 border-t border-line pt-6">
+              <h3 className="mb-3 text-xs font-semibold tracking-wider text-muted uppercase">
+                {lead.deals.length === 1 ? "Negócio" : `Negócios (${lead.deals.length})`}
+              </h3>
+              <ul className="flex flex-col gap-1.5">
+                {lead.deals.map((deal) => (
+                  <li key={deal.id}>
+                    <Link
+                      href={`${pipelineHref}?deal=${deal.id}`}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-line px-3 py-2 text-sm hover:bg-surface-2"
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="font-mono text-xs text-muted">{deal.code}</span>
+                        <span className={`chip ${DEAL_TONE[deal.status]}`}>
+                          {DEAL_LABEL[deal.status]}
+                        </span>
+                      </span>
+                      <span className="text-muted">
+                        {(deal.valueCents / 100).toLocaleString("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                          maximumFractionDigits: 0,
+                        })}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           <section className="mt-7 border-t border-line pt-6">
             <h3 className="mb-3 text-xs font-semibold tracking-wider text-muted uppercase">
