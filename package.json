@@ -16,7 +16,8 @@
     "prelint": "npm run clean:icloud",
     "db:seed:demo": "tsx prisma/seed-demo.ts",
     "hubspot:descobrir": "tsx scripts/hubspot-descobrir.ts",
-    "vercel:vars": "tsx scripts/vars-vercel.ts"
+    "vercel:vars": "tsx scripts/vars-vercel.ts",
+    "hubspot:importar": "tsx scripts/hubspot-importar.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

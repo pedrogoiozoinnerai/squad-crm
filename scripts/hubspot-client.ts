@@ -145,3 +145,66 @@ export async function contar(objeto: "contacts" | "deals" | "companies") {
   );
   return r.total;
 }
+
+/** Busca paginada com filtro — a API de search aceita o que a de listagem não. */
+export async function* buscar(
+  objeto: "contacts" | "deals",
+  filtros: { propertyName: string; operator: string; value: string }[],
+  propriedades: string[],
+): AsyncGenerator<HsObject[]> {
+  let after: string | undefined;
+  do {
+    const page = await req<{ results: HsObject[]; paging?: { next?: { after: string } } }>(
+      `/crm/v3/objects/${objeto}/search`,
+      {
+        method: "POST",
+        body: JSON.stringify({ limit: 100, after, filterGroups: [{ filters: filtros }], properties: propriedades }),
+      },
+    );
+    yield page.results;
+    after = page.paging?.next?.after;
+  } while (after);
+}
+
+/**
+ * Lê objetos por id, 100 por chamada.
+ *
+ * Buscar um a um seria 7.500 chamadas para os contatos do Squad — meia hora de
+ * espera e um teto de rate limit. Em lote são 75.
+ */
+export async function lote(
+  objeto: "contacts" | "deals" | "companies",
+  ids: string[],
+  propriedades: string[],
+): Promise<HsObject[]> {
+  const saida: HsObject[] = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    const r = await req<{ results: HsObject[] }>(`/crm/v3/objects/${objeto}/batch/read`, {
+      method: "POST",
+      body: JSON.stringify({ properties: propriedades, inputs: ids.slice(i, i + 100).map((id) => ({ id })) }),
+    });
+    saida.push(...(r.results ?? []));
+  }
+  return saida;
+}
+
+/** Associações em lote: id de origem → ids de destino. */
+export async function associacoes(
+  de: "deals" | "contacts",
+  para: "contacts" | "companies" | "deals",
+  ids: string[],
+): Promise<Map<string, string[]>> {
+  const mapa = new Map<string, string[]>();
+  for (let i = 0; i < ids.length; i += 100) {
+    const r = await req<{
+      results: { from: { id: string }; to: { toObjectId: string | number }[] }[];
+    }>(`/crm/v4/associations/${de}/${para}/batch/read`, {
+      method: "POST",
+      body: JSON.stringify({ inputs: ids.slice(i, i + 100).map((id) => ({ id })) }),
+    });
+    for (const res of r.results ?? []) {
+      mapa.set(res.from.id, (res.to ?? []).map((t) => String(t.toObjectId)));
+    }
+  }
+  return mapa;
+}
