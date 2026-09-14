@@ -29,10 +29,17 @@ export async function moveDeal(input: { dealId: string; stageId: string }) {
 
   const deal = await prisma.deal.findUnique({
     where: { id: dealId },
-    select: { id: true, ownerId: true, stageId: true, leadId: true, stage: { select: { name: true } } },
+    select: {
+      id: true, ownerId: true, stageId: true, leadId: true, status: true,
+      stage: { select: { name: true } },
+    },
   });
   if (!deal) throw new Error("Negócio não encontrado.");
   assertOwns(user, deal.ownerId);
+  // O kanban já desabilita, mas a action é alcançável por POST direto.
+  if (deal.status !== "OPEN") {
+    throw new Error("Negócio fechado não muda de etapa. Reabra antes.");
+  }
   if (deal.stageId === stageId) return;
 
   const stage = await prisma.stage.findUnique({ where: { id: stageId } });
@@ -73,10 +80,13 @@ export async function saveDeal(_prev: FormState, formData: FormData): Promise<Fo
 
   const deal = await prisma.deal.findUnique({
     where: { id },
-    select: { ownerId: true, leadId: true },
+    select: { ownerId: true, leadId: true, status: true },
   });
   if (!deal) return { error: "Negócio não encontrado." };
   assertOwns(user, deal.ownerId);
+  if (deal.status !== "OPEN") {
+    return { error: "Negócio fechado é somente leitura. Reabra para editar." };
+  }
 
   const valueCents = moneyCents(formData.get("value"));
   if (valueCents !== null && valueCents < 0) return { error: "O valor não pode ser negativo." };
@@ -132,10 +142,11 @@ export async function closeDeal(formData: FormData) {
 
   const deal = await prisma.deal.findUnique({
     where: { id },
-    select: { ownerId: true, leadId: true, mentorshipStatus: true },
+    select: { ownerId: true, leadId: true, mentorshipStatus: true, status: true },
   });
   if (!deal) throw new Error("Negócio não encontrado.");
   assertOwns(user, deal.ownerId);
+  if (deal.status !== "OPEN") throw new Error("Este negócio já está fechado.");
 
   // Regra do produto: não se marca Ganho sem a mentoria estratégica concluída.
   if (won && deal.mentorshipStatus !== "CONCLUIDA") {
@@ -175,15 +186,21 @@ export async function reopenDeal(formData: FormData) {
 
   const deal = await prisma.deal.findUnique({
     where: { id },
-    select: { ownerId: true, leadId: true },
+    select: { ownerId: true, leadId: true, status: true, stage: { select: { name: true } } },
   });
   if (!deal) throw new Error("Negócio não encontrado.");
   assertOwns(user, deal.ownerId);
+  if (deal.status === "OPEN") throw new Error("Este negócio já está aberto.");
 
   await prisma.$transaction([
     prisma.deal.update({
       where: { id },
-      data: { status: "OPEN", wonAt: null, lostAt: null, lostNote: null, lossReasonId: null },
+      // Reabrir devolve a probabilidade da etapa; deixar 100% herdado do Ganho
+      // inflaria o forecast de um negócio que voltou a ser incerto.
+      data: {
+        status: "OPEN", wonAt: null, lostAt: null, lostNote: null, lossReasonId: null,
+        probability: 20,
+      },
     }),
     prisma.lead.update({ where: { id: deal.leadId }, data: { status: "COMPLETE" } }),
   ]);

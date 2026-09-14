@@ -6,6 +6,7 @@ import { z } from "zod";
 import { date, text } from "@/lib/forms";
 import {
   assertOwns,
+  assertOwnsContext,
   currentUser,
   logActivity,
   revalidateBoth,
@@ -61,19 +62,8 @@ export async function createTask(_prev: FormState, formData: FormData): Promise<
   const leadId = text(formData.get("leadId"));
   const dealId = text(formData.get("dealId"));
 
-  // A tarefa herda o dono do registro a que está presa.
-  let ownerId = user.id;
-  if (dealId) {
-    const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { ownerId: true } });
-    if (!deal) return { error: "Negócio não encontrado." };
-    assertOwns(user, deal.ownerId);
-    ownerId = deal.ownerId;
-  } else if (leadId) {
-    const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { ownerId: true } });
-    if (!lead) return { error: "Lead não encontrado." };
-    assertOwns(user, lead.ownerId);
-    ownerId = lead.ownerId ?? user.id;
-  }
+  // Valida lead E negócio, e herda o dono do registro a que a tarefa se prende.
+  const { ownerId } = await assertOwnsContext(user, { leadId, dealId });
 
   const type = String(formData.get("type") ?? "follow_up");
   const priority = String(formData.get("priority") ?? "MEDIUM");

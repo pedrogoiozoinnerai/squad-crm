@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { assertOwns, currentUser, logActivity, revalidateBoth, type FormState } from "@/lib/guard";
 import { date, moneyCents, phone, text } from "@/lib/forms";
+import { nextDealCode } from "@/lib/codes";
 import { prisma } from "@/lib/prisma";
 import { runStageAutomations } from "@/lib/automations";
 
@@ -129,7 +130,7 @@ export async function convertLead(_prev: FormState, formData: FormData): Promise
 
   const deal = await prisma.deal.create({
     data: {
-      code: `#${Math.random().toString(16).slice(2, 6)}`,
+      code: await nextDealCode(),
       leadId: lead.id,
       stageId: stage.id,
       valueCents,

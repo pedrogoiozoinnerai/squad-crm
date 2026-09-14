@@ -28,6 +28,10 @@ export function ImportPanel({ configured }: { configured: boolean }) {
           Os leads chegam <strong className="text-foreground">sem responsável</strong>,
           para você distribuir entre os vendedores.
         </li>
+        <li>
+          Cada lead abre um <strong className="text-foreground">negócio na primeira
+          etapa</strong>, sem valor — senão ele fica invisível na receita do Dashboard.
+        </li>
       </ul>
 
       {!configured && (
@@ -52,8 +56,9 @@ export function ImportPanel({ configured }: { configured: boolean }) {
       {state?.ok && (
         <p className="mt-5 flex items-start gap-2 rounded-xl bg-waz-95 px-3 py-2.5 text-sm text-waz-20">
           <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
-          {state.created} lead(s) importado(s), {state.meetings} reunião(ões)
-          agendada(s) e {state.skipped} já existia(m).
+          {state.created} lead(s) importado(s), {state.deals} negócio(s)
+          aberto(s), {state.meetings} reunião(ões) agendada(s) e {state.skipped}{" "}
+          já existia(m).
         </p>
       )}
 
