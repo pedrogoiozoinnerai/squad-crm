@@ -359,3 +359,173 @@ export async function getDashboard(user: SessionUser) {
       .sort((a, b) => b.valueCents - a.valueCents),
   };
 }
+
+// ─────────────────────────── Sessões coletivas ───────────────────────────
+
+/** Sessões num intervalo, com presença agregada a partir do tempo real. */
+export async function getSessions(user: SessionUser, from: Date, to: Date) {
+  const instances = await prisma.sessionInstance.findMany({
+    where: { ...ownerScope(user), date: { gte: from, lt: to } },
+    include: {
+      owner: { select: { id: true, name: true } },
+      template: { select: { name: true } },
+      participants: {
+        include: { lead: { select: { id: true, name: true, company: true, score: true } } },
+        orderBy: { totalSeconds: "desc" },
+      },
+    },
+    orderBy: [{ date: "asc" }, { time: "asc" }],
+  });
+
+  return instances.map((s) => {
+    const inscritos = s.participants.length;
+    const presentes = s.participants.filter((p) => p.attended).length;
+    return {
+      ...s,
+      inscritos,
+      presentes,
+      taxaPresenca: inscritos ? Math.round((presentes / inscritos) * 100) : 0,
+      qualificados: s.participants.filter(
+        (p) => p.attended && (p.lead.score === "A" || p.lead.score === "B"),
+      ).length,
+    };
+  });
+}
+
+export async function getSessionDetail(user: SessionUser, id: string) {
+  return prisma.sessionInstance.findFirst({
+    where: { id, ...ownerScope(user) },
+    include: {
+      owner: { select: { name: true } },
+      template: { select: { name: true } },
+      participants: {
+        include: {
+          lead: {
+            select: { id: true, name: true, company: true, email: true, score: true, segment: true },
+          },
+        },
+        orderBy: [{ attended: "desc" }, { totalSeconds: "desc" }],
+      },
+    },
+  });
+}
+
+// ───────────────────────────── Participantes ─────────────────────────────
+
+/** Leads inscritos em sessões — a base de "quem foi agendado". */
+export async function getParticipants(
+  user: SessionUser,
+  filters: { q?: string; presenca?: string; score?: string },
+) {
+  const q = filters.q?.trim();
+
+  return prisma.sessionParticipant.findMany({
+    where: {
+      sessionInstance: ownerScope(user),
+      ...(filters.presenca === "presente" ? { attended: true } : {}),
+      ...(filters.presenca === "ausente" ? { attended: false } : {}),
+      lead: {
+        ...(filters.score && filters.score !== "all" ? { score: filters.score } : {}),
+        ...(q
+          ? { OR: [{ name: { contains: q } }, { email: { contains: q } }, { company: { contains: q } }] }
+          : {}),
+      },
+    },
+    include: {
+      lead: {
+        select: { id: true, name: true, email: true, phone: true, company: true, segment: true, score: true },
+      },
+      sessionInstance: {
+        select: { id: true, date: true, time: true, owner: { select: { name: true } } },
+      },
+    },
+    orderBy: { sessionInstance: { date: "desc" } },
+    take: 300,
+  });
+}
+
+// ─────────────────────────── Painel do líder ───────────────────────────
+
+/** Visão do time: quem está onde, com o que trava a operação hoje. */
+export async function getTeamOverview() {
+  const agora = new Date();
+  const inicioMes = new Date(agora.getFullYear(), agora.getMonth(), 1);
+  const inicioSemana = weekStart(agora);
+
+  const [closers, ganhos, abertos, tarefas, reunioes, instancias] = await Promise.all([
+    prisma.user.findMany({
+      where: { active: true },
+      select: { id: true, name: true, email: true, role: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.deal.groupBy({
+      by: ["ownerId"],
+      where: { status: "WON", wonAt: { gte: inicioMes } },
+      _count: true,
+      _sum: { valueCents: true },
+    }),
+    prisma.deal.groupBy({
+      by: ["ownerId"],
+      where: { status: "OPEN" },
+      _count: true,
+      _sum: { valueCents: true },
+    }),
+    prisma.task.findMany({
+      where: { status: "PENDING" },
+      select: { ownerId: true, dueAt: true },
+    }),
+    prisma.meeting.groupBy({
+      by: ["ownerId"],
+      where: { startsAt: { gte: inicioSemana }, status: { not: "CANCELED" } },
+      _count: true,
+    }),
+    prisma.whatsappInstance.findMany({ select: { ownerId: true, status: true } }),
+  ]);
+
+  const linhas = closers.map((c) => {
+    const g = ganhos.find((x) => x.ownerId === c.id);
+    const a = abertos.find((x) => x.ownerId === c.id);
+    const minhas = tarefas.filter((t) => t.ownerId === c.id);
+    const whats = instancias.find((w) => w.ownerId === c.id);
+
+    return {
+      id: c.id,
+      name: c.name,
+      email: c.email,
+      role: c.role,
+      ganhoCents: g?._sum.valueCents ?? 0,
+      ganhos: g?._count ?? 0,
+      pipelineCents: a?._sum.valueCents ?? 0,
+      abertos: a?._count ?? 0,
+      pendentes: minhas.length,
+      atrasadas: minhas.filter((t) => t.dueAt && t.dueAt < agora).length,
+      reunioesSemana: reunioes.find((m) => m.ownerId === c.id)?._count ?? 0,
+      whatsapp: whats?.status ?? null,
+    };
+  });
+
+  return {
+    linhas: linhas.sort((a, b) => b.ganhoCents - a.ganhoCents),
+    totalGanhoCents: linhas.reduce((s, l) => s + l.ganhoCents, 0),
+    totalGanhos: linhas.reduce((s, l) => s + l.ganhos, 0),
+    totalAtrasadas: linhas.reduce((s, l) => s + l.atrasadas, 0),
+    whatsappOff: linhas.filter((l) => l.whatsapp && l.whatsapp !== "connected").length,
+  };
+}
+
+// ───────────────────── Configuração da operação ─────────────────────
+
+export async function getConfig() {
+  const [stages, lossReasons, templates, automations, cases, permissions] = await Promise.all([
+    prisma.stage.findMany({ orderBy: { order: "asc" }, include: { _count: { select: { deals: true } } } }),
+    prisma.lossReason.findMany({ orderBy: { orderIndex: "asc" }, include: { _count: { select: { deals: true } } } }),
+    prisma.taskTemplate.findMany({ orderBy: { name: "asc" }, include: { _count: { select: { tasks: true } } } }),
+    prisma.taskAutomation.findMany({
+      include: { template: { select: { name: true } }, targetStage: { select: { name: true, color: true } } },
+    }),
+    prisma.case.findMany({ orderBy: { segment: "asc" } }),
+    prisma.rolePermission.findMany({ orderBy: { role: "asc" } }),
+  ]);
+
+  return { stages, lossReasons, templates, automations, cases, permissions };
+}

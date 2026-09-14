@@ -103,8 +103,8 @@ const TASK_TEMPLATES = [
     description: "Call de fechamento com o decisor.", meetingEnabled: true },
 ];
 
-const FEATURES_ADMIN = ["inicio","calendar","agenda","leads","pipeline","deals","tarefas","usuarios","importar","sessoes","exportar","ver_todos"];
-const FEATURES_USER = ["inicio","calendar","agenda","leads","pipeline","deals","tarefas"];
+const FEATURES_ADMIN = ["inicio","calendar","agenda","leads","pipeline","deals","tarefas","sessoes","participantes","time","usuarios","configuracoes","importar","exportar","ver_todos"];
+const FEATURES_USER = ["inicio","calendar","agenda","leads","pipeline","deals","tarefas","sessoes","participantes"];
 
 const CASES = [
   { title: "VEDUC: matrícula 24/7 sem aumentar o time", client: "VEDUC", segment: "Educação", highlight: "3x", metric: "Matrículas por consultor", summary: "Automatizou captação e triagem; o time passou a falar só com quem já estava qualificado." },
@@ -223,6 +223,8 @@ async function main() {
     });
   }
 
+  const instancias = await prisma.sessionInstance.findMany({ orderBy: { date: "asc" } });
+
   // ── Leads, reuniões e negócios ao longo de 6 meses ──
   console.log("→ 400 leads ao longo de 6 meses…");
   const DIAS = 182;
@@ -288,6 +290,32 @@ async function main() {
         },
       });
       nMeetings++;
+    }
+
+    // ── Inscrição numa sessão coletiva, com presença derivada do tempo ──
+    if (instancias.length && rnd() < 0.35) {
+      const inst = pick(instancias);
+      const passou = inst.date < HOJE;
+      const ficou = passou ? (rnd() < 0.68 ? int(900, 2700) : int(0, 240)) : 0;
+      const entrou = passou && ficou > 0
+        ? new Date(inst.date.getTime() + int(0, 5) * 60_000)
+        : null;
+      try {
+        await prisma.sessionParticipant.create({
+          data: {
+            sessionInstanceId: inst.id,
+            leadId: lead.id,
+            joinedAt: entrou,
+            leftAt: entrou ? new Date(entrou.getTime() + ficou * 1000) : null,
+            joinCount: entrou ? int(1, 2) : 0,
+            totalSeconds: ficou,
+            // Presença é consequência do tempo, não um checkbox: ≥5 min.
+            attended: ficou >= 300,
+          },
+        });
+      } catch {
+        // @@unique(sessionInstanceId, leadId) — lead já inscrito nesta sessão.
+      }
     }
 
     if (!virouNegocio) continue;
@@ -400,6 +428,7 @@ async function main() {
   receita ganha ... ${brl(receitaCents)}
   histórico ....... ${nHist} movimentos de etapa
   tarefas ......... ${nTasks}   anotações ${nNotes}
+  sessões ......... ${await prisma.sessionInstance.count()}  ·  inscrições ${await prisma.sessionParticipant.count()}
   cases ........... ${CASES.length}
 
   Admin:    pedro.goiozo@innerai.com / squad1234
