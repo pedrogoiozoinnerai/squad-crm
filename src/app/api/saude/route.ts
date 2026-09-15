@@ -24,18 +24,26 @@ function categoria(erro: unknown): string {
 
 export async function GET() {
   try {
-    const [etapas, usuarios] = await Promise.all([prisma.stage.count(), prisma.user.count()]);
+    // `assumidas` é o número que decide o primeiro ADMIN, não o total: as 34
+    // contas importadas do HubSpot existem sem ninguém atrás delas, e contá-las
+    // fazia este endpoint dizer que o cadastro inicial já tinha acontecido.
+    const [etapas, usuarios, assumidas] = await Promise.all([
+      prisma.stage.count(),
+      prisma.user.count(),
+      prisma.user.count({ where: { claimedAt: { not: null } } }),
+    ]);
     return Response.json({
       banco: "ok",
       schema: DB_SCHEMA,
       etapas,
       usuarios,
+      assumidas,
       // Sem usuário nenhum, o primeiro cadastro vira ADMIN — vale avisar.
       pronto: etapas > 0,
       ...(urlReparada
         ? { aviso: "DATABASE_URL tinha espaço ou quebra de linha; foi emendada. Corrija no painel." }
         : {}),
-      primeiroCadastroViraAdmin: usuarios === 0,
+      primeiroCadastroViraAdmin: assumidas === 0,
     });
   } catch (erro) {
     console.error("[saude] falha ao consultar o banco:", erro);
