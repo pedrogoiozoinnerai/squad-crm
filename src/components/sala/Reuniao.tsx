@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { RoomEvent, Track, type Room } from "livekit-client";
 import { Users } from "lucide-react";
 
 import { BarraDeControles } from "@/components/sala/BarraDeControles";
+import { Coach, type BlocoDoRoteiro } from "@/components/sala/Coach";
 import { Quadro } from "@/components/sala/Quadro";
 import { useSala } from "@/components/sala/useSala";
 
@@ -14,21 +15,30 @@ export function Reuniao({
   titulo,
   host,
   aoSair,
+  meetingId,
+  roteiro,
+  marcados,
 }: {
   sala: Room;
   titulo: string;
   host: boolean;
   aoSair: () => void;
+  meetingId: string;
+  roteiro: BlocoDoRoteiro[];
+  marcados: Record<string, number>;
 }) {
   const { eu, todos, falando } = useSala(sala);
   const [maoLevantada, setMaoLevantada] = useState(false);
-  const [decorrido, setDecorrido] = useState(0);
   const [aviso, setAviso] = useState<string | null>(null);
 
-  useEffect(() => {
-    const id = setInterval(() => setDecorrido((s) => s + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
+  // O instante em que a call começou, não um contador em estado: assim o
+  // relógio corre dentro do próprio <Cronometro/> e a reunião inteira não
+  // redesenha a cada segundo — com o vendedor clicando no roteiro no meio.
+  const inicio = useRef(Date.now());
+  const segundoAtual = useCallback(
+    () => Math.round((Date.now() - inicio.current) / 1000),
+    [],
+  );
 
   // Sair pela sala (host encerrou, queda definitiva) leva ao mesmo lugar que o
   // botão: sem isto o participante fica olhando uma tela congelada.
@@ -62,11 +72,7 @@ export function Reuniao({
     <div className="flex h-dvh flex-col bg-[#0d1424] text-white">
       <header className="flex shrink-0 items-center gap-4 px-5 py-3">
         <h1 className="min-w-0 flex-1 truncate text-sm font-semibold">{titulo}</h1>
-        <span className="shrink-0 font-mono text-sm text-white/60 tabular-nums">
-          {String(Math.floor(decorrido / 3600)).padStart(2, "0")}:
-          {String(Math.floor((decorrido % 3600) / 60)).padStart(2, "0")}:
-          {String(decorrido % 60).padStart(2, "0")}
-        </span>
+        <Cronometro desde={inicio} />
         <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-sm">
           <Users className="size-4" />
           {todos.length} {todos.length === 1 ? "participante" : "participantes"}
@@ -80,6 +86,15 @@ export function Reuniao({
       )}
 
       <div className="flex min-h-0 flex-1 gap-3 px-5 pb-28">
+        {host && roteiro.length > 0 && (
+          <Coach
+            meetingId={meetingId}
+            blocos={roteiro}
+            marcados={marcados}
+            segundoAtual={segundoAtual}
+          />
+        )}
+
         <div className="min-w-0 flex-1">
           {falando && <Quadro participante={falando} grande souEu={falando.identity === eu.identity} />}
         </div>
@@ -130,5 +145,25 @@ export function Reuniao({
         }}
       />
     </div>
+  );
+}
+
+/** O relógio da call, com o estado que pisca fechado aqui dentro. */
+function Cronometro({ desde }: { desde: React.RefObject<number> }) {
+  const [segundos, setSegundos] = useState(0);
+
+  useEffect(() => {
+    const tique = () => setSegundos(Math.round((Date.now() - desde.current) / 1000));
+    tique();
+    const id = setInterval(tique, 1000);
+    return () => clearInterval(id);
+  }, [desde]);
+
+  const dois = (n: number) => String(n).padStart(2, "0");
+  return (
+    <span className="shrink-0 font-mono text-sm text-white/60 tabular-nums">
+      {dois(Math.floor(segundos / 3600))}:{dois(Math.floor((segundos % 3600) / 60))}:
+      {dois(segundos % 60)}
+    </span>
   );
 }

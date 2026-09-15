@@ -556,6 +556,7 @@ model Meeting {
   roomEvents RoomEvent[]
   presences  Presence[]
   attendees  MeetingAttendee[]
+  blocos     MeetingBloco[]
 
   @@index([startsAt])
   @@index([ownerId, startsAt])
@@ -846,4 +847,81 @@ model MeetingAttendee {
   @@unique([meetingId, leadId])
   @@index([leadId])
   @@index([meetingId, status])
+}
+
+// ── Live Coach: o roteiro da call ────────────────────────────────────────────
+//
+// UM dado, dois usos. O mesmo roteiro guia o vendedor durante a chamada e vira
+// a rubrica pela qual a IA avalia a gravação depois. Manter dois seria garantir
+// que um dia divergissem — e aí o vendedor é cobrado por um roteiro e treinado
+// por outro.
+
+enum PlaybookTipo {
+  INDIVIDUAL
+  GRUPO
+}
+
+/// O roteiro de um tipo de call. Versionado: mudar o playbook não pode
+/// reescrever a nota de uma call que aconteceu sob o roteiro anterior.
+model Playbook {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  nome   String
+  tipo   PlaybookTipo @default(INDIVIDUAL)
+  versao Int          @default(1)
+  ativo  Boolean      @default(true)
+
+  blocos PlaybookBloco[]
+
+  @@unique([tipo, versao])
+  @@index([tipo, ativo])
+}
+
+/// Um bloco do roteiro: vira uma linha da lista ao vivo e um critério da
+/// análise depois.
+model PlaybookBloco {
+  id String @id @default(cuid())
+
+  playbookId String
+  playbook   Playbook @relation(fields: [playbookId], references: [id], onDelete: Cascade)
+
+  ordem Int
+  nome  String
+
+  /// O que este bloco precisa entregar. É o que a IA compara com a
+  /// transcrição, e o que o vendedor lê quando não lembra o que era.
+  objetivo String?
+
+  /// Minutos previstos. A soma é o tempo-alvo da call — e o desvio dela é a
+  /// primeira coisa que uma análise de ritmo olha.
+  minutosAlvo Int?
+
+  marcacoes MeetingBloco[]
+
+  @@unique([playbookId, ordem])
+}
+
+/// Bloco que o vendedor marcou DURANTE a chamada.
+model MeetingBloco {
+  id String @id @default(cuid())
+
+  meetingId String
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  blocoId String
+  bloco   PlaybookBloco @relation(fields: [blocoId], references: [id], onDelete: Cascade)
+
+  marcadoEm DateTime @default(now())
+
+  /// Segundos desde o início da reunião.
+  ///
+  /// É o que liga o que o vendedor DIZ que fez ao que a transcrição mostra
+  /// naquele instante. Sem o segundo, a marcação é só uma lista de caixas
+  /// clicadas e não dá para conferir nada.
+  segundo Int
+
+  @@unique([meetingId, blocoId])
+  @@index([meetingId])
 }

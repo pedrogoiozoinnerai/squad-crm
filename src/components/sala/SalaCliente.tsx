@@ -8,6 +8,7 @@ import type { Room } from "livekit-client";
 
 import { Preparo, type Preferencias } from "@/components/sala/Preparo";
 import { Reuniao } from "@/components/sala/Reuniao";
+import type { BlocoDoRoteiro } from "@/components/sala/Coach";
 import type { SituacaoDaSala } from "@/lib/sala";
 
 type Fase = "preparo" | "conectando" | "dentro" | "saiu" | "erro";
@@ -20,6 +21,8 @@ export function SalaCliente({
   titulo,
   situacao,
   voltarPara,
+  roteiro,
+  marcados,
 }: {
   meetingId: string;
   convite: string | null;
@@ -28,6 +31,8 @@ export function SalaCliente({
   titulo: string;
   situacao: SituacaoDaSala;
   voltarPara: string | null;
+  roteiro: BlocoDoRoteiro[];
+  marcados: Record<string, number>;
 }) {
   const router = useRouter();
   const [fase, setFase] = useState<Fase>("preparo");
@@ -107,6 +112,9 @@ export function SalaCliente({
       sala={sala}
       titulo={titulo}
       host={host}
+      meetingId={meetingId}
+      roteiro={roteiro}
+      marcados={marcados}
       aoSair={() => {
         setSala(null);
         setFase("saiu");

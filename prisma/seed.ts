@@ -70,6 +70,33 @@ const CASES = [
   { title: "Expo Vivo: credenciamento em 40 segundos", client: "Expo Vivo", segment: "Eventos", highlight: "-85%", metric: "Fila de credenciamento", summary: "Check-in automatizado eliminou a fila de entrada do evento." },
 ];
 
+
+/**
+ * Roteiro de partida da call individual.
+ *
+ * NÃO é o playbook do Squad — é a estrutura do scorecard que o CRM de
+ * referência usa, que é genérica o bastante para servir de ponto de partida.
+ * Os blocos reais ("Pilar 2 · Soluções + Nina") são da operação deles.
+ *
+ * Trocar isto pelo roteiro de verdade é edição de dado, não de código: o mesmo
+ * roteiro guia o vendedor ao vivo e vira a rubrica da análise, então mudar aqui
+ * muda os dois de uma vez.
+ */
+const ROTEIRO_INDIVIDUAL = [
+  { nome: "Abertura e rapport", minutos: 3, objetivo: "Quebrar o gelo e confirmar quanto tempo a pessoa tem." },
+  { nome: "Contexto e agenda da call", minutos: 2, objetivo: "Combinar o que vai acontecer nos próximos minutos e por quê." },
+  { nome: "Diagnóstico da operação", minutos: 8, objetivo: "Entender como o trabalho é feito hoje, com quem e em qual volume." },
+  { nome: "Tarefas repetitivas", minutos: 5, objetivo: "Nomear as tarefas manuais que se repetem toda semana." },
+  { nome: "Cálculo do custo atual", minutos: 5, objetivo: "Transformar as tarefas em horas e as horas em dinheiro perdido hoje." },
+  { nome: "Métricas coletadas", minutos: 3, objetivo: "Registrar os números que vão sustentar a proposta." },
+  { nome: "Apresentação da solução", minutos: 6, objetivo: "Ligar cada dor levantada a uma parte concreta do produto." },
+  { nome: "Prova social", minutos: 3, objetivo: "Trazer um case do mesmo setor ou do mesmo porte." },
+  { nome: "Planos e ancoragem", minutos: 4, objetivo: "Apresentar o preço depois do custo da inação, nunca antes." },
+  { nome: "Quebra de objeções", minutos: 3, objetivo: "Trazer a objeção à tona em vez de esperar que ela apareça depois." },
+  { nome: "Tentativa de fechamento", minutos: 2, objetivo: "Pedir a decisão. Sem isto a call vira apresentação." },
+  { nome: "Próximos passos", minutos: 1, objetivo: "Sair com data, hora e responsável definidos." },
+];
+
 async function main() {
   console.log(`\n→ catálogo no schema "${schema}" (idempotente)\n`);
 
@@ -118,6 +145,30 @@ async function main() {
     if (!existe) await prisma.case.create({ data: c });
   }
   console.log(`  cases ............. ${await prisma.case.count()}`);
+
+  // ── Live Coach ──
+  const playbook = await prisma.playbook.upsert({
+    where: { tipo_versao: { tipo: "INDIVIDUAL", versao: 1 } },
+    update: {},
+    create: { nome: "Call individual — roteiro base", tipo: "INDIVIDUAL", versao: 1 },
+  });
+  for (const [i, bloco] of ROTEIRO_INDIVIDUAL.entries()) {
+    await prisma.playbookBloco.upsert({
+      where: { playbookId_ordem: { playbookId: playbook.id, ordem: i + 1 } },
+      // `update: {}` porque o roteiro é editável na operação: reexecutar o seed
+      // não pode desfazer o que o time ajustou.
+      update: {},
+      create: {
+        playbookId: playbook.id,
+        ordem: i + 1,
+        nome: bloco.nome,
+        objetivo: bloco.objetivo,
+        minutosAlvo: bloco.minutos,
+      },
+    });
+  }
+  const minutos = ROTEIRO_INDIVIDUAL.reduce((t, b) => t + b.minutos, 0);
+  console.log(`  roteiro da call ... ${ROTEIRO_INDIVIDUAL.length} blocos · ${minutos} min previstos`);
 
   const usuarios = await prisma.user.count();
   console.log(`\n  usuários .......... ${usuarios}`);
