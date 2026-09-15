@@ -53,3 +53,7 @@ next-env.d.ts
 # cópias de conflito do iCloud Drive ("arquivo 2.ts", "node_modules 2")
 * [0-9]
 * [0-9].*
+
+# Análise do CRM de referência: descrição da infraestrutura interna de outra
+# empresa. Fica no cofre do Obsidian, fora do versionamento.
+/referencia/
