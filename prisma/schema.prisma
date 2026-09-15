@@ -486,6 +486,17 @@ model Meeting {
   type     MeetingType   @default(ONE_ON_ONE)
   status   MeetingStatus @default(SCHEDULED)
 
+  /// Reserva correspondente no Cal.com.
+  ///
+  /// É por ela que a sincronização reencontra a reunião quando o lead remarca
+  /// ou desmarca. Sem isso, cancelar no Cal deixaria uma reunião fantasma na
+  /// agenda do vendedor, e remarcar criaria uma segunda em vez de mover a
+  /// primeira. Único, porque uma reserva vira uma reunião só.
+  calBookingUid String? @unique
+
+  /// Onde a reunião acontece, como o Cal.com informou (link, telefone, sala).
+  location String?
+
   // Reservado pro projeto 3 (Meet com LiveKit)
   roomId String?
 

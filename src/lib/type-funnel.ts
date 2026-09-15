@@ -28,6 +28,14 @@ export type FunnelLead = {
   segment: string | null;
   revenueRange: string | null;
   scheduledAt: string | null;
+  calBookingUid: string | null;
+  meetingLocation: string | null;
+  /// Preenchido quando a reserva foi cancelada no Cal.com.
+  calCancelledAt: string | null;
+  /// `true` quando o lead percorreu o questionário inteiro mas não agendou.
+  /// É o lead mais qualificado que existe — respondeu faturamento, cargo e
+  /// empresa — e antes ele não chegava aqui de jeito nenhum.
+  semAgendamento: boolean;
   utmSource: string | null;
   utmMedium: string | null;
   utmCampaign: string | null;
@@ -55,6 +63,25 @@ function iso(v: unknown): string | null {
   return String(v);
 }
 
+/**
+ * Quem já respondeu o suficiente para valer um contato.
+ *
+ * O funil só marca `COMPLETED` quando alguém agenda — então "terminou" e
+ * "agendou" são a mesma coisa do lado do Type. Quem responde os sete passos e
+ * trava no agendamento fica `IN_PROGRESS` para sempre, e era invisível aqui.
+ *
+ * `currentStep = SCHEDULE` diz que a pessoa chegou ao último passo; os campos
+ * obrigatórios confirmam que respondeu o que interessa. Os dois juntos separam
+ * "quase fechou" de "desistiu no segundo campo".
+ */
+const RESPONDEU_TUDO = `
+  status::text = 'IN_PROGRESS'
+  AND "currentStep"::text = 'SCHEDULE'
+  AND "fullName" IS NOT NULL
+  AND company IS NOT NULL
+  AND ("email" IS NOT NULL OR "phoneE164" IS NOT NULL)
+`;
+
 export async function readFunnelLeads(): Promise<FunnelLead[]> {
   const schema = funnelSchema();
 
@@ -74,16 +101,19 @@ export async function readFunnelLeads(): Promise<FunnelLead[]> {
             segment,
             "revenueRange",
             "scheduledAt",
+            "calBookingUid",
+            "meetingLocation",
+            "calCancelledAt",
+            status::text AS status,
             "utmSource",
             "utmMedium",
             "utmCampaign",
             "createdAt"
        FROM "${schema}"."Lead"
-      WHERE status::text = $1
-        AND "fullName" IS NOT NULL
+      WHERE ("fullName" IS NOT NULL AND status::text = 'COMPLETED')
+         OR (${RESPONDEU_TUDO})
       ORDER BY "createdAt" DESC
       LIMIT 500`,
-    "COMPLETED",
   );
 
   return rows.map((r) => ({
@@ -97,6 +127,10 @@ export async function readFunnelLeads(): Promise<FunnelLead[]> {
     segment: r.segment === null ? null : String(r.segment),
     revenueRange: r.revenueRange === null ? null : String(r.revenueRange),
     scheduledAt: iso(r.scheduledAt),
+    calBookingUid: r.calBookingUid === null ? null : String(r.calBookingUid),
+    calCancelledAt: iso(r.calCancelledAt),
+    meetingLocation: r.meetingLocation === null ? null : String(r.meetingLocation),
+    semAgendamento: String(r.status) !== "COMPLETED",
     utmSource: r.utmSource === null ? null : String(r.utmSource),
     utmMedium: r.utmMedium === null ? null : String(r.utmMedium),
     utmCampaign: r.utmCampaign === null ? null : String(r.utmCampaign),

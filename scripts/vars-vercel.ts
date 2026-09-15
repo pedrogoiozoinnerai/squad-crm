@@ -26,6 +26,7 @@ const PRODUCAO: Record<string, string | undefined> = {
   NEXT_PUBLIC_BRAND_NAME: env("NEXT_PUBLIC_BRAND_NAME", "Squad.com"),
   // Monta a URL de retorno do OAuth; sem ela o Google recusa o login.
   NEXT_PUBLIC_APP_URL: env("NEXT_PUBLIC_APP_URL", "https://squad-crm.vercel.app"),
+  CRON_SECRET: env("CRON_SECRET"),
   GOOGLE_CLIENT_ID: env("GOOGLE_CLIENT_ID"),
   GOOGLE_CLIENT_SECRET: env("GOOGLE_CLIENT_SECRET"),
 };
@@ -51,7 +52,7 @@ if (!BLOCO) {
 for (const [nome, valor] of Object.entries(PRODUCAO)) {
   if (!valor) {
     if (BLOCO) continue;
-    const opcional = nome.startsWith("GOOGLE_");
+    const opcional = nome.startsWith("GOOGLE_") || nome === "CRON_SECRET";
     console.log(`  ${nome}\n    ${opcional ? "— vazio (entrada com Google fica desligada)" : "✗ ausente no .env local"}\n`);
     if (!opcional) problemas++;
     continue;
