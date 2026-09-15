@@ -1,6 +1,9 @@
 import "server-only";
 
 import { getSessionUser, type SessionUser } from "@/lib/auth";
+import { assertOwns } from "@/lib/escopo";
+
+export { assertOwns };
 import { prisma } from "@/lib/prisma";
 import type { ActivityKind } from "@/generated/prisma/enums";
 
@@ -18,10 +21,6 @@ export async function currentUser(): Promise<SessionUser> {
 }
 
 /** Admin mexe em tudo; vendedor só no que é dele. */
-export function assertOwns(user: SessionUser, ownerId: string | null | undefined) {
-  if (user.role === "ADMIN") return;
-  if (ownerId !== user.id) throw new Error("Sem permissão para alterar este registro.");
-}
 
 /**
  * Autoriza um contexto {leadId, dealId} validando **os dois**.

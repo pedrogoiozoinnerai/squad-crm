@@ -3,25 +3,13 @@ import { type NextRequest, NextResponse } from "next/server";
 import {
   allowedDomain,
   createSession,
+  destinoSeguro,
   homeFor,
   igualSemVazarTempo,
   isEmailAllowed,
 } from "@/lib/auth";
 import { ESTADO_COOKIE, googleConfigurado, trocarCodigo } from "@/lib/google";
 import { prisma } from "@/lib/prisma";
-
-/**
- * Destino interno, ou a casa do usuário.
- *
- * `startsWith("/")` sozinho não basta: `//evil.com` começa com barra e o
- * navegador o lê como URL absoluta protocolo-relativa. Seria um redirecionador
- * aberto pendurado no nosso login — o tipo de coisa que vira phishing com o
- * nosso domínio na barra de endereço. A contrabarra entra na recusa porque
- * vários navegadores normalizam `/\` para `//` antes de resolver a URL.
- */
-function destinoSeguro(proxima: string, padrao: string) {
-  return /^\/(?![/\\])/.test(proxima) ? proxima : padrao;
-}
 
 /** Mensagem curta na URL; a tela de login traduz. */
 function recusar(request: NextRequest, motivo: string) {

@@ -14,6 +14,10 @@ export function number(value: FormDataEntryValue | null): number | null {
 /** "45.360,00" e "45360.00" viram "45360.00". */
 function normalizeMoney(str: string) {
   const cleaned = str.replace(/[^\d.,-]/g, "");
+  // Sem um dígito sequer, não é número. `Number("")` é 0 e finito, então sem
+  // esta linha um valor digitado errado virava R$ 0,00 salvo em silêncio —
+  // e o vendedor só descobria ao ver a previsão do mês menor do que deveria.
+  if (!/\d/.test(cleaned)) return "não-é-número";
   // Se tem vírgula, ela é o separador decimal (padrão BR) e o ponto é milhar.
   return cleaned.includes(",")
     ? cleaned.replace(/\./g, "").replace(",", ".")

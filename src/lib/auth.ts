@@ -10,6 +10,10 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import type { Role } from "@/generated/prisma/enums";
 
+// Regras puras vivem em `escopo.ts` para poderem ser testadas sem o Next; aqui
+// elas são reexportadas para quem já importava de `auth`.
+export { assertOwns, destinoSeguro, ownerScope } from "@/lib/escopo";
+
 export const SESSION_COOKIE = "squad_crm_session";
 const SESSION_DAYS = 30;
 
@@ -188,6 +192,3 @@ export function homeFor(role: Role) {
  * Escopo de dados: admin enxerga tudo, user só o que é dele.
  * Usado em toda query de lista para evitar vazamento entre vendedores.
  */
-export function ownerScope(user: SessionUser) {
-  return user.role === "ADMIN" ? {} : { ownerId: user.id };
-}

@@ -88,8 +88,15 @@ export async function saveDeal(_prev: FormState, formData: FormData): Promise<Fo
     return { error: "Negócio fechado é somente leitura. Reabra para editar." };
   }
 
-  const valueCents = moneyCents(formData.get("value"));
+  const valorBruto = formData.get("value");
+  const valueCents = moneyCents(valorBruto);
   if (valueCents !== null && valueCents < 0) return { error: "O valor não pode ser negativo." };
+  // Campo vazio é intenção de zerar; campo preenchido que não vira número é
+  // engano de digitação. Sem esta distinção os dois salvavam R$ 0,00, e o
+  // vendedor só descobria ao ver a previsão do mês menor do que deveria.
+  if (valueCents === null && text(valorBruto) !== null) {
+    return { error: "Valor inválido. Use apenas números, como 12.500,00." };
+  }
 
   const probability = Number(formData.get("probability"));
   if (!Number.isFinite(probability) || probability < 0 || probability > 100) {

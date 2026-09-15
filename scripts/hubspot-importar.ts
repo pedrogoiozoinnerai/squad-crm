@@ -6,6 +6,7 @@ import { PrismaClient } from "../src/generated/prisma/client";
 import { env, envObrigatorio, identificador } from "../src/lib/env";
 import { associacoes, buscar, lote, owners } from "./hubspot-client";
 import { PIPELINES, destinoDe, type Destino } from "./hubspot-mapa";
+import { nomeLimpo, texto } from "./hubspot-texto";
 import { classificarMotivo } from "./hubspot-motivos";
 
 /**
@@ -86,19 +87,6 @@ const DESFECHO: Record<string, "SCHEDULED" | "DONE" | "NO_SHOW" | "CANCELED"> = 
 /** O tipo do HubSpot vira o nosso rótulo livre de tipo de tarefa. */
 const TIPO_TAREFA: Record<string, string> = { TODO: "follow_up", CALL: "call", EMAIL: "email" };
 
-/**
- * Nome de pessoa como ele deveria ter sido digitado.
- *
- * Muita gente no HubSpot tem sobrenome "." ou "-", resquício de importação
- * anterior ou de formulário que exigia o campo. Sem limpar, a lista de leads
- * fica cheia de "Juciele ." e ninguém entende se é erro nosso.
- */
-function nomeLimpo(valor: string) {
-  return valor
-    .replace(/\s+/g, " ")
-    .replace(/(^|\s)[.\-_]+(?=\s|$)/g, "")
-    .trim();
-}
 
 /** Código estável: derivado do id do HubSpot, igual em toda reimportação. */
 const codigoDe = (id: string) => `#h${Number(id).toString(36)}`;
@@ -114,19 +102,6 @@ const data = (v: string | null | undefined) => {
   return Number.isNaN(d.getTime()) ? null : d;
 };
 
-/** O corpo da anotação vem como HTML do editor do HubSpot. */
-const texto = (html: string | null | undefined) =>
-  (html ?? "")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p>/gi, "\n\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
 
 /**
  * Executa em paralelo com teto. Sem teto, 9.500 upserts simultâneos derrubam o
