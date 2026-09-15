@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/auth";
 import { identidadeDoLead, identidadeDoUsuario, salaDaReuniao, tokenDeAcesso } from "@/lib/livekit";
 import { chavesDoLiveKit, criarSala } from "@/lib/livekit-servidor";
 import { prisma } from "@/lib/prisma";
+import { janelaDaSala, situacaoDaSala } from "@/lib/sala";
 
 /**
  * Emite o token de entrada na sala.
@@ -16,12 +17,6 @@ import { prisma } from "@/lib/prisma";
  * existe caminho "só com o id da reunião", porque id é adivinhável.
  */
 export const dynamic = "force-dynamic";
-
-/// Antes disso a sala não abre, e depois disso ela já fechou. Generoso dos dois
-/// lados de propósito: lead que chega 20 min adiantado tem que conseguir
-/// esperar, e call que atrasa não pode expulsar ninguém.
-const ABRE_ANTES_MIN = 30;
-const FECHA_DEPOIS_MIN = 120;
 
 export async function POST(request: NextRequest) {
   const chaves = chavesDoLiveKit();
@@ -44,19 +39,21 @@ export async function POST(request: NextRequest) {
 
   const { reuniao, identidade, nome, host, attendeeId } = quem;
 
-  const agora = Date.now();
-  const abre = reuniao.startsAt.getTime() - ABRE_ANTES_MIN * 60_000;
-  const fecha = reuniao.endsAt.getTime() + FECHA_DEPOIS_MIN * 60_000;
-  if (agora < abre) {
+  // A mesma régua que a página do convite usa para mostrar (ou não) o botão.
+  const agora = new Date();
+  const { abreEm, fechaEm } = janelaDaSala(reuniao);
+  const situacao = situacaoDaSala(reuniao, agora);
+
+  if (situacao === "esperando") {
     return Response.json(
-      { erro: "A sala ainda não abriu.", abreEm: new Date(abre).toISOString() },
+      { erro: "A sala ainda não abriu.", abreEm: abreEm.toISOString() },
       { status: 409 },
     );
   }
-  if (agora > fecha) {
+  if (situacao === "encerrada") {
     return Response.json({ erro: "Esta reunião já terminou." }, { status: 409 });
   }
-  if (reuniao.status === "CANCELED") {
+  if (situacao === "cancelada") {
     return Response.json({ erro: "Esta reunião foi cancelada." }, { status: 409 });
   }
 
@@ -86,7 +83,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Vale até o fim da janela da sala, nunca mais que isso.
-  const validadeSegundos = Math.max(300, Math.round((fecha - agora) / 1000));
+  const validadeSegundos = Math.max(300, Math.round((fechaEm.getTime() - agora.getTime()) / 1000));
 
   return Response.json(
     {
