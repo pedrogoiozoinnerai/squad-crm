@@ -200,6 +200,7 @@ model Lead {
   noteEntries  Note[]
   activities   Activity[]
   sessionSeats SessionParticipant[]
+  meetingSeats MeetingAttendee[]
   outbox       SendQueue[]
 
   @@index([status])
@@ -298,6 +299,12 @@ model Deal {
   ownerId String
   owner   User   @relation(fields: [ownerId], references: [id])
 
+  /// Alguém corrigiu a presença à mão. A partir daí a derivação não toca
+  /// mais nesta linha — o número do vendedor vence o do sistema.
+  attendanceManual Boolean   @default(false)
+  attendanceAt     DateTime?
+
+  meetings    Meeting[]
   tasks       Task[]
   history     DealStageHistory[]
   noteEntries Note[]
@@ -538,8 +545,17 @@ model Meeting {
   leadId String?
   lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
 
+  /// A qual negócio esta reunião pertence.
+  ///
+  /// Sem isto não há como dizer QUAL reunião decide o `attendance` de QUAL
+  /// negócio — a reunião só conhece o lead, e um lead pode ter vários. Era por
+  /// isso que `Deal.attendance` continuava sendo digitado à mão.
+  dealId String?
+  deal   Deal?   @relation(fields: [dealId], references: [id], onDelete: SetNull)
+
   roomEvents RoomEvent[]
   presences  Presence[]
+  attendees  MeetingAttendee[]
 
   @@index([startsAt])
   @@index([ownerId, startsAt])
@@ -768,4 +784,66 @@ model Config {
   /// critérios valem juntos — precisa passar nos dois.
   presencaMinutos    Int @default(5)
   presencaPercentual Int @default(0)
+}
+
+// ── MeetSquad: o roster da reunião ───────────────────────────────────────────
+
+enum AttendeeStatus {
+  INSCRITO
+  CONFIRMADO
+  CANCELADO
+  LISTA_ESPERA
+}
+
+enum AttendeeSource {
+  INSCRICAO
+  CONVITE
+  IMPORTADO
+  AUTOMATICO
+}
+
+/// Quem está numa reunião. Serve a 1:1 (uma linha) e a coletiva (N linhas).
+///
+/// O convite não é um modelo à parte: ele É esta linha. O `inviteToken` na URL
+/// é o que identifica o lead na sala, e é por isso que o `meetingId` cru nunca
+/// pode ir num link — ele é adivinhável a partir de outro, e daria a sala de
+/// qualquer reunião a qualquer um.
+model MeetingAttendee {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  meetingId String
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  leadId    String
+  lead      Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  status AttendeeStatus @default(INSCRITO)
+  source AttendeeSource @default(INSCRICAO)
+
+  /// 32 bytes aleatórios. `cuid` não serve: é sequencial, e quem tem um
+  /// convite conseguiria adivinhar os vizinhos.
+  inviteToken   String    @unique
+  invitedAt     DateTime?
+  firstOpenedAt DateTime?
+  openCount     Int       @default(0)
+  confirmedAt   DateTime?
+
+  /// Consentimento de gravação, colhido na entrada. Sem ele a sala não grava.
+  consentAt DateTime?
+  consentIp String?
+
+  /// DERIVADOS da reconciliação — nunca escritos à mão nem por formulário.
+  joinedAt     DateTime?
+  leftAt       DateTime?
+  joinCount    Int       @default(0)
+  totalSeconds Int       @default(0)
+  attended     Boolean   @default(false)
+
+  /// A regra que produziu `attended`. Sem isto, mudar o mínimo de 5 para 8
+  /// minutos reescreveria a história e ninguém saberia qual número era qual.
+  regraMinutos Int?
+
+  @@unique([meetingId, leadId])
+  @@index([leadId])
+  @@index([meetingId, status])
 }

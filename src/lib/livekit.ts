@@ -141,7 +141,13 @@ export function tokenDeServico({
 }: {
   apiKey: string;
   apiSecret: string;
-  concessoes: { roomCreate?: boolean; roomRecord?: boolean; roomAdmin?: boolean; room?: string };
+  concessoes: {
+    roomCreate?: boolean;
+    roomList?: boolean;
+    roomRecord?: boolean;
+    roomAdmin?: boolean;
+    room?: string;
+  };
   validadeSegundos?: number;
   agora?: Date;
 }) {

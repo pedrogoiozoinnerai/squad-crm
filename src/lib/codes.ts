@@ -25,3 +25,20 @@ export async function nextDealCode(tentativas = 5): Promise<string> {
   }
   throw new Error("Não foi possível gerar um código único para o negócio.");
 }
+
+/**
+ * Token do convite de reunião — 32 bytes aleatórios em hexadecimal.
+ *
+ * Aleatório, e não `cuid`: o cuid é sequencial, e quem tivesse um convite
+ * conseguiria adivinhar os vizinhos — ou seja, entrar na call de outro lead.
+ *
+ * Guardado em claro, ao contrário do token de sessão (`auth.ts`), e é uma
+ * escolha, não descuido: o vendedor precisa reabrir a tela e copiar o link de
+ * novo, o que um hash impediria. O alcance também é outro — este token abre
+ * uma sala, por uma janela de horas, como um lead específico; o de sessão abre
+ * a carteira inteira por trinta dias.
+ */
+export function novoTokenDeConvite() {
+  return randomBytes(32).toString("hex");
+}
+
