@@ -1,6 +1,6 @@
 import "server-only";
 
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 
 import { env } from "@/lib/env";
@@ -38,12 +38,23 @@ export function verifyPassword(password: string, hash: string) {
   return bcrypt.compare(password, hash);
 }
 
+/**
+ * O banco guarda o hash; o token em claro só existe no cookie.
+ *
+ * SHA-256 sem sal de propósito: o token tem 256 bits de entropia, então não há
+ * o que adivinhar por dicionário, e a busca precisa ser por igualdade direta —
+ * um bcrypt aqui exigiria varrer a tabela a cada requisição.
+ */
+function hashToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
 /** Cria a sessão e grava o cookie httpOnly. */
 export async function createSession(userId: string) {
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
 
-  await prisma.authSession.create({ data: { token, userId, expiresAt } });
+  await prisma.authSession.create({ data: { tokenHash: hashToken(token), userId, expiresAt } });
 
   const jar = await cookies();
   jar.set(SESSION_COOKIE, token, {
@@ -58,7 +69,7 @@ export async function createSession(userId: string) {
 export async function destroySession() {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
-  if (token) await prisma.authSession.deleteMany({ where: { token } });
+  if (token) await prisma.authSession.deleteMany({ where: { tokenHash: hashToken(token) } });
   jar.delete(SESSION_COOKIE);
 }
 
@@ -72,7 +83,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   if (!token) return null;
 
   const session = await prisma.authSession.findUnique({
-    where: { token },
+    where: { tokenHash: hashToken(token) },
     include: { user: true },
   });
 
@@ -92,6 +103,51 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     role,
     features: permission?.features.split(",").map((f) => f.trim()).filter(Boolean) ?? [],
   };
+}
+
+/**
+ * Conta que ainda é só um registro importado, sem ninguém por trás.
+ *
+ * A migração do HubSpot cria uma conta para cada responsável, para que negócio
+ * e lead já nasçam atribuídos a quem sempre cuidou deles. Elas não podem
+ * entrar, e não contam para a regra do primeiro administrador.
+ */
+export function contaNaoAssumida(user: { claimedAt: Date | null }) {
+  return user.claimedAt === null;
+}
+
+/**
+ * Trava de força bruta por e-mail.
+ *
+ * Seis erros em quinze minutos e o e-mail descansa. Contar no banco, e não em
+ * memória, porque cada requisição serverless pode cair num processo diferente:
+ * um contador em memória protegeria só a instância que por acaso atendeu.
+ */
+const TENTATIVAS_MAX = 6;
+const JANELA_MIN = 15;
+
+export async function excedeuTentativas(email: string) {
+  const desde = new Date(Date.now() - JANELA_MIN * 60 * 1000);
+  const falhas = await prisma.loginAttempt.count({
+    where: { email, sucesso: false, createdAt: { gte: desde } },
+  });
+  return falhas >= TENTATIVAS_MAX;
+}
+
+export async function registrarTentativa(email: string, sucesso: boolean, ip?: string) {
+  await prisma.loginAttempt.create({ data: { email, sucesso, ip } });
+  // Acerto limpa o histórico: quem entrou provou que é dono da conta, e deixar
+  // as falhas antigas ali travaria o próximo erro de digitação legítimo.
+  if (sucesso) {
+    await prisma.loginAttempt.deleteMany({ where: { email, sucesso: false } });
+  }
+}
+
+/** Comparação de string sem vazar tempo — usada no `state` do OAuth. */
+export function igualSemVazarTempo(a: string, b: string) {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
 }
 
 /** Nenhuma permissão cadastrada = libera tudo, para não travar o sistema. */

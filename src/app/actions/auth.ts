@@ -3,13 +3,18 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
+import { headers } from "next/headers";
+
 import {
   allowedDomain,
+  contaNaoAssumida,
   createSession,
   destroySession,
+  excedeuTentativas,
   hashPassword,
   homeFor,
   isEmailAllowed,
+  registrarTentativa,
   verifyPassword,
 } from "@/lib/auth";
 import { env } from "@/lib/env";
@@ -42,26 +47,48 @@ export async function signIn(_prev: AuthState, formData: FormData): Promise<Auth
     return { error: parsed.error.issues[0].message, values: typed };
   }
 
-  const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+  const { email, password } = parsed.data;
 
-  // Mensagem genérica de propósito: não revela se o e-mail existe.
-  const invalid = { error: "E-mail ou senha incorretos.", values: typed };
-  if (!user || !user.active) return invalid;
-
-  // Conta criada pela importação do HubSpot: existe, tem negócios atrelados,
-  // mas ninguém escolheu senha ainda. Dizer isso não vaza nada que a própria
-  // tela de cadastro não revelaria, e sem essa dica a pessoa fica tentando
-  // senhas para uma conta que nunca teve nenhuma.
-  if (!user.passwordHash) {
+  // A trava vem antes de qualquer consulta ao usuário: quem está sendo forçado
+  // não deve nem custar uma busca por e-mail, e a resposta não pode variar
+  // conforme a conta exista ou não.
+  if (await excedeuTentativas(email)) {
     return {
-      error: "Esta conta veio da migração e ainda não tem senha. Use \"Criar conta\" com este mesmo e-mail.",
+      error: "Muitas tentativas. Espere quinze minutos ou entre com o Google.",
       values: typed,
     };
   }
 
-  const ok = await verifyPassword(parsed.data.password, user.passwordHash);
-  if (!ok) return invalid;
+  const ip =
+    (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() || undefined;
+  const user = await prisma.user.findUnique({ where: { email } });
 
+  // Mensagem genérica de propósito: não revela se o e-mail existe.
+  const invalid = { error: "E-mail ou senha incorretos.", values: typed };
+  if (!user || !user.active) {
+    await registrarTentativa(email, false, ip);
+    return invalid;
+  }
+
+  // Conta que ainda é só um registro importado, ou que entra por SSO: não há
+  // senha para conferir. Dizer isso não vaza nada que a tela de cadastro já não
+  // revele, e sem a dica a pessoa fica tentando senhas que nunca existiram.
+  if (!user.passwordHash) {
+    return {
+      error: contaNaoAssumida(user)
+        ? 'Esta conta veio da migração e ainda não tem senha. Use "Criar conta" com este mesmo e-mail.'
+        : "Esta conta entra pelo Google. Use o botão acima.",
+      values: typed,
+    };
+  }
+
+  const ok = await verifyPassword(password, user.passwordHash);
+  if (!ok) {
+    await registrarTentativa(email, false, ip);
+    return invalid;
+  }
+
+  await registrarTentativa(email, true, ip);
   await createSession(user.id);
   redirect(homeFor(user.role));
 }
@@ -89,7 +116,7 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
   }
 
   const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing && existing.passwordHash) {
+  if (existing && !contaNaoAssumida(existing)) {
     return { error: "Já existe uma conta com esse e-mail.", values: typed };
   }
 
@@ -97,7 +124,7 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
   // fica sem administrador. Contas sem senha não contam: a importação do
   // HubSpot cria uma para cada responsável, e contá-las tiraria o primeiro
   // administrador de quem chegasse depois da migração.
-  const isFirstUser = (await prisma.user.count({ where: { NOT: { passwordHash: "" } } })) === 0;
+  const isFirstUser = (await prisma.user.count({ where: { claimedAt: { not: null } } })) === 0;
 
   // ─── Quem pode criar conta ───────────────────────────────────────────
   // O domínio sozinho bastava enquanto a base era de mentira. Com a operação
@@ -136,6 +163,7 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
         data: {
           name,
           passwordHash: await hashPassword(password),
+          claimedAt: new Date(),
           active: true,
           ...(isFirstUser ? { role: "ADMIN" as const } : {}),
         },
@@ -145,6 +173,7 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
           name,
           email,
           passwordHash: await hashPassword(password),
+          claimedAt: new Date(),
           role: isFirstUser ? "ADMIN" : "USER",
         },
       });

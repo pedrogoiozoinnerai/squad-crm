@@ -67,8 +67,8 @@ export async function liberarCadastro(formData: FormData) {
   }
 
   const existente = await prisma.user.findUnique({ where: { email } });
-  if (existente?.passwordHash) {
-    throw new Error("Essa conta já existe e já tem senha.");
+  if (existente?.claimedAt) {
+    throw new Error("Essa conta já foi assumida por alguém.");
   }
 
   await prisma.invite.upsert({

@@ -126,7 +126,7 @@ export async function getUsers() {
     ...user,
     // Conta sem senha veio da migração e ainda não foi assumida. Só quem está
     // liberado consegue criar a senha e entrar nela.
-    aAssumir: user.passwordHash === "",
+    aAssumir: user.claimedAt === null,
     liberado: liberados.has(user.email),
   }));
 }

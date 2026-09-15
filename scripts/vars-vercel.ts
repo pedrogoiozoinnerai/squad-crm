@@ -24,6 +24,10 @@ const PRODUCAO: Record<string, string | undefined> = {
   // primeiro viraria administrador de uma base com a operação inteira dentro.
   ADMIN_EMAIL: env("ADMIN_EMAIL", "pedro.goiozo@innerai.com"),
   NEXT_PUBLIC_BRAND_NAME: env("NEXT_PUBLIC_BRAND_NAME", "Squad.com"),
+  // Monta a URL de retorno do OAuth; sem ela o Google recusa o login.
+  NEXT_PUBLIC_APP_URL: env("NEXT_PUBLIC_APP_URL", "https://squad-crm.vercel.app"),
+  GOOGLE_CLIENT_ID: env("GOOGLE_CLIENT_ID"),
+  GOOGLE_CLIENT_SECRET: env("GOOGLE_CLIENT_SECRET"),
 };
 
 let problemas = 0;
@@ -32,11 +36,15 @@ console.log("Um campo por variável. Cole só o que vem depois do nome.\n");
 
 for (const [nome, valor] of Object.entries(PRODUCAO)) {
   if (!valor) {
-    console.log(`  ${nome}\n    ✗ ausente no .env local\n`);
-    problemas++;
+    const opcional = nome.startsWith("GOOGLE_");
+    console.log(`  ${nome}\n    ${opcional ? "— vazio (entrada com Google fica desligada)" : "✗ ausente no .env local"}\n`);
+    if (!opcional) problemas++;
     continue;
   }
-  const defeito = nome.endsWith("_URL") ? diagnosticarUrlPostgres(valor) : null;
+  // Só as de conexão. `NEXT_PUBLIC_APP_URL` também termina em _URL e é um
+  // endereço de site — cobrá-la de começar com postgresql:// seria absurdo.
+  const CONEXAO = ["DATABASE_URL", "DIRECT_URL", "TYPE_DATABASE_URL"];
+  const defeito = CONEXAO.includes(nome) ? diagnosticarUrlPostgres(valor) : null;
   if (defeito) {
     console.log(`  ${nome}\n    ✗ o próprio .env está errado: ${defeito}\n`);
     problemas++;

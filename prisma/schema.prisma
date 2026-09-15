@@ -33,6 +33,16 @@ model User {
   /// um negócio quando o e-mail muda ou vem ausente.
   hubspotOwnerId String? @unique
 
+  /// Identidade no Google Workspace. Preenchida no primeiro login por SSO; é
+  /// por ela que a conta é reencontrada mesmo se o e-mail mudar de alias.
+  googleSub String? @unique
+
+  /// Quando a conta deixou de ser um registro importado e virou gente.
+  ///
+  /// Antes isso era inferido de `passwordHash == ""`, o que passou a mentir no
+  /// instante em que existe login sem senha: quem entra por SSO nunca terá
+  /// hash, e continuaria marcado como "a assumir" para sempre.
+  claimedAt         DateTime?
   sessions          AuthSession[]
   convitesFeitos    Invite[]           @relation("ConvitesFeitos")
   leads             Lead[]
@@ -78,14 +88,37 @@ model RolePermission {
 }
 
 model AuthSession {
-  id        String   @id @default(cuid())
-  token     String   @unique
+  id String @id @default(cuid())
+
+  /// SHA-256 do token, nunca o token.
+  ///
+  /// O valor em claro só existe no cookie do navegador. Assim, quem obtiver uma
+  /// cópia do banco — backup, log de query, dump de suporte — não consegue se
+  /// passar por ninguém: teria de inverter o hash.
+  tokenHash String   @unique
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
   createdAt DateTime @default(now())
 
   @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Tentativa de login, para travar força bruta.
+///
+/// Em banco e não em memória porque a aplicação roda serverless: cada requisição
+/// pode cair num processo diferente, e um contador em memória protegeria apenas
+/// a instância que por acaso atendeu.
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  email     String
+  ip        String?
+  sucesso   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([createdAt])
 }
 
 // ─────────────────────────────── Leads ────────────────────────────────

@@ -11,7 +11,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "clean:icloud": "find .next -name '* [0-9].*' -delete 2>/dev/null || true",
-    "predev": "npm run clean:icloud",
+    "predev": "prisma generate && npm run clean:icloud",
     "prebuild": "npm run clean:icloud",
     "prelint": "npm run clean:icloud",
     "db:seed:demo": "tsx prisma/seed-demo.ts",
