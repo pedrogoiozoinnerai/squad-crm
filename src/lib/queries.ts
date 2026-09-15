@@ -426,6 +426,9 @@ export async function getDealDetail(user: SessionUser, id: string) {
             where: { status: { not: "CANCELED" } },
             orderBy: { startsAt: "asc" },
             take: 1,
+            // Traz o convite junto: é o link que o vendedor manda ao lead, e
+            // ele lembra disso justamente ao abrir o negócio.
+            include: { attendees: { select: { inviteToken: true }, take: 1 } },
           },
         },
       },
@@ -549,7 +552,16 @@ export async function getAgenda(user: SessionUser, day: Date) {
   const [meetings, tasks] = await Promise.all([
     prisma.meeting.findMany({
       where: { ...ownerScope(user), startsAt: { gte: start, lt: end }, status: { not: "CANCELED" } },
-      include: { lead: { select: { name: true, company: true } } },
+      include: {
+        lead: { select: { name: true, company: true } },
+        // O convite do lead vem junto: é o link que o vendedor manda pelo
+        // WhatsApp minutos antes da call, e buscá-lo num segundo clique só
+        // acrescentaria espera na hora em que ele tem menos.
+        attendees: { select: { inviteToken: true }, take: 1 },
+        // Quem de fato esteve na sala, para a agenda contar a história do dia
+        // em vez de só o que foi agendado.
+        presences: { select: { identity: true, seconds: true } },
+      },
       orderBy: { startsAt: "asc" },
     }),
     prisma.task.findMany({

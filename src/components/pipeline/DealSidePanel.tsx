@@ -8,6 +8,7 @@ import { centsToInput } from "@/lib/dates";
 import { Copiavel } from "@/components/ui/Copiavel";
 import { FormFeedback } from "@/components/ui/FormFeedback";
 import type { FormState } from "@/lib/guard";
+import { SalaDoNegocio } from "@/components/pipeline/SalaDoNegocio";
 
 export type SidePanelDeal = {
   id: string;
@@ -69,9 +70,15 @@ function Card({ children }: { children: React.ReactNode }) {
 export function DealSidePanel({
   deal,
   nextMeetingAt,
+  reuniaoId,
+  convite,
+  reuniaoFimEm,
 }: {
   deal: SidePanelDeal;
   nextMeetingAt: Date | null;
+  reuniaoId: string | null;
+  convite: string | null;
+  reuniaoFimEm: Date | null;
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(saveDeal, null);
   const locked = deal.status !== "OPEN";
@@ -102,6 +109,17 @@ export function DealSidePanel({
           </p>
           <span className="font-mono text-xs text-muted">{deal.code}</span>
         </div>
+
+        {/* A sala aparece na janela dela — meia hora antes até o fim. Fora
+            disso o botão levaria a uma tela dizendo que ainda não abriu. */}
+        {reuniaoId && nextMeetingAt && reuniaoFimEm && (
+          <SalaDoNegocio
+            reuniaoId={reuniaoId}
+            convite={convite}
+            comecaEm={nextMeetingAt}
+            terminaEm={reuniaoFimEm}
+          />
+        )}
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-1.5">

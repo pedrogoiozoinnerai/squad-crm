@@ -45,7 +45,8 @@ export async function DealDrawer({
 
   const status = STATUS[deal.status];
   const isOpen = deal.status === "OPEN";
-  const nextMeeting = deal.lead.meetings[0]?.startsAt ?? null;
+  const proxima = deal.lead.meetings[0] ?? null;
+  const nextMeeting = proxima?.startsAt ?? null;
 
   return (
     <Drawer
@@ -161,7 +162,13 @@ export async function DealDrawer({
       }
     >
       <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
-        <DealSidePanel deal={deal} nextMeetingAt={nextMeeting} />
+        <DealSidePanel
+          deal={deal}
+          nextMeetingAt={nextMeeting}
+          reuniaoId={proxima?.id ?? null}
+          convite={proxima?.attendees[0]?.inviteToken ?? null}
+          reuniaoFimEm={proxima?.endsAt ?? null}
+        />
 
         <DealPanels
           dealId={deal.id}

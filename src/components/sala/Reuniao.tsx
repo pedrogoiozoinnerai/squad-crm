@@ -94,6 +94,9 @@ export function Reuniao({
   return (
     <div className="flex h-dvh flex-col bg-[#0d1424] text-white">
       <header className="flex shrink-0 items-center gap-3 px-5 py-3">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/brand/logo-white.svg" alt="Squad.com" className="h-4 w-auto shrink-0 opacity-90" />
+        <span className="h-4 w-px shrink-0 bg-white/15" aria-hidden />
         <h1 className="min-w-0 flex-1 truncate text-sm font-semibold">{titulo}</h1>
 
         {travados && !host && (

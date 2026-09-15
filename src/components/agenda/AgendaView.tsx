@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CheckCircle2, ChevronLeft, ChevronRight, Clock, Users, Video } from "lucide-react";
 
 import { setMeetingStatus } from "@/app/actions/meetings";
+import { LinkDaSala } from "@/components/sala/LinkDaSala";
 import { toggleTask } from "@/app/actions/tasks";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { hhmm } from "@/lib/dates";
@@ -14,6 +15,8 @@ type Meeting = {
   type: "GROUP" | "ONE_ON_ONE";
   status: "SCHEDULED" | "DONE" | "NO_SHOW" | "CANCELED";
   lead: { name: string; company: string | null } | null;
+  attendees: { inviteToken: string }[];
+  presences: { identity: string; seconds: number }[];
 };
 
 type Task = {
@@ -131,6 +134,31 @@ export function AgendaView({
                       </span>
                     </div>
 
+                    {/* Entrar aparece na janela da sala, não o dia inteiro:
+                        um botão que leva a "ainda não abriu" é pior que
+                        nenhum. Meia hora antes é quando o vendedor começa a
+                        se preparar. */}
+                    {meeting.status === "SCHEDULED" &&
+                      meeting.endsAt >= now &&
+                      meeting.startsAt.getTime() - now.getTime() <= 30 * 60_000 && (
+                        <div className="mt-2.5">
+                          <LinkDaSala
+                            meetingId={meeting.id}
+                            convite={meeting.attendees[0]?.inviteToken ?? null}
+                            compacto
+                          />
+                        </div>
+                      )}
+
+                    {presentes(meeting) && (
+                      <p className="mt-2.5 text-xs text-muted">
+                        <strong className="font-semibold text-foreground">
+                          {presentes(meeting)}
+                        </strong>{" "}
+                        na sala, medido pela própria call
+                      </p>
+                    )}
+
                     {meeting.status === "SCHEDULED" && (
                       <div className="mt-2.5 flex gap-1.5">
                         {(["DONE", "NO_SHOW", "CANCELED"] as const).map((next) => (
@@ -208,4 +236,20 @@ export function AgendaView({
       </div>
     </>
   );
+}
+
+/**
+ * Quanto tempo o LEAD ficou na sala.
+ *
+ * Só o lead: o vendedor estar na própria reunião não é informação. As
+ * identidades vêm prefixadas (`l_` para lead) justamente para separar isso sem
+ * consultar o banco.
+ */
+function presentes(meeting: { presences: { identity: string; seconds: number }[] }) {
+  const segundos = meeting.presences
+    .filter((p) => p.identity.startsWith("l_"))
+    .reduce((t, p) => t + p.seconds, 0);
+  if (segundos <= 0) return null;
+  const min = Math.round(segundos / 60);
+  return min < 1 ? "menos de 1 min" : `${min} min`;
 }

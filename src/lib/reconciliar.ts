@@ -19,6 +19,7 @@ export type RelatorioDeReconciliacao = {
   naoCompareceram: number;
   semDados: number;
   presencas: number;
+  negociosAtualizados: number;
 };
 
 /**
@@ -47,7 +48,7 @@ export async function reconciliarPresencas(
           endsAt: { gte: desde, lte: agora },
           status: { not: "CANCELED" },
         },
-    select: { id: true, startsAt: true, endsAt: true, status: true },
+    select: { id: true, startsAt: true, endsAt: true, status: true, dealId: true },
     orderBy: { endsAt: "desc" },
     take: POR_EXECUCAO,
   });
@@ -58,6 +59,7 @@ export async function reconciliarPresencas(
     naoCompareceram: 0,
     semDados: 0,
     presencas: 0,
+    negociosAtualizados: 0,
   };
 
   for (const reuniao of reunioes) {
@@ -114,6 +116,26 @@ export async function reconciliarPresencas(
     }
     if (resultado.situacao === "participou") relatorio.participaram += 1;
     else relatorio.naoCompareceram += 1;
+
+    // A presença medida chega ao negócio. Era o elo que faltava: a sala sabia
+    // quem esteve na call, e o `attendance` do pipeline continuava sendo
+    // digitado à mão num select.
+    //
+    // `attendanceManual` trava a derivação. Se o vendedor corrigiu, o número
+    // dele vence o nosso — ele estava lá, e pode ter havido reunião por
+    // telefone que sala nenhuma registra.
+    if (reuniao.dealId) {
+      const presenca = resultado.situacao === "participou" ? "PARTICIPOU" : "NAO_COMPARECEU";
+      const mudou = await prisma.deal.updateMany({
+        where: {
+          id: reuniao.dealId,
+          attendanceManual: false,
+          attendance: { not: presenca },
+        },
+        data: { attendance: presenca, attendanceAt: agora },
+      });
+      relatorio.negociosAtualizados += mudou.count;
+    }
   }
 
   return relatorio;

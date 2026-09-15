@@ -80,7 +80,7 @@ export async function saveDeal(_prev: FormState, formData: FormData): Promise<Fo
 
   const deal = await prisma.deal.findUnique({
     where: { id },
-    select: { ownerId: true, leadId: true, status: true },
+    select: { ownerId: true, leadId: true, status: true, attendance: true },
   });
   if (!deal) return { error: "Negócio não encontrado." };
   assertOwns(user, deal.ownerId);
@@ -109,6 +109,17 @@ export async function saveDeal(_prev: FormState, formData: FormData): Promise<Fo
   const attendance = String(formData.get("attendance") ?? "AGENDADO");
   const mentorship = String(formData.get("mentorshipStatus") ?? "PENDENTE");
 
+  const presenca = (ATTENDANCE as readonly string[]).includes(attendance)
+    ? (attendance as (typeof ATTENDANCE)[number])
+    : "AGENDADO";
+
+  // Mexeu na presença à mão? A derivação para de tocar nesta linha.
+  //
+  // O vendedor estava na call e a sala não sabe de tudo — pode ter havido
+  // reunião por telefone, ou o lead entrou pelo aparelho de outra pessoa.
+  // Quando ele corrige, o número dele vence o nosso, e para sempre.
+  const manual = presenca !== deal.attendance;
+
   await prisma.deal.update({
     where: { id },
     data: {
@@ -118,9 +129,8 @@ export async function saveDeal(_prev: FormState, formData: FormData): Promise<Fo
       expectedAt: date(formData.get("expectedAt")),
       paymentMethod: text(formData.get("paymentMethod")),
       paymentLink: text(formData.get("paymentLink")),
-      attendance: (ATTENDANCE as readonly string[]).includes(attendance)
-        ? (attendance as (typeof ATTENDANCE)[number])
-        : "AGENDADO",
+      attendance: presenca,
+      ...(manual ? { attendanceManual: true, attendanceAt: new Date() } : {}),
       mentorshipStatus: (MENTORSHIP as readonly string[]).includes(mentorship)
         ? (mentorship as (typeof MENTORSHIP)[number])
         : "PENDENTE",

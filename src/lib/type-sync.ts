@@ -1,6 +1,7 @@
 import "server-only";
 
 import { nextDealCode } from "@/lib/codes";
+import { garantirConvite } from "@/lib/convites";
 import { prisma } from "@/lib/prisma";
 import { readFunnelLeads, type FunnelLead } from "@/lib/type-funnel";
 
@@ -196,7 +197,7 @@ async function sincronizarUm(
 
   if (temAgenda && agendadoEm && !cancelado) {
     if (!reuniao) {
-      await prisma.meeting.create({
+      const nova = await prisma.meeting.create({
         data: {
           title: `Diagnóstico · ${lead.name}`,
           startsAt: agendadoEm,
@@ -204,10 +205,16 @@ async function sincronizarUm(
           type: "ONE_ON_ONE",
           ownerId: dono,
           leadId: lead.id,
+          // O negócio que esta sincronização acabou de garantir. É o que leva
+          // a presença medida na sala até o `attendance` do negócio certo.
+          dealId,
           calBookingUid: linha.calBookingUid,
           location: linha.meetingLocation,
         },
       });
+      // Convite pronto desde já: quando o time desligar o Cal.com, o link da
+      // nossa sala já existe para toda reunião do funil.
+      await garantirConvite(nova.id, lead.id);
       r.reunioesCriadas++;
     } else if (
       reuniao.startsAt.getTime() !== agendadoEm.getTime() ||
