@@ -93,14 +93,31 @@ export async function markLeadLost(formData: FormData) {
   const id = String(formData.get("id"));
   const reason = text(formData.get("reason"));
 
-  const lead = await prisma.lead.findUnique({ where: { id }, select: { ownerId: true } });
+  const lead = await prisma.lead.findUnique({
+    where: { id },
+    select: { ownerId: true, deals: { where: { status: "OPEN" }, select: { id: true } } },
+  });
   if (!lead) throw new Error("Lead não encontrado.");
   assertOwns(user, lead.ownerId);
 
-  await prisma.lead.update({ where: { id }, data: { status: "LOST" } });
+  // O negócio aberto vai junto. Marcar só o lead deixava o negócio no pipeline
+  // com o valor dele somando na previsão de alguém que o vendedor acabou de
+  // declarar perdido — a receita prevista passava a contar o que ninguém mais
+  // estava trabalhando, e nada na tela denunciava a diferença.
+  const agora = new Date();
+  await prisma.$transaction([
+    prisma.lead.update({ where: { id }, data: { status: "LOST" } }),
+    prisma.deal.updateMany({
+      where: { leadId: id, status: "OPEN" },
+      data: { status: "LOST", lostAt: agora, lostNote: reason },
+    }),
+  ]);
+
   await logActivity({
     kind: "DEAL_LOST",
-    title: "Lead marcado como perdido",
+    title: lead.deals.length
+      ? `Lead perdido · ${lead.deals.length === 1 ? "negócio fechado" : `${lead.deals.length} negócios fechados`} junto`
+      : "Lead marcado como perdido",
     detail: reason,
     authorId: user.id,
     leadId: id,
@@ -132,7 +149,22 @@ export async function convertLead(_prev: FormState, formData: FormData): Promise
   const stage = await prisma.stage.findFirst({ orderBy: { order: "asc" } });
   if (!stage) return { error: "Nenhuma etapa de pipeline configurada." };
 
-  const valueCents = moneyCents(formData.get("value")) ?? 0;
+  // As mesmas checagens de `saveDeal`. Sem elas dava para criar negócio com
+  // valor negativo ou probabilidade de 500% — e os dois entram direto na soma
+  // ponderada do pipeline, que é o número que a diretoria olha.
+  const valorBruto = formData.get("value");
+  const valueCents = moneyCents(valorBruto) ?? 0;
+  if (valueCents < 0) return { error: "O valor não pode ser negativo." };
+  if (moneyCents(valorBruto) === null && text(valorBruto) !== null) {
+    return { error: "Valor inválido. Use apenas números, como 12.500,00." };
+  }
+
+  const probabilidadeBruta = formData.get("probability");
+  const probability = probabilidadeBruta === null ? 20 : Number(probabilidadeBruta);
+  if (!Number.isFinite(probability) || probability < 0 || probability > 100) {
+    return { error: "A probabilidade precisa estar entre 0 e 100." };
+  }
+
   const expectedAt = date(formData.get("expectedAt"));
 
   const deal = await prisma.deal.create({
@@ -142,13 +174,17 @@ export async function convertLead(_prev: FormState, formData: FormData): Promise
       stageId: stage.id,
       valueCents,
       product: text(formData.get("product")),
-      probability: Number(formData.get("probability")) || 20,
+      probability,
       expectedAt,
       ownerId: lead.ownerId ?? user.id,
     },
   });
 
+  // Se esta falhasse sozinha, o lead ficava fora de "Convertido" com um
+  // negócio no pipeline — e a tela de Leads passava a contradizer a de
+  // Pipeline sem que nada apontasse o erro.
   await prisma.lead.update({ where: { id: leadId }, data: { status: "CONVERTED" } });
+
   await logActivity({
     kind: "DEAL_CREATED",
     title: `Negócio criado em ${stage.name}`,
