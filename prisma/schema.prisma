@@ -34,6 +34,7 @@ model User {
   hubspotOwnerId String? @unique
 
   sessions          AuthSession[]
+  convitesFeitos    Invite[]           @relation("ConvitesFeitos")
   leads             Lead[]
   deals             Deal[]
   tasks             Task[]
@@ -45,6 +46,25 @@ model User {
   whatsappInstances WhatsappInstance[]
 
   @@index([role])
+}
+
+/// Autorização para criar conta.
+///
+/// O domínio @innerai.com sozinho não basta desde que há operação real dentro:
+/// qualquer pessoa com um e-mail do domínio poderia se cadastrar e, pior,
+/// assumir a conta importada de um vendedor e ver a carteira dele. Agora um
+/// admin libera e-mail por e-mail.
+model Invite {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  role      Role      @default(USER)
+  createdAt DateTime  @default(now())
+  usedAt    DateTime?
+
+  createdById String?
+  createdBy   User?   @relation("ConvitesFeitos", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([createdById])
 }
 
 /// Permissão por feature. Mudar quem vê o quê não exige deploy.

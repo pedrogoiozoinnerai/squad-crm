@@ -20,6 +20,9 @@ const PRODUCAO: Record<string, string | undefined> = {
   TYPE_DATABASE_URL: env("TYPE_DATABASE_URL") ?? env("DATABASE_URL"),
   TYPE_DB_SCHEMA: "type", // ← o .env local diz type_dev
   ALLOWED_EMAIL_DOMAIN: env("ALLOWED_EMAIL_DOMAIN", "innerai.com"),
+  // Sem esta, em produção o cadastro fica fechado — de propósito: quem chegasse
+  // primeiro viraria administrador de uma base com a operação inteira dentro.
+  ADMIN_EMAIL: env("ADMIN_EMAIL", "pedro.goiozo@innerai.com"),
   NEXT_PUBLIC_BRAND_NAME: env("NEXT_PUBLIC_BRAND_NAME", "Squad.com"),
 };
 

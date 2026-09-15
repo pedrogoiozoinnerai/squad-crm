@@ -26,6 +26,7 @@ Copie os valores do `.env` local — **exceto os dois schemas, que mudam**:
 | `TYPE_DATABASE_URL` | mesmo valor de `DATABASE_URL` |
 | `TYPE_DB_SCHEMA` | **`type`** ← não `type_dev` |
 | `ALLOWED_EMAIL_DOMAIN` | `innerai.com` |
+| `ADMIN_EMAIL` | `pedro.goiozo@innerai.com` ← quem cria a primeira conta |
 | `NEXT_PUBLIC_BRAND_NAME` | `Squad.com` |
 
 > Trocar só esses dois schemas é o que separa produção de desenvolvimento.
@@ -77,8 +78,14 @@ coisa vem com a causa escrita — a rota existe porque a tela de login **não**
 toca o banco: ela responde 200 mesmo com a conexão quebrada, e o erro só
 aparece quando alguém tenta entrar.
 
-`primeiroCadastroViraAdmin: true` confirma que ainda não há usuário. O primeiro
-cadastro pelo site assume o papel de ADMIN; não existe senha no repositório.
+`primeiroCadastroViraAdmin: true` confirma que ainda não há conta com senha. A
+primeira conta tem de ser a do `ADMIN_EMAIL` — sem essa variável, produção
+recusa qualquer cadastro, porque quem chegasse primeiro viraria administrador
+de uma base com a operação inteira dentro. Não existe senha no repositório.
+
+Dali em diante o cadastro é por liberação: em **Usuários**, um admin libera
+e-mail por e-mail. Pertencer ao domínio não basta — as contas importadas do
+HubSpot só podem ser assumidas por quem foi liberado.
 
 ## 4. Depois do primeiro deploy
 

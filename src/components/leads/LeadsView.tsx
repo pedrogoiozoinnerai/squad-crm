@@ -48,12 +48,11 @@ export function LeadsView({
   leads: Lead[];
   /// Contagem real por status, do banco. `leads` traz só as primeiras de cada
   /// coluna — contar o array daria um número menor que a verdade.
-  totais: Record<"INCOMPLETE" | "COMPLETE" | "CONVERTED", number>;
+  totais: Record<"INCOMPLETE" | "COMPLETE" | "CONVERTED" | "LOST", number>;
   showOwner: boolean;
   basePath: string;
 }) {
-  const count = (status: Lead["status"]) =>
-    status === "LOST" ? leads.filter((l) => l.status === status).length : totais[status];
+  const count = (status: Lead["status"]) => totais[status];
 
   return (
     <>
@@ -70,7 +69,10 @@ export function LeadsView({
 
       <StatBar
         items={[
-          { label: "Total", value: leads.length },
+          // Soma dos totais reais, não do que foi carregado: as colunas já
+          // mostram a contagem do banco, e "Total: 60 · Convertidos: 8350"
+          // em cima da mesma tela é pior que qualquer um dos dois sozinho.
+          { label: "Total", value: count("INCOMPLETE") + count("COMPLETE") + count("CONVERTED") + count("LOST") },
           { label: "Incompletos", value: count("INCOMPLETE") },
           { label: "Completos", value: count("COMPLETE") },
           { label: "Convertidos", value: count("CONVERTED") },

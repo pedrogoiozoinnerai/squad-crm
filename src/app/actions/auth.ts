@@ -12,6 +12,7 @@ import {
   isEmailAllowed,
   verifyPassword,
 } from "@/lib/auth";
+import { env } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
 
 export type AuthState = {
@@ -98,6 +99,35 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
   // administrador de quem chegasse depois da migração.
   const isFirstUser = (await prisma.user.count({ where: { NOT: { passwordHash: "" } } })) === 0;
 
+  // ─── Quem pode criar conta ───────────────────────────────────────────
+  // O domínio sozinho bastava enquanto a base era de mentira. Com a operação
+  // real dentro — milhares de negócios e a carteira de cada vendedor —, um
+  // e-mail do domínio não pode mais ser a única credencial: quem o tivesse
+  // poderia assumir a conta importada de qualquer vendedor.
+  const primeiroAdmin = env("ADMIN_EMAIL")?.toLowerCase();
+
+  if (isFirstUser) {
+    if (primeiroAdmin && email !== primeiroAdmin) {
+      return { error: "Só o administrador inicial pode criar a primeira conta.", values: typed };
+    }
+    if (!primeiroAdmin && process.env.NODE_ENV === "production") {
+      // Em produção, sem ADMIN_EMAIL definido, o primeiro cadastro seria uma
+      // corrida: quem chegasse antes viraria administrador de tudo.
+      return {
+        error: "Cadastro fechado: falta definir ADMIN_EMAIL na configuração do servidor.",
+        values: typed,
+      };
+    }
+  } else {
+    const convite = await prisma.invite.findUnique({ where: { email } });
+    if (!convite || convite.usedAt) {
+      return {
+        error: "Este e-mail não está liberado. Peça a um administrador para liberar seu acesso.",
+        values: typed,
+      };
+    }
+  }
+
   // Conta importada: assumir a existente preserva os negócios, leads e tarefas
   // que já apontam para ela. Criar outra deixaria tudo órfão.
   const user = existing
@@ -118,6 +148,12 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
           role: isFirstUser ? "ADMIN" : "USER",
         },
       });
+
+  // Convite é de uso único: marcá-lo aqui impede que o mesmo e-mail seja
+  // recriado se a conta for removida depois.
+  if (!isFirstUser) {
+    await prisma.invite.update({ where: { email }, data: { usedAt: new Date() } });
+  }
 
   await createSession(user.id);
   redirect(homeFor(user.role));

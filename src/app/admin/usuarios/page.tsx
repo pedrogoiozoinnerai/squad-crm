@@ -1,4 +1,4 @@
-import { setUserRole, toggleUserActive } from "@/app/actions/users";
+import { liberarCadastro, revogarCadastro, setUserRole, toggleUserActive } from "@/app/actions/users";
 import { RoleSelect } from "@/components/admin/RoleSelect";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { allowedDomain, requireUser } from "@/lib/auth";
@@ -12,8 +12,32 @@ export default async function UsersPage() {
     <>
       <PageHeader
         title="Usuários"
-        subtitle={`Contas do time — cadastro liberado para e-mails @${allowedDomain()}`}
+        subtitle={`Contas do time — cadastro só para e-mails @${allowedDomain()} liberados aqui`}
       />
+
+      <form action={liberarCadastro} className="card mb-4 flex flex-wrap items-end gap-3 p-4">
+        <div className="flex-1 min-w-[240px]">
+          <label htmlFor="email-convite" className="mb-1 block text-xs font-semibold text-muted">
+            Liberar cadastro
+          </label>
+          <input
+            id="email-convite"
+            name="email"
+            type="email"
+            required
+            placeholder={`pessoa@${allowedDomain()}`}
+            className="input w-full"
+          />
+        </div>
+        <button type="submit" className="btn-primary">
+          Liberar
+        </button>
+        <p className="w-full text-xs text-muted">
+          Sem liberação, ninguém cria conta — nem com e-mail do domínio. As {" "}
+          {users.filter((u) => u.aAssumir).length} contas vindas do HubSpot só podem ser
+          assumidas por quem você liberar aqui.
+        </p>
+      </form>
 
       <div className="card overflow-hidden">
         <table className="w-full text-sm">
@@ -25,6 +49,7 @@ export default async function UsersPage() {
               <th className="px-4 py-3">Leads</th>
               <th className="px-4 py-3">Negócios</th>
               <th className="px-4 py-3">Tarefas</th>
+              <th className="px-4 py-3">Acesso</th>
               <th className="px-4 py-3">Status</th>
             </tr>
           </thead>
@@ -51,6 +76,25 @@ export default async function UsersPage() {
                   <td className="px-4 py-3 text-muted">{user._count.leads}</td>
                   <td className="px-4 py-3 text-muted">{user._count.deals}</td>
                   <td className="px-4 py-3 text-muted">{user._count.tasks}</td>
+                  <td className="px-4 py-3">
+                    {!user.aAssumir ? (
+                      <span className="chip bg-waz-95 text-waz-20">Com senha</span>
+                    ) : user.liberado ? (
+                      <form action={revogarCadastro}>
+                        <input type="hidden" name="email" value={user.email} />
+                        <button type="submit" className="chip bg-sky-50 text-sky-700 hover:bg-sky-100">
+                          Liberado · revogar
+                        </button>
+                      </form>
+                    ) : (
+                      <form action={liberarCadastro}>
+                        <input type="hidden" name="email" value={user.email} />
+                        <button type="submit" className="chip bg-surface-2 text-muted hover:bg-line">
+                          Liberar cadastro
+                        </button>
+                      </form>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <form action={toggleUserActive}>
                       <input type="hidden" name="userId" value={user.id} />

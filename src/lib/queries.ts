@@ -33,7 +33,9 @@ export async function getWeekMeetings(user: SessionUser, start: Date) {
  */
 const POR_COLUNA = 60;
 
-const STATUS_LEAD = ["INCOMPLETE", "COMPLETE", "CONVERTED"] as const;
+/** As colunas da tela. `LOST` não tem coluna, mas conta no total. */
+const COLUNAS_LEAD = ["INCOMPLETE", "COMPLETE", "CONVERTED"] as const;
+const STATUS_LEAD = [...COLUNAS_LEAD, "LOST"] as const;
 
 export async function getLeads(user: SessionUser) {
   const escopo = ownerScope(user);
@@ -41,7 +43,7 @@ export async function getLeads(user: SessionUser) {
   const [totais, fatias] = await Promise.all([
     prisma.lead.groupBy({ by: ["status"], where: escopo, _count: true }),
     Promise.all(
-      STATUS_LEAD.map((status) =>
+      COLUNAS_LEAD.map((status) =>
         prisma.lead.findMany({
           where: { ...escopo, status },
           include: { owner: { select: { name: true } } },
@@ -111,10 +113,22 @@ export async function getTasks(user: SessionUser) {
 }
 
 export async function getUsers() {
-  return prisma.user.findMany({
-    include: { _count: { select: { leads: true, deals: true, tasks: true } } },
-    orderBy: [{ role: "asc" }, { name: "asc" }],
-  });
+  const [users, convites] = await Promise.all([
+    prisma.user.findMany({
+      include: { _count: { select: { leads: true, deals: true, tasks: true } } },
+      orderBy: [{ role: "asc" }, { name: "asc" }],
+    }),
+    prisma.invite.findMany({ where: { usedAt: null }, select: { email: true } }),
+  ]);
+
+  const liberados = new Set(convites.map((c) => c.email));
+  return users.map((user) => ({
+    ...user,
+    // Conta sem senha veio da migração e ainda não foi assumida. Só quem está
+    // liberado consegue criar a senha e entrar nela.
+    aAssumir: user.passwordHash === "",
+    liberado: liberados.has(user.email),
+  }));
 }
 
 /** Lista de possíveis responsáveis — só o admin usa. */
