@@ -658,3 +658,24 @@ export async function getConfig() {
 
   return { stages, lossReasons, templates, automations, cases, permissions };
 }
+
+/**
+ * Erros recentes do servidor, para a tela de diagnóstico.
+ *
+ * A contagem de 24h é separada da lista: é ela que decide se o aviso aparece
+ * no início, e contar o que veio na página daria um número menor que a verdade.
+ */
+export async function getErrosRecentes() {
+  const ontem = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [erros, ultimas24h] = await Promise.all([
+    prisma.errorLog.findMany({ orderBy: { createdAt: "desc" }, take: 50 }),
+    prisma.errorLog.count({ where: { createdAt: { gte: ontem } } }),
+  ]);
+  return { erros, ultimas24h };
+}
+
+/** Só a contagem, para o aviso no início — sem carregar as mensagens. */
+export async function contarErros24h() {
+  const ontem = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  return prisma.errorLog.count({ where: { createdAt: { gte: ontem } } });
+}

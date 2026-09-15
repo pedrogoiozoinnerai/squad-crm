@@ -105,6 +105,29 @@ model AuthSession {
   @@index([expiresAt])
 }
 
+/// Erro que aconteceu no servidor.
+///
+/// Sem isto, um 500 em produção fica invisível até alguém reclamar: o log da
+/// Vercel existe, mas ninguém o abre por conta própria. Guardar no banco põe o
+/// erro na mesma tela que o time já visita, com o mesmo `digest` que a pessoa
+/// vê quando a página quebra — é assim que um relato vira diagnóstico.
+model ErrorLog {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  /// O mesmo código que aparece na tela de erro para o usuário.
+  digest  String?
+  message String
+  stack   String?
+  path    String?
+  method  String?
+  /// De onde veio: render de página, server action, route handler.
+  origem  String?
+
+  @@index([createdAt])
+  @@index([digest])
+}
+
 /// Tentativa de login, para travar força bruta.
 ///
 /// Em banco e não em memória porque a aplicação roda serverless: cada requisição
