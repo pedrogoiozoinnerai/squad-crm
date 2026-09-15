@@ -19,6 +19,7 @@ import { createTask } from "@/app/actions/tasks";
 import { Field } from "@/components/ui/Field";
 import { FormFeedback } from "@/components/ui/FormFeedback";
 import type { FormState } from "@/lib/guard";
+import { linkWhatsapp } from "@/lib/mensagem";
 
 export type PanelTask = {
   id: string;
@@ -344,7 +345,7 @@ function ChatEmpty({ leadName, leadPhone }: { leadName: string; leadPhone: strin
       {leadPhone && <p className="font-mono text-sm text-muted">{leadPhone}</p>}
       {leadPhone ? (
         <a
-          href={`https://wa.me/${leadPhone.replace(/\D/g, "")}`}
+          href={linkWhatsapp(leadPhone) ?? "#"}
           target="_blank"
           rel="noreferrer"
           className="btn-ghost mt-5"

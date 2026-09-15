@@ -2,6 +2,7 @@ import Link from "next/link";
 import { MessageCircle, Phone, Plus } from "lucide-react";
 
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
+import { linkWhatsapp } from "@/lib/mensagem";
 import { StatBar } from "@/components/ui/Stat";
 import { PageHeader } from "@/components/shell/PageHeader";
 
@@ -136,7 +137,7 @@ export function LeadsView({
                       {lead.phone ? (
                         <>
                           <a
-                            href={`https://wa.me/${lead.phone.replace(/\D/g, "")}`}
+                            href={linkWhatsapp(lead.phone) ?? "#"}
                             target="_blank"
                             rel="noreferrer"
                             className="chip bg-surface text-muted ring-1 ring-line transition hover:text-waz-20"

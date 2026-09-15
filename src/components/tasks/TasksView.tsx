@@ -1,8 +1,9 @@
-import { Check, Circle } from "lucide-react";
+import { Check, Circle, MessageCircle } from "lucide-react";
 
 import { toggleTask } from "@/app/actions/tasks";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { StatBar } from "@/components/ui/Stat";
+import { linkWhatsapp, renderizarMensagem } from "@/lib/mensagem";
 
 type Task = {
   id: string;
@@ -11,9 +12,11 @@ type Task = {
   status: "PENDING" | "DONE" | "CANCELED";
   priority: "LOW" | "MEDIUM" | "HIGH";
   dueAt: Date | null;
-  lead: { name: string; phone: string | null } | null;
+  lead: { name: string; phone: string | null; company: string | null } | null;
   deal: { code: string; stage: { name: string; color: string } } | null;
   owner: { name: string };
+  /// Mensagem pronta do modelo que originou a tarefa.
+  template: { messageText: string | null } | null;
 };
 
 const PRIORITY: Record<Task["priority"], { label: string; tone: string }> = {
@@ -96,6 +99,19 @@ export function TasksView({
             {tasks.map((task) => {
               const due = dueLabel(task.dueAt, reference);
               const done = task.status === "DONE";
+              // A mensagem do modelo entra já preenchida no link. Sem isso o
+              // vendedor abre a conversa em branco e reescreve a frase — que é
+              // como a padronização do discurso se perde na prática.
+              const whatsapp = linkWhatsapp(
+                task.lead?.phone,
+                task.template?.messageText
+                  ? renderizarMensagem(task.template.messageText, {
+                      nome: task.lead?.name,
+                      closer: task.owner.name,
+                      empresa: task.lead?.company,
+                    })
+                  : null,
+              );
 
               return (
                 <tr
@@ -140,6 +156,17 @@ export function TasksView({
                         <span className="block">{task.lead.name}</span>
                         {task.lead.phone && (
                           <span className="block text-xs text-muted">{task.lead.phone}</span>
+                        )}
+                        {whatsapp && !done && (
+                          <a
+                            href={whatsapp}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-waz-30 hover:underline"
+                          >
+                            <MessageCircle className="size-3" />
+                            {task.template?.messageText ? "Abrir com a mensagem" : "WhatsApp"}
+                          </a>
                         )}
                       </>
                     ) : (

@@ -104,9 +104,12 @@ export async function getTasks(user: SessionUser) {
   return prisma.task.findMany({
     where: ownerScope(user),
     include: {
-      lead: { select: { name: true, phone: true } },
+      lead: { select: { name: true, phone: true, company: true } },
       deal: { select: { code: true, stage: { select: { name: true, color: true } } } },
       owner: { select: { name: true } },
+      // O modelo carrega a mensagem pronta; sem ele o botão de WhatsApp abre
+      // a conversa em branco e cada vendedor reescreve a frase do seu jeito.
+      template: { select: { messageText: true } },
     },
     orderBy: [{ status: "asc" }, { dueAt: "asc" }],
   });

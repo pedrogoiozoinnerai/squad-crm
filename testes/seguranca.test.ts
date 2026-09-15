@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import { destinoSeguro, ownerScope, type Ator } from "../src/lib/escopo";
 import { diagnosticarUrlPostgres, identificador, urlDeConexao } from "../src/lib/env";
+import { linkWhatsapp, renderizarMensagem } from "../src/lib/mensagem";
 
 /**
  * O que não pode quebrar em silêncio.
@@ -104,5 +105,42 @@ describe("leitura do ambiente", () => {
     assert.equal(reparado, true, "precisa avisar que consertou");
     if (antes === undefined) delete process.env.TESTE_URL;
     else process.env.TESTE_URL = antes;
+  });
+});
+
+describe("mensagem pronta da tarefa", () => {
+  it("preenche as variáveis com o primeiro nome", () => {
+    assert.equal(
+      renderizarMensagem("Oi {nome}, aqui é {closer} da Squad.", {
+        nome: "Maria Aparecida da Silva",
+        closer: "Luiz Hirschmann",
+      }),
+      "Oi Maria, aqui é Luiz da Squad.",
+    );
+  });
+
+  it("não deixa a frase torta quando falta dado", () => {
+    assert.equal(renderizarMensagem("Oi {nome} , tudo bem?", { nome: null }), "Oi, tudo bem?");
+  });
+
+  it("preserva variável que não conhece", () => {
+    // Apagar deixaria a frase truncada e o vendedor mandaria assim mesmo.
+    assert.equal(renderizarMensagem("Oi {inexistente}", {}), "Oi {inexistente}");
+  });
+
+  it("acrescenta o código do país quando falta", () => {
+    // A base do HubSpot tem muito número no formato (11) 99999-9999, que sem o
+    // 55 não abre conversa nenhuma.
+    assert.match(linkWhatsapp("(11) 99999-9999")!, /wa\.me\/5511999999999/);
+    assert.match(linkWhatsapp("+55 11 99999-9999")!, /wa\.me\/5511999999999/);
+  });
+
+  it("recusa telefone curto demais", () => {
+    assert.equal(linkWhatsapp("1234"), null);
+    assert.equal(linkWhatsapp(null), null);
+  });
+
+  it("leva a mensagem codificada na URL", () => {
+    assert.match(linkWhatsapp("11999999999", "Oi, tudo bem?")!, /\?text=Oi%2C%20tudo%20bem%3F/);
   });
 });
