@@ -29,7 +29,7 @@ export function livekitConfigurado() {
  * de servidor pela mesma razão do resto deste módulo: são duas chamadas, e a
  * dependência traria uma árvore inteira para assinar o que já sabemos assinar.
  */
-async function chamar(
+export async function chamarLiveKit(
   metodo: string,
   corpo: Record<string, unknown>,
   concessoes: {
@@ -83,7 +83,7 @@ export async function criarSala(
 ) {
   const nome = salaDaReuniao(meetingId);
 
-  await chamar(
+  await chamarLiveKit(
     "livekit.RoomService/CreateRoom",
     {
       name: nome,

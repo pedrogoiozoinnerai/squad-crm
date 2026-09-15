@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle } from "lucide-react";
 
@@ -8,7 +8,6 @@ import type { Room } from "livekit-client";
 
 import { Preparo, type Preferencias } from "@/components/sala/Preparo";
 import { Reuniao } from "@/components/sala/Reuniao";
-import type { BlocoDoRoteiro } from "@/components/sala/Coach";
 import type { SituacaoDaSala } from "@/lib/sala";
 
 type Fase = "preparo" | "conectando" | "dentro" | "saiu" | "erro";
@@ -21,8 +20,6 @@ export function SalaCliente({
   titulo,
   situacao,
   voltarPara,
-  roteiro,
-  marcados,
 }: {
   meetingId: string;
   convite: string | null;
@@ -31,13 +28,23 @@ export function SalaCliente({
   titulo: string;
   situacao: SituacaoDaSala;
   voltarPara: string | null;
-  roteiro: BlocoDoRoteiro[];
-  marcados: Record<string, number>;
 }) {
   const router = useRouter();
   const [fase, setFase] = useState<Fase>("preparo");
   const [sala, setSala] = useState<Room | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+
+  // Desconecta ao sair da página.
+  //
+  // Sem isto a conexão fica viva no LiveKit depois de fechar a aba ou navegar,
+  // e ao voltar a MESMA identidade entra de novo — o servidor então derruba a
+  // primeira por identidade duplicada, e quem acabou de entrar vê "você saiu".
+  // Foi exatamente o que aconteceu no primeiro teste.
+  const viva = useRef<Room | null>(null);
+  useEffect(() => {
+    viva.current = sala;
+  }, [sala]);
+  useEffect(() => () => void viva.current?.disconnect(), []);
 
   const entrar = useCallback(
     async (preferencias: Preferencias) => {
@@ -113,8 +120,6 @@ export function SalaCliente({
       titulo={titulo}
       host={host}
       meetingId={meetingId}
-      roteiro={roteiro}
-      marcados={marcados}
       aoSair={() => {
         setSala(null);
         setFase("saiu");

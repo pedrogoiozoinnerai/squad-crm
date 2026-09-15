@@ -57,32 +57,6 @@ export default async function SalaPage(props: PageProps<"/sala/[meetingId]">) {
 
   if (!nome) notFound();
 
-  // O roteiro só existe para quem conduz. O lead não pode sequer saber que há
-  // um roteiro sendo seguido — e carregá-lo mandaria o playbook pelo fio.
-  const roteiro = host
-    ? await prisma.playbook.findFirst({
-        where: { tipo: "INDIVIDUAL", ativo: true },
-        orderBy: { versao: "desc" },
-        select: {
-          blocos: {
-            orderBy: { ordem: "asc" },
-            select: { id: true, ordem: true, nome: true, objetivo: true, minutosAlvo: true },
-          },
-        },
-      })
-    : null;
-
-  const marcados = host
-    ? Object.fromEntries(
-        (
-          await prisma.meetingBloco.findMany({
-            where: { meetingId: reuniao.id },
-            select: { blocoId: true, segundo: true },
-          })
-        ).map((m) => [m.blocoId, m.segundo]),
-      )
-    : {};
-
   return (
     <SalaCliente
       meetingId={reuniao.id}
@@ -92,8 +66,6 @@ export default async function SalaPage(props: PageProps<"/sala/[meetingId]">) {
       titulo={reuniao.title}
       situacao={situacaoDaSala(reuniao, new Date())}
       voltarPara={host ? "/admin/agenda" : null}
-      roteiro={roteiro?.blocos ?? []}
-      marcados={marcados}
     />
   );
 }

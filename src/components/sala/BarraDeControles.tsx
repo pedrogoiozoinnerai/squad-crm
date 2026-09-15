@@ -53,10 +53,16 @@ export function BarraDeControles({
   estado,
   acoes,
   host,
+  seletorAberto,
+  painelDeDispositivos,
 }: {
   estado: EstadoDosControles;
   acoes: AcoesDosControles;
   host: boolean;
+  /// Qual seletor de aparelho está aberto, se algum.
+  seletorAberto: MediaDeviceKind | null;
+  /// O painel em si vem de fora: ele precisa da sala, e a barra não.
+  painelDeDispositivos: React.ReactNode;
 }) {
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-center p-4">
@@ -68,7 +74,9 @@ export function BarraDeControles({
         >
           {estado.microfone ? <Mic className="size-5" /> : <MicOff className="size-5" />}
         </Botao>
-        <Seletor dica="Escolher microfone" aoClicar={acoes.escolherMicrofone} />
+        <Seletor dica="Escolher microfone" aoClicar={acoes.escolherMicrofone}>
+          {seletorAberto === "audioinput" && painelDeDispositivos}
+        </Seletor>
 
         <Botao
           ativo={!estado.camera}
@@ -77,15 +85,20 @@ export function BarraDeControles({
         >
           {estado.camera ? <VideoLigado /> : <VideoDesligado />}
         </Botao>
-        <Seletor dica="Escolher câmera" aoClicar={acoes.escolherCamera} />
+        <Seletor dica="Escolher câmera" aoClicar={acoes.escolherCamera}>
+          {seletorAberto === "videoinput" && painelDeDispositivos}
+        </Seletor>
 
         <Botao dica="Desfoque de fundo entra junto com a gravação" desabilitado>
           <Aperture className="size-5" />
         </Botao>
 
-        <Botao dica="Saída de áudio" aoClicar={acoes.escolherSaida}>
-          <Volume2 className="size-5" />
-        </Botao>
+        <span className="relative">
+          <Botao dica="Saída de áudio" aoClicar={acoes.escolherSaida}>
+            <Volume2 className="size-5" />
+          </Botao>
+          {seletorAberto === "audiooutput" && painelDeDispositivos}
+        </span>
 
         <Divisor />
 
@@ -113,7 +126,11 @@ export function BarraDeControles({
             >
               {estado.microfonesTravados ? <Lock className="size-5" /> : <LockOpen className="size-5" />}
             </Botao>
-            <Botao dica="Encerrar sessão e gravação" aoClicar={acoes.encerrar} tom="perigo">
+            <Botao
+              dica={estado.gravando ? "Encerrar sessão e gravação" : "Encerrar a sessão para todos"}
+              aoClicar={acoes.encerrar}
+              tom="perigo"
+            >
               <Square className="size-4 fill-current" />
             </Botao>
           </>
@@ -183,9 +200,18 @@ function Botao({
   );
 }
 
-function Seletor({ dica, aoClicar }: { dica: string; aoClicar: () => void }) {
+function Seletor({
+  dica,
+  aoClicar,
+  children,
+}: {
+  dica: string;
+  aoClicar: () => void;
+  children?: React.ReactNode;
+}) {
   return (
     <span className="group relative">
+      {children}
       <button
         type="button"
         onClick={aoClicar}

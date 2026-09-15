@@ -2,46 +2,40 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RoomEvent, Track, type Room } from "livekit-client";
-import { Users } from "lucide-react";
+import { MessageSquare, Users } from "lucide-react";
 
 import { BarraDeControles } from "@/components/sala/BarraDeControles";
-import { Coach, type BlocoDoRoteiro } from "@/components/sala/Coach";
+import { Conversa } from "@/components/sala/Conversa";
+import { SeletorDeAparelho } from "@/components/sala/SeletorDeAparelho";
+import { Participantes } from "@/components/sala/Participantes";
 import { Quadro } from "@/components/sala/Quadro";
 import { useSala } from "@/components/sala/useSala";
 
-/** A chamada em si. */
+type Painel = "participantes" | "chat" | null;
+
 export function Reuniao({
   sala,
   titulo,
   host,
-  aoSair,
   meetingId,
-  roteiro,
-  marcados,
+  aoSair,
 }: {
   sala: Room;
   titulo: string;
   host: boolean;
-  aoSair: () => void;
   meetingId: string;
-  roteiro: BlocoDoRoteiro[];
-  marcados: Record<string, number>;
+  aoSair: () => void;
 }) {
   const { eu, todos, falando } = useSala(sala);
-  const [maoLevantada, setMaoLevantada] = useState(false);
+  const [painel, setPainel] = useState<Painel>(null);
+  const [seletor, setSeletor] = useState<MediaDeviceKind | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [naoLidas, setNaoLidas] = useState(0);
 
-  // O instante em que a call começou, não um contador em estado: assim o
-  // relógio corre dentro do próprio <Cronometro/> e a reunião inteira não
-  // redesenha a cada segundo — com o vendedor clicando no roteiro no meio.
+  // O instante em que a call começou: assim o relógio corre dentro do próprio
+  // <Cronometro/> e a reunião inteira não redesenha a cada segundo.
   const inicio = useRef(Date.now());
-  const segundoAtual = useCallback(
-    () => Math.round((Date.now() - inicio.current) / 1000),
-    [],
-  );
 
-  // Sair pela sala (host encerrou, queda definitiva) leva ao mesmo lugar que o
-  // botão: sem isto o participante fica olhando uma tela congelada.
   useEffect(() => {
     const desconectou = () => aoSair();
     sala.on(RoomEvent.Disconnected, desconectou);
@@ -50,33 +44,77 @@ export function Reuniao({
     };
   }, [sala, aoSair]);
 
+  // Contador de não lidas: sem ele, mensagem que chega com o painel fechado
+  // passa despercebida no meio de uma conversa por vídeo.
+  useEffect(() => {
+    const chegou = () => setNaoLidas((n) => (painel === "chat" ? 0 : n + 1));
+    sala.on(RoomEvent.DataReceived, chegou);
+    return () => {
+      sala.off(RoomEvent.DataReceived, chegou);
+    };
+  }, [sala, painel]);
+
   const proteger = useCallback(async (acao: () => Promise<unknown>, oQue: string) => {
     try {
       await acao();
       setAviso(null);
     } catch (erro) {
-      // Falha de dispositivo no meio da call não pode ser silenciosa nem
-      // derrubar a chamada — vira um aviso e a conversa continua.
+      // Falha no meio da call não pode ser silenciosa nem derrubar a chamada.
       setAviso(`Não foi possível ${oQue}. ${(erro as Error)?.message ?? ""}`.trim());
     }
   }, []);
+
+  const mandarAoHost = useCallback(
+    (acao: string, identidade?: string) =>
+      proteger(async () => {
+        const r = await fetch("/api/livekit/sala", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ meetingId, acao, identidade }),
+        });
+        if (!r.ok) throw new Error((await r.json()).erro ?? "recusado");
+      }, descricaoDaAcao(acao)),
+    [meetingId, proteger],
+  );
 
   if (!eu) return null;
 
   const microfoneLigado = eu.isMicrophoneEnabled;
   const cameraLigada = eu.isCameraEnabled;
   const compartilhando = Boolean(eu.getTrackPublication(Track.Source.ScreenShare));
+  const maoLevantada = eu.attributes?.mao === "1";
+  const travados = lerTrava(sala.metadata);
   const outros = todos.filter((p) => p.identity !== falando?.identity);
+
+  function abrirPainel(qual: Painel) {
+    setPainel((atual) => (atual === qual ? null : qual));
+    if (qual === "chat") setNaoLidas(0);
+  }
 
   return (
     <div className="flex h-dvh flex-col bg-[#0d1424] text-white">
-      <header className="flex shrink-0 items-center gap-4 px-5 py-3">
+      <header className="flex shrink-0 items-center gap-3 px-5 py-3">
         <h1 className="min-w-0 flex-1 truncate text-sm font-semibold">{titulo}</h1>
+
+        {travados && !host && (
+          <span className="shrink-0 rounded-full bg-amber-500/15 px-3 py-1 text-xs text-amber-200">
+            Microfones travados pelo anfitrião
+          </span>
+        )}
+
         <Cronometro desde={inicio} />
-        <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-sm">
+
+        <Aba
+          ativa={painel === "participantes"}
+          aoClicar={() => abrirPainel("participantes")}
+          rotulo={`${todos.length} ${todos.length === 1 ? "participante" : "participantes"}`}
+        >
           <Users className="size-4" />
-          {todos.length} {todos.length === 1 ? "participante" : "participantes"}
-        </span>
+        </Aba>
+
+        <Aba ativa={painel === "chat"} aoClicar={() => abrirPainel("chat")} rotulo="Chat" distintivo={naoLidas}>
+          <MessageSquare className="size-4" />
+        </Aba>
       </header>
 
       {aviso && (
@@ -86,36 +124,43 @@ export function Reuniao({
       )}
 
       <div className="flex min-h-0 flex-1 gap-3 px-5 pb-28">
-        {host && roteiro.length > 0 && (
-          <Coach
-            meetingId={meetingId}
-            blocos={roteiro}
-            marcados={marcados}
-            segundoAtual={segundoAtual}
-          />
-        )}
-
         <div className="min-w-0 flex-1">
           {falando && <Quadro participante={falando} grande souEu={falando.identity === eu.identity} />}
         </div>
 
         {outros.length > 0 && (
-          <aside className="w-[220px] shrink-0 space-y-3 overflow-y-auto">
+          <aside className="hidden w-[200px] shrink-0 space-y-3 overflow-y-auto lg:block">
             {outros.map((p) => (
               <Quadro key={p.identity} participante={p} souEu={p.identity === eu.identity} />
             ))}
           </aside>
         )}
+
+        {painel === "participantes" && (
+          <Participantes
+            todos={todos}
+            eu={eu}
+            host={host}
+            aoSilenciar={(id) => void mandarAoHost("silenciar_todos", id)}
+            aoRemover={(id) => void mandarAoHost("remover", id)}
+          />
+        )}
+
+        {painel === "chat" && <Conversa sala={sala} />}
       </div>
 
       <BarraDeControles
         host={host}
+        seletorAberto={seletor}
+        painelDeDispositivos={
+          seletor && <SeletorDeAparelho sala={sala} tipo={seletor} aoFechar={() => setSeletor(null)} />
+        }
         estado={{
           microfone: microfoneLigado,
           camera: cameraLigada,
           compartilhando,
           maoLevantada,
-          microfonesTravados: false,
+          microfonesTravados: travados,
           gravando: false,
         }}
         acoes={{
@@ -129,22 +174,82 @@ export function Reuniao({
               () => eu.setCameraEnabled(!cameraLigada),
               cameraLigada ? "desligar a câmera" : "ativar a câmera",
             ),
-          escolherMicrofone: () => setAviso("A troca de dispositivo entra no próximo passo."),
-          escolherCamera: () => setAviso("A troca de dispositivo entra no próximo passo."),
-          escolherSaida: () => setAviso("A troca de dispositivo entra no próximo passo."),
+          escolherMicrofone: () => setSeletor((s) => (s === "audioinput" ? null : "audioinput")),
+          escolherCamera: () => setSeletor((s) => (s === "videoinput" ? null : "videoinput")),
+          escolherSaida: () => setSeletor((s) => (s === "audiooutput" ? null : "audiooutput")),
           alternarTela: () =>
             void proteger(
               () => eu.setScreenShareEnabled(!compartilhando),
               compartilhando ? "parar de compartilhar" : "compartilhar a tela",
             ),
-          alternarMao: () => setMaoLevantada((m) => !m),
-          silenciarTodos: () => setAviso("Silenciar todos entra junto com os controles de host."),
-          alternarTrava: () => setAviso("Travar microfones entra junto com os controles de host."),
-          encerrar: () => setAviso("Encerrar a sessão entra junto com a gravação."),
+          // A mão vai nos atributos do participante: o LiveKit os replica para
+          // todo mundo, então levantar a mão aparece na lista dos outros — que
+          // é o ponto. Guardar em estado local só avisaria a mim mesmo.
+          alternarMao: () =>
+            void proteger(
+              () => eu.setAttributes({ ...eu.attributes, mao: maoLevantada ? "" : "1" }),
+              "levantar a mão",
+            ),
+          silenciarTodos: () => void mandarAoHost("silenciar_todos"),
+          alternarTrava: () => void mandarAoHost(travados ? "destravar" : "travar"),
+          encerrar: () => void mandarAoHost("encerrar"),
           sair: () => void sala.disconnect(),
         }}
       />
     </div>
+  );
+}
+
+function descricaoDaAcao(acao: string) {
+  return {
+    silenciar_todos: "silenciar",
+    travar: "travar os microfones",
+    destravar: "liberar os microfones",
+    remover: "remover o participante",
+    encerrar: "encerrar a sessão",
+  }[acao] ?? "executar a ação";
+}
+
+/** A sala guarda a trava no próprio metadado — quem entra depois já chega travado. */
+function lerTrava(metadata: string | undefined) {
+  if (!metadata) return false;
+  try {
+    return Boolean(JSON.parse(metadata)?.microfonesTravados);
+  } catch {
+    return false;
+  }
+}
+
+function Aba({
+  children,
+  rotulo,
+  ativa,
+  aoClicar,
+  distintivo,
+}: {
+  children: React.ReactNode;
+  rotulo: string;
+  ativa: boolean;
+  aoClicar: () => void;
+  distintivo?: number;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={aoClicar}
+      aria-pressed={ativa}
+      className={`relative flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition ${
+        ativa ? "bg-white/15 text-white" : "bg-white/5 text-white/70 hover:bg-white/10"
+      }`}
+    >
+      {children}
+      {rotulo}
+      {Boolean(distintivo) && (
+        <span className="absolute -top-1 -right-1 grid min-w-5 place-items-center rounded-full bg-waz-40 px-1 text-[10px] font-bold text-white">
+          {distintivo}
+        </span>
+      )}
+    </button>
   );
 }
 
