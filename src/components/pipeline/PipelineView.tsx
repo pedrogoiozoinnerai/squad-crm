@@ -63,7 +63,9 @@ export function PipelineView({
             </Link>
             <a href={`/api/deals/export?${exportar.toString()}`} className="btn-ghost">
               <Download className="size-4" />
-              Exportar CSV
+              {/* Com o número na frente ninguém clica sem saber que vai baixar
+                  oito mil linhas. */}
+              Exportar CSV ({total.toLocaleString("pt-BR")})
             </a>
             <Link href={`${leadsPath}?lead=new`} className="btn-primary">
               <UserPlus className="size-4" />
