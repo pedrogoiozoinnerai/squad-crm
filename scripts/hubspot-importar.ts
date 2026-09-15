@@ -260,7 +260,10 @@ async function main() {
         stageId: ganho || perdido ? etapas.get("fechamento")! : etapas.get((n.destino as { etapa: string }).etapa)!,
         status: ganho ? ("WON" as const) : perdido ? ("LOST" as const) : ("OPEN" as const),
         valueCents: centavos(n.props.amount),
-        product: n.props.dealname ?? null,
+        // `product` NÃO recebe o nome do negócio: no drawer ele é um seletor de
+        // Starter/Pro/Enterprise. Um nome livre ali fica invisível na tela e
+        // some no primeiro salvamento — dado perdido sem ninguém ver. O nome
+        // do negócio vai para a anotação de origem, onde aparece de verdade.
         // Só a data que o HubSpot realmente tem. `fechadoEm` já caiu para a
         // data de criação quando faltava — usá-lo aqui encheria a previsão do
         // mês com negócios que nunca tiveram previsão nenhuma.
@@ -296,6 +299,7 @@ async function main() {
           hubspotNoteId: `origem-${n.id}`,
           content:
             `Importado do HubSpot · pipeline "${PIPELINES[n.pipelineId].nome}" · etapa "${n.rotulo}"` +
+            (n.props.dealname ? `\nNegócio: ${n.props.dealname}` : "") +
             (n.props.description ? `\n\n${texto(n.props.description)}` : ""),
           createdAt: criadoEm,
           authorId: naoAtribuido,

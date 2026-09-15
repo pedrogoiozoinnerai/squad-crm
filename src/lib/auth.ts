@@ -56,6 +56,15 @@ export async function createSession(userId: string) {
 
   await prisma.authSession.create({ data: { tokenHash: hashToken(token), userId, expiresAt } });
 
+  // Faxina oportunista. Login é evento raro e as duas consultas usam índice, e
+  // assim não depende de cron nem de worker — que este projeto não tem, e que
+  // seriam mais uma coisa para lembrar de configurar em produção.
+  const ontem = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  await Promise.all([
+    prisma.authSession.deleteMany({ where: { expiresAt: { lt: new Date() } } }),
+    prisma.loginAttempt.deleteMany({ where: { createdAt: { lt: ontem } } }),
+  ]);
+
   const jar = await cookies();
   jar.set(SESSION_COOKIE, token, {
     httpOnly: true,
