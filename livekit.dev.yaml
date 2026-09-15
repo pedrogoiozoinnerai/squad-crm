@@ -1,0 +1,26 @@
+# Servidor LiveKit local, para desenvolver sem gastar os minutos da nuvem.
+#
+#   livekit-server --config livekit.dev.yaml
+#
+# O que isto acrescenta ao `--dev` puro é o webhook: sem ele o servidor local
+# não avisa ninguém quando alguém entra, e o laço inteiro — entrada, evento,
+# presença derivada — só daria para testar em produção.
+#
+# Com config explícita o LiveKit exige segredo de 32+ caracteres — o `secret`
+# curto do modo --dev não passa. Este valor é local, não é segredo, e só vale
+# nesta máquina.
+port: 7880
+rtc:
+  tcp_port: 7881
+  port_range_start: 7882
+  port_range_end: 7892
+  use_external_ip: false
+
+keys:
+  devkey: segredo-de-desenvolvimento-local-32c
+
+webhook:
+  # Assina com a mesma chave que `lerWebhook` confere.
+  api_key: devkey
+  urls:
+    - http://localhost:3000/api/livekit/webhook

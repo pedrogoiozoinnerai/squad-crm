@@ -57,3 +57,7 @@ next-env.d.ts
 # Análise do CRM de referência: descrição da infraestrutura interna de outra
 # empresa. Fica no cofre do Obsidian, fora do versionamento.
 /referencia/
+
+# Servidor LiveKit local — só a chave de desenvolvimento, mas o arquivo é
+# gerado por quem roda e não precisa acompanhar o repositório.
+/.env.local
