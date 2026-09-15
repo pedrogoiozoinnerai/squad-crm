@@ -27,7 +27,22 @@ export async function POST(request: NextRequest) {
     return new Response("Não autorizado.", { status: 401 });
   }
 
-  const { evento } = lido;
+  // Evento de gravação e evento de sala guardam o mesmo fato cru, na mesma
+  // tabela: o que chegou, quando, de qual sala. `Recording` (com arquivo,
+  // tamanho e duração) entra junto com a gravação — até lá, gravar aqui é o
+  // que garante que nenhum evento se perca no caminho.
+  const evento =
+    "evento" in lido
+      ? lido.evento
+      : {
+          id: lido.egress.id,
+          tipo: lido.egress.tipo,
+          sala: lido.egress.sala,
+          em: lido.egress.em,
+          identidade: null,
+          nome: lido.egress.egressId,
+        };
+
   const meetingId = reuniaoDaSala(evento.sala);
 
   try {

@@ -123,6 +123,53 @@ export function tokenDeAcesso({
   return `${semAssinatura}.${assinar(semAssinatura, apiSecret)}`;
 }
 
+/**
+ * Token de SERVIÇO: não entra em sala nenhuma, autoriza a ADMINISTRAR.
+ *
+ * É o que assina as chamadas de criar sala e iniciar gravação. Separado do
+ * token do participante de propósito: aquele vai para o navegador de um lead,
+ * e um token com `roomCreate` no cliente seria a chave do cofre num link.
+ *
+ * Validade curtíssima — ele nasce, assina uma chamada e morre.
+ */
+export function tokenDeServico({
+  apiKey,
+  apiSecret,
+  concessoes,
+  validadeSegundos = 60,
+  agora = new Date(),
+}: {
+  apiKey: string;
+  apiSecret: string;
+  concessoes: { roomCreate?: boolean; roomRecord?: boolean; roomAdmin?: boolean; room?: string };
+  validadeSegundos?: number;
+  agora?: Date;
+}) {
+  const emSegundos = Math.floor(agora.getTime() / 1000);
+  const cabecalho = { alg: "HS256", typ: "JWT" };
+  const corpo = {
+    iss: apiKey,
+    sub: apiKey,
+    nbf: emSegundos - 10,
+    exp: emSegundos + validadeSegundos,
+    video: concessoes,
+  };
+  const semAssinatura = `${base64url(JSON.stringify(cabecalho))}.${base64url(JSON.stringify(corpo))}`;
+  return `${semAssinatura}.${assinar(semAssinatura, apiSecret)}`;
+}
+
+/**
+ * A URL de API a partir da de sinalização.
+ *
+ * `LIVEKIT_URL` é o endereço WebSocket que o navegador usa (`wss://`); as
+ * chamadas de servidor vão para o mesmo host em HTTPS. Manter só uma variável
+ * de ambiente evita as duas saírem de sincronia — que é o tipo de erro que só
+ * aparece quando alguém troca de projeto.
+ */
+export function urlHttpDoLiveKit(url: string) {
+  return url.trim().replace(/^ws(s?):\/\//i, "http$1://").replace(/\/+$/, "");
+}
+
 export type EventoDeSala = {
   id: string;
   tipo: string;
@@ -149,7 +196,7 @@ export function lerWebhook(
   apiKey: string,
   apiSecret: string,
   agora = new Date(),
-): { evento: EventoDeSala } | { erro: string } {
+): { evento: EventoDeSala } | { egress: EventoDeEgress } | { erro: string } {
   if (!autorizacao) return { erro: "sem cabeçalho Authorization" };
 
   const token = autorizacao.replace(/^Bearer\s+/i, "").trim();
@@ -188,7 +235,15 @@ export function lerWebhook(
   }
 
   const evento = normalizarEvento(bruto);
-  return evento ? { evento } : { erro: "evento sem campos obrigatórios" };
+  if (evento) return { evento };
+
+  // Os eventos de gravação não trazem `room` — trazem `egressInfo`. Sem este
+  // ramo eles caíam em "evento sem campos obrigatórios", a rota respondia 401
+  // e o LiveKit reentregava para sempre.
+  const egress = normalizarEgress(bruto);
+  if (egress) return { egress };
+
+  return { erro: "evento sem campos obrigatórios" };
 }
 
 /**
@@ -215,5 +270,73 @@ export function normalizarEvento(bruto: Record<string, unknown>): EventoDeSala |
     em,
     identidade: participante?.identity ?? null,
     nome: participante?.name ?? null,
+  };
+}
+
+export type EventoDeEgress = {
+  id: string;
+  tipo: string;
+  egressId: string;
+  sala: string;
+  /// starting | active | ending | complete | failed | aborted
+  situacao: string;
+  em: Date;
+  iniciadoEm: Date | null;
+  terminadoEm: Date | null;
+  erro: string | null;
+  arquivos: { caminho: string; bytes: number; duracaoSegundos: number }[];
+};
+
+/**
+ * Nanossegundos para Date.
+ *
+ * O `createdAt` do evento de sala vem em SEGUNDOS; o `startedAt` do egress vem
+ * em NANOSSEGUNDOS, como int64 em string. É a mesma armadilha uma casa de
+ * grandeza adiante: tratar como milissegundos joga a gravação para 1970 e zera
+ * a duração.
+ */
+function deNanos(valor: unknown): Date | null {
+  const n = Number(valor);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return new Date(Math.round(n / 1_000_000));
+}
+
+/** O JSON de um evento de gravação, no nosso formato. */
+export function normalizarEgress(bruto: Record<string, unknown>): EventoDeEgress | null {
+  const tipo = typeof bruto.event === "string" ? bruto.event : null;
+  const id = typeof bruto.id === "string" ? bruto.id : null;
+  const info = bruto.egressInfo as Record<string, unknown> | undefined;
+  if (!tipo || !id || !info) return null;
+
+  const egressId = typeof info.egressId === "string" ? info.egressId : null;
+  const sala = typeof info.roomName === "string" ? info.roomName : null;
+  if (!egressId || !sala) return null;
+
+  // `fileResults` é a forma atual; `file` é a antiga, e gravações começadas
+  // antes de uma atualização do LiveKit chegam com ela.
+  const brutos = Array.isArray(info.fileResults)
+    ? info.fileResults
+    : info.file
+      ? [info.file]
+      : [];
+
+  const arquivos = (brutos as Record<string, unknown>[]).map((f) => ({
+    caminho: typeof f.filename === "string" ? f.filename : "",
+    bytes: Number(f.size ?? 0) || 0,
+    duracaoSegundos: Math.max(0, Math.round((Number(f.duration ?? 0) || 0) / 1_000_000_000)),
+  }));
+
+  const segundos = Number(bruto.createdAt);
+  return {
+    id,
+    tipo,
+    egressId,
+    sala,
+    situacao: typeof info.status === "string" ? info.status : "",
+    em: Number.isFinite(segundos) && segundos > 0 ? new Date(segundos * 1000) : new Date(),
+    iniciadoEm: deNanos(info.startedAt),
+    terminadoEm: deNanos(info.endedAt),
+    erro: typeof info.error === "string" && info.error ? info.error : null,
+    arquivos,
   };
 }
