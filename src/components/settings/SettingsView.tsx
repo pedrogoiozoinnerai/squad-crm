@@ -5,6 +5,7 @@ import { LossReasonList, type LossReasonRow } from "@/components/settings/LossRe
 import { StageList, type StageRow } from "@/components/settings/StageList";
 import { TaskTemplateList, type TemplateRow } from "@/components/settings/TaskTemplateList";
 import { PageHeader } from "@/components/shell/PageHeader";
+import { SerieList, type SerieRow } from "@/components/settings/SerieList";
 
 export type AutomationRow = {
   id: string;
@@ -26,7 +27,7 @@ export type CaseRow = {
   active: boolean;
 };
 
-export const SECOES = ["etapas", "motivos", "templates", "automacoes"] as const;
+export const SECOES = ["etapas", "motivos", "templates", "sessoes", "automacoes"] as const;
 export type Secao = (typeof SECOES)[number];
 
 export function SettingsView({
@@ -37,6 +38,8 @@ export function SettingsView({
   templates,
   automations,
   cases,
+  series,
+  owners,
 }: {
   basePath: string;
   secao: Secao;
@@ -45,11 +48,14 @@ export function SettingsView({
   templates: TemplateRow[];
   automations: AutomationRow[];
   cases: CaseRow[];
+  series: SerieRow[];
+  owners: { id: string; name: string }[];
 }) {
   const abas: { key: Secao; label: string; count: number }[] = [
     { key: "etapas", label: "Etapas do pipeline", count: stages.length },
     { key: "motivos", label: "Motivos de perda", count: lossReasons.length },
     { key: "templates", label: "Templates de tarefa", count: templates.length },
+    { key: "sessoes", label: "Sessões recorrentes", count: series.length },
     { key: "automacoes", label: "Automações e cases", count: automations.length + cases.length },
   ];
 
@@ -89,6 +95,7 @@ export function SettingsView({
       {secao === "etapas" && <StageList stages={stages} />}
       {secao === "motivos" && <LossReasonList reasons={lossReasons} />}
       {secao === "templates" && <TaskTemplateList templates={templates} />}
+      {secao === "sessoes" && <SerieList series={series} owners={owners} />}
       {secao === "automacoes" && <ReadOnlySection automations={automations} cases={cases} />}
     </>
   );

@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/presenca",
       "schedule": "17 * * * *"
+    },
+    {
+      "path": "/api/cron/sessoes",
+      "schedule": "40 4 * * *"
     }
   ]
 }

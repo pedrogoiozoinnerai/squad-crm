@@ -751,41 +751,41 @@ export async function getDashboard(user: SessionUser) {
 
 /** Sessões num intervalo, com presença agregada a partir do tempo real. */
 export async function getSessions(user: SessionUser, from: Date, to: Date) {
-  const instances = await prisma.sessionInstance.findMany({
-    where: { ...ownerScope(user), date: { gte: from, lt: to } },
+  const sessoes = await prisma.meeting.findMany({
+    where: { ...ownerScope(user), type: "GROUP", startsAt: { gte: from, lt: to } },
     include: {
       owner: { select: { id: true, name: true } },
       template: { select: { name: true } },
-      participants: {
+      attendees: {
         include: { lead: { select: { id: true, name: true, company: true, score: true } } },
         orderBy: { totalSeconds: "desc" },
       },
     },
-    orderBy: [{ date: "asc" }, { time: "asc" }],
+    orderBy: { startsAt: "asc" },
   });
 
-  return instances.map((s) => {
-    const inscritos = s.participants.length;
-    const presentes = s.participants.filter((p) => p.attended).length;
+  return sessoes.map((s) => {
+    const inscritos = s.attendees.length;
+    const presentes = s.attendees.filter((a) => a.attended).length;
     return {
       ...s,
       inscritos,
       presentes,
       taxaPresenca: inscritos ? Math.round((presentes / inscritos) * 100) : 0,
-      qualificados: s.participants.filter(
-        (p) => p.attended && (p.lead.score === "A" || p.lead.score === "B"),
+      qualificados: s.attendees.filter(
+        (a) => a.attended && (a.lead.score === "A" || a.lead.score === "B"),
       ).length,
     };
   });
 }
 
 export async function getSessionDetail(user: SessionUser, id: string) {
-  return prisma.sessionInstance.findFirst({
-    where: { id, ...ownerScope(user) },
+  return prisma.meeting.findFirst({
+    where: { id, type: "GROUP", ...ownerScope(user) },
     include: {
-      owner: { select: { name: true } },
+      owner: { select: { id: true, name: true } },
       template: { select: { name: true } },
-      participants: {
+      attendees: {
         include: {
           lead: {
             select: { id: true, name: true, company: true, email: true, score: true, segment: true },
@@ -806,27 +806,36 @@ export async function getParticipants(
 ) {
   const q = filters.q?.trim();
 
-  return prisma.sessionParticipant.findMany({
+  return prisma.meetingAttendee.findMany({
     where: {
-      sessionInstance: ownerScope(user),
+      meeting: { ...ownerScope(user), type: "GROUP" },
       ...(filters.presenca === "presente" ? { attended: true } : {}),
       ...(filters.presenca === "ausente" ? { attended: false } : {}),
-      lead: {
-        ...(filters.score && filters.score !== "all" ? { score: filters.score } : {}),
-        ...(q
-          ? { OR: [{ name: { contains: q } }, { email: { contains: q } }, { company: { contains: q } }] }
-          : {}),
-      },
+      ...(filters.score && filters.score !== "all" ? { lead: { score: filters.score } } : {}),
+      ...(q
+        ? {
+            lead: {
+              OR: [
+                { name: { contains: q, mode: "insensitive" as const } },
+                { email: { contains: q, mode: "insensitive" as const } },
+                { company: { contains: q, mode: "insensitive" as const } },
+              ],
+            },
+          }
+        : {}),
     },
     include: {
       lead: {
-        select: { id: true, name: true, email: true, phone: true, company: true, segment: true, score: true },
+        select: {
+          id: true, name: true, email: true, phone: true,
+          company: true, segment: true, score: true,
+        },
       },
-      sessionInstance: {
-        select: { id: true, date: true, time: true, owner: { select: { name: true } } },
+      meeting: {
+        select: { id: true, startsAt: true, owner: { select: { name: true } } },
       },
     },
-    orderBy: { sessionInstance: { date: "desc" } },
+    orderBy: { meeting: { startsAt: "desc" } },
     take: 300,
   });
 }
@@ -903,7 +912,7 @@ export async function getTeamOverview() {
 // ───────────────────── Configuração da operação ─────────────────────
 
 export async function getConfig() {
-  const [stages, lossReasons, templates, automations, cases, permissions] = await Promise.all([
+  const [stages, lossReasons, templates, automations, cases, permissions, series] = await Promise.all([
     prisma.stage.findMany({ orderBy: { order: "asc" }, include: { _count: { select: { deals: true } } } }),
     prisma.lossReason.findMany({ orderBy: { orderIndex: "asc" }, include: { _count: { select: { deals: true } } } }),
     prisma.taskTemplate.findMany({ orderBy: { name: "asc" }, include: { _count: { select: { tasks: true } } } }),
@@ -912,9 +921,16 @@ export async function getConfig() {
     }),
     prisma.case.findMany({ orderBy: { segment: "asc" } }),
     prisma.rolePermission.findMany({ orderBy: { role: "asc" } }),
+    prisma.sessionTemplate.findMany({
+      orderBy: [{ active: "desc" }, { name: "asc" }],
+      include: {
+        owner: { select: { id: true, name: true } },
+        _count: { select: { meetings: true } },
+      },
+    }),
   ]);
 
-  return { stages, lossReasons, templates, automations, cases, permissions };
+  return { stages, lossReasons, templates, automations, cases, permissions, series };
 }
 
 /**

@@ -6,6 +6,9 @@ import bcrypt from "bcryptjs";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { env, identificador } from "../src/lib/env";
 import { atingiuPresenca } from "../src/lib/presenca";
+import { randomBytes } from "node:crypto";
+import { instanteLocal } from "../src/lib/dates";
+import { diasDaSemana } from "../src/lib/slots";
 
 // ─────────────────────────── Trava de segurança ───────────────────────────
 // Este seed APAGA a base inteira. Com os três apps dentro do mesmo projeto
@@ -134,9 +137,7 @@ async function main() {
   console.log("→ limpando base…");
   await prisma.sendQueue.deleteMany();
   await prisma.whatsappInstance.deleteMany();
-  await prisma.sessionParticipant.deleteMany();
-  await prisma.sessionOverride.deleteMany();
-  await prisma.sessionInstance.deleteMany();
+  await prisma.meetingAttendee.deleteMany();
   await prisma.sessionTemplate.deleteMany();
   await prisma.activity.deleteMany();
   await prisma.note.deleteMany();
@@ -216,23 +217,37 @@ async function main() {
       },
     });
   }
+  // Uma série recorrente e as ocorrências que ela geraria — agora reuniões de
+  // verdade, com sala, convite e presença como qualquer outra.
   const template = await prisma.sessionTemplate.create({
     data: { name: "Demo coletiva", weekdays: "2,4", time: "10:00", durationMin: 45, capacity: 20, ownerId: admin.id },
   });
+
   for (let d = -14; d <= 14; d++) {
-    const dia = new Date(HOJE); dia.setDate(HOJE.getDate() + d); dia.setHours(0, 0, 0, 0);
-    const wd = dia.getDay() === 0 ? 7 : dia.getDay();
-    if (!template.weekdays.split(",").map(Number).includes(wd)) continue;
-    await prisma.sessionInstance.create({
+    const dia = new Date(Date.UTC(HOJE.getUTCFullYear(), HOJE.getUTCMonth(), HOJE.getUTCDate() + d));
+    const diaIso = dia.getUTCDay() === 0 ? 7 : dia.getUTCDay();
+    if (!diasDaSemana(template.weekdays).includes(diaIso)) continue;
+
+    const inicio = instanteLocal(dia, template.time, template.timezone);
+    await prisma.meeting.create({
       data: {
-        date: dia, time: template.time, durationMin: 45, capacity: 20,
-        templateId: template.id, ownerId: template.ownerId,
-        status: dia < HOJE ? "DONE" : "SCHEDULED",
+        title: template.name,
+        startsAt: inicio,
+        endsAt: new Date(inicio.getTime() + template.durationMin * 60_000),
+        type: "GROUP",
+        ownerId: template.ownerId,
+        capacity: template.capacity,
+        templateId: template.id,
+        status: inicio < HOJE ? "DONE" : "SCHEDULED",
       },
     });
   }
 
-  const instancias = await prisma.sessionInstance.findMany({ orderBy: { date: "asc" } });
+  const coletivas = await prisma.meeting.findMany({
+    where: { templateId: template.id },
+    orderBy: { startsAt: "asc" },
+    select: { id: true, startsAt: true },
+  });
 
   // A régua de presença sai do banco, igual ao runtime. Upsert porque o seed
   // pode rodar num schema que ainda não tem a linha única.
@@ -306,30 +321,33 @@ async function main() {
     }
 
     // ── Inscrição numa sessão coletiva, com presença derivada do tempo ──
-    if (instancias.length && rnd() < 0.35) {
-      const inst = pick(instancias);
-      const passou = inst.date < HOJE;
+    if (coletivas.length && rnd() < 0.35) {
+      const sessao = pick(coletivas);
+      const passou = sessao.startsAt < HOJE;
       const ficou = passou ? (rnd() < 0.68 ? int(900, 2700) : int(0, 240)) : 0;
       const entrou = passou && ficou > 0
-        ? new Date(inst.date.getTime() + int(0, 5) * 60_000)
+        ? new Date(sessao.startsAt.getTime() + int(0, 5) * 60_000)
         : null;
       try {
-        await prisma.sessionParticipant.create({
+        await prisma.meetingAttendee.create({
           data: {
-            sessionInstanceId: inst.id,
+            meetingId: sessao.id,
             leadId: lead.id,
+            inviteToken: randomBytes(32).toString("hex"),
+            source: "INSCRICAO",
+            invitedAt: sessao.startsAt,
             joinedAt: entrou,
             leftAt: entrou ? new Date(entrou.getTime() + ficou * 1000) : null,
             joinCount: entrou ? int(1, 2) : 0,
             totalSeconds: ficou,
             // Presença é consequência do tempo, não um checkbox — e a régua é
-            // a mesma que o runtime usa. O `>= 300` literal que estava aqui
-            // era a terceira cópia divergente da mesma regra.
-            attended: atingiuPresenca(ficou, inst.durationMin * 60, regra),
+            // a mesma que o runtime usa.
+            attended: atingiuPresenca(ficou, 45 * 60, regra),
+            regraMinutos: regra.presencaMinutos,
           },
         });
       } catch {
-        // @@unique(sessionInstanceId, leadId) — lead já inscrito nesta sessão.
+        // @@unique(meetingId, leadId) — lead já inscrito nesta sessão.
       }
     }
 
@@ -443,7 +461,7 @@ async function main() {
   receita ganha ... ${brl(receitaCents)}
   histórico ....... ${nHist} movimentos de etapa
   tarefas ......... ${nTasks}   anotações ${nNotes}
-  sessões ......... ${await prisma.sessionInstance.count()}  ·  inscrições ${await prisma.sessionParticipant.count()}
+  sessões ......... ${await prisma.meeting.count({ where: { type: "GROUP" } })}  ·  inscrições ${await prisma.meetingAttendee.count()}
   cases ........... ${CASES.length}
 
   Admin:    pedro.goiozo@innerai.com / squad1234

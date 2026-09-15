@@ -1,10 +1,6 @@
 import { CircleSlash, Timer, UserCheck } from "lucide-react";
 
-import {
-  fimDaSessao,
-  inicioDaSessao,
-  tempoNaSala,
-} from "@/components/sessions/SessionsView";
+import { tempoNaSala } from "@/components/sessions/SessionsView";
 import { Drawer } from "@/components/ui/Drawer";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import type { SessionUser } from "@/lib/auth";
@@ -44,18 +40,18 @@ export async function SessionDrawer({
     );
   }
 
-  const inicio = inicioDaSessao(session);
+  const inicio = session.startsAt;
   const cancelada = session.status === "CANCELED";
   const futura = !cancelada && inicio > now;
   // Enquanto a sala está aberta os números ainda mudam: quem entrou há 3 min
   // pode virar presente no minuto 5. Fechada a sala, aí sim viram a foto final.
-  const emAndamento = !cancelada && !futura && fimDaSessao(session) > now;
+  const emAndamento = !cancelada && !futura && session.endsAt > now;
   const medida = !cancelada && !futura && !emAndamento;
 
-  const inscritos = session.participants.length;
-  const presentes = session.participants.filter((p) => p.attended).length;
+  const inscritos = session.attendees.length;
+  const presentes = session.attendees.filter((p) => p.attended).length;
   const taxa = inscritos ? Math.round((presentes / inscritos) * 100) : 0;
-  const qualificados = session.participants.filter(
+  const qualificados = session.attendees.filter(
     (p) => p.attended && (p.lead.score === "A" || p.lead.score === "B"),
   ).length;
 
@@ -74,8 +70,10 @@ export async function SessionDrawer({
               month: "long",
             })}
           </span>
-          <span className="font-mono">{session.time}</span>
-          <span>{session.durationMin} min</span>
+          <span className="font-mono">{hhmm(session.startsAt)}</span>
+          <span>
+            {Math.round((session.endsAt.getTime() - session.startsAt.getTime()) / 60_000)} min
+          </span>
           <span>Closer: {session.owner.name}</span>
         </span>
       }
@@ -86,7 +84,7 @@ export async function SessionDrawer({
       }
     >
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Numero label="Inscritos" value={String(inscritos)} hint={`${session.capacity} vagas`} />
+        <Numero label="Inscritos" value={String(inscritos)} hint={`${(session.capacity ?? 0)} vagas`} />
         <Numero label="Presentes" value={medida ? `${presentes}/${inscritos}` : "—"} />
         <Numero
           label="Taxa de presença"
@@ -123,7 +121,7 @@ export async function SessionDrawer({
         </p>
       ) : (
         <ul className="flex flex-col gap-2">
-          {session.participants.map((p) => (
+          {session.attendees.map((p) => (
             <li
               key={p.id}
               className="flex items-center gap-3 rounded-xl border border-line bg-surface px-3.5 py-3"

@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { Percent, Search, Sparkles, UserCheck, Users } from "lucide-react";
 
-import { inicioDaSessao, tempoNaSala } from "@/components/sessions/SessionsView";
+import { tempoNaSala } from "@/components/sessions/SessionsView";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
+import { hhmm } from "@/lib/dates";
 
 type Row = {
   id: string;
@@ -18,10 +19,9 @@ type Row = {
     segment: string | null;
     score: string | null;
   };
-  sessionInstance: {
+  meeting: {
     id: string;
-    date: Date;
-    time: string;
+    startsAt: Date;
     owner: { name: string };
   };
 };
@@ -83,7 +83,7 @@ export function ParticipantsView({
   // A sessão só conta para a taxa de presença depois de ter acontecido.
   const linhas = participants.map((p) => ({
     ...p,
-    futura: inicioDaSessao(p.sessionInstance) > now,
+    futura: p.meeting.startsAt > now,
   }));
 
   const realizadas = linhas.filter((l) => !l.futura);
@@ -237,17 +237,17 @@ export function ParticipantsView({
                   {linha.lead.score ? <ScoreBadge score={linha.lead.score} /> : <span className="text-muted">—</span>}
                 </td>
                 {showOwner && (
-                  <td className="px-4 py-3 text-muted">{linha.sessionInstance.owner.name}</td>
+                  <td className="px-4 py-3 text-muted">{linha.meeting.owner.name}</td>
                 )}
                 <td className="px-4 py-3">
                   <span className="block">
-                    {linha.sessionInstance.date.toLocaleDateString("pt-BR", {
+                    {linha.meeting.startsAt.toLocaleDateString("pt-BR", {
                       day: "2-digit",
                       month: "2-digit",
                       year: "2-digit",
                     })}
                   </span>
-                  <span className="block text-xs text-muted">{linha.sessionInstance.time}</span>
+                  <span className="block text-xs text-muted">{hhmm(linha.meeting.startsAt)}</span>
                 </td>
                 <td className="px-4 py-3 text-right font-medium">{tempoNaSala(linha.totalSeconds)}</td>
                 <td className="px-4 py-3">

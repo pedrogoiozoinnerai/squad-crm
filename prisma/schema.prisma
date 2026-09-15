@@ -52,7 +52,6 @@ model User {
   notes             Note[]
   activities        Activity[]
   sessionTemplates  SessionTemplate[]
-  sessionInstances  SessionInstance[]
   whatsappInstances WhatsappInstance[]
 
   @@index([role])
@@ -199,7 +198,6 @@ model Lead {
   meetings     Meeting[]
   noteEntries  Note[]
   activities   Activity[]
-  sessionSeats SessionParticipant[]
   meetingSeats MeetingAttendee[]
   outbox       SendQueue[]
 
@@ -429,72 +427,25 @@ model SessionTemplate {
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
 
+  /// Fuso em que `weekdays` e `time` são lidos.
+  ///
+  /// Sem ele, materializar no runner da Vercel — que roda em UTC — moveria
+  /// toda sessão em três horas. É o mesmo defeito que a grade já teve.
+  timezone String @default("America/Sao_Paulo")
+
+  /// Quantos dias à frente o materializador enche a agenda.
+  horizonDays Int @default(28)
+
+  /// A partir de quando a série vale, e até quando. Nulo = sem limite.
+  startsOn DateTime?
+  endsOn   DateTime?
+
   ownerId String
   owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
-  instances SessionInstance[]
-  overrides SessionOverride[]
+  meetings Meeting[]
 
   @@index([ownerId])
-}
-
-/// Ocorrência concreta de uma sessão num dia. Materializada a partir do template.
-model SessionInstance {
-  id          String        @id @default(cuid())
-  date        DateTime // dia (00:00)
-  time        String // "HH:MM"
-  durationMin Int           @default(45)
-  capacity    Int           @default(20)
-  status      MeetingStatus @default(SCHEDULED)
-  roomId      String? // sala do LiveKit, quando o Meet entrar
-
-  templateId String?
-  template   SessionTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-
-  ownerId String
-  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-
-  participants SessionParticipant[]
-
-  @@unique([templateId, date, time])
-  @@index([date])
-  @@index([ownerId, date])
-}
-
-/// Exceção pontual da série: trocou o closer ou cancelou só aquele dia.
-model SessionOverride {
-  id           String          @id @default(cuid())
-  templateId   String
-  template     SessionTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  overrideDate DateTime
-  newOwnerId   String?
-  isCancelled  Boolean         @default(false)
-  createdAt    DateTime        @default(now())
-
-  @@unique([templateId, overrideDate])
-  @@index([overrideDate])
-}
-
-/// Inscrição de um lead numa sessão, com o tempo real de permanência.
-model SessionParticipant {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
-
-  sessionInstanceId String
-  sessionInstance   SessionInstance @relation(fields: [sessionInstanceId], references: [id], onDelete: Cascade)
-
-  leadId String
-  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
-
-  /// Presença é derivada do tempo, não marcada na mão.
-  joinedAt     DateTime?
-  leftAt       DateTime?
-  joinCount    Int       @default(0)
-  totalSeconds Int       @default(0)
-  attended     Boolean   @default(false)
-
-  @@unique([sessionInstanceId, leadId])
-  @@index([leadId])
 }
 
 // ────────────────────────────── Calendário ────────────────────────────
@@ -553,13 +504,22 @@ model Meeting {
   dealId String?
   deal   Deal?   @relation(fields: [dealId], references: [id], onDelete: SetNull)
 
+  /// Só em GROUP. Nulo = sem limite, que é o caso de toda 1:1.
+  capacity Int?
+
+  /// A série que gerou esta ocorrência, quando veio de um template.
+  templateId String?
+  template   SessionTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
   roomEvents RoomEvent[]
   presences  Presence[]
   attendees  MeetingAttendee[]
 
+  @@unique([templateId, startsAt])
   @@index([startsAt])
   @@index([ownerId, startsAt])
   @@index([leadId])
+  @@index([templateId])
 }
 
 // ──────────────────────── Anotações e atividades ──────────────────────

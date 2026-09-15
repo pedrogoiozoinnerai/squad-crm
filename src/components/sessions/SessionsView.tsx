@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight, Sparkles, Timer, UserCheck, Users } from "lucide-react";
 
 import { PageHeader } from "@/components/shell/PageHeader";
-import { instanteLocal, isSameDay, weekDays } from "@/lib/dates";
+import { hhmm, isSameDay, weekDays } from "@/lib/dates";
 import type { Space } from "@/lib/nav";
 
 /** Meta de presença do time — vira a cor da barra. */
@@ -10,41 +10,20 @@ const META_PRESENCA = 60;
 
 export type SessionRow = {
   id: string;
-  date: Date;
-  time: string;
-  durationMin: number;
-  capacity: number;
+  /// Um instante, não mais dia + "HH:MM": a sessão coletiva virou uma reunião
+  /// como qualquer outra, e o horário deixou de depender do fuso do servidor.
+  startsAt: Date;
+  endsAt: Date;
+  capacity: number | null;
   status: "SCHEDULED" | "DONE" | "NO_SHOW" | "CANCELED";
   template: { name: string } | null;
+  title: string;
   owner: { id: string; name: string };
   inscritos: number;
   presentes: number;
   taxaPresenca: number;
   qualificados: number;
 };
-
-/**
- * `date` é o dia às 00:00 e `time` é "HH:MM" — o início real sai da soma, no
- * fuso da operação.
- *
- * Antes isto era `new Date(date).setHours(hora)`, que compõe no fuso do
- * SERVIDOR. Na máquina do dev é São Paulo e parecia certo; na Vercel é UTC, e
- * a sessão das 10:00 aparecia às 07:00 para o time inteiro.
- */
-export function inicioDaSessao(session: { date: Date; time: string }) {
-  return instanteLocal(session.date, session.time);
-}
-
-/**
- * Fim previsto da sala. Só depois dele o tempo de cada inscrito está fechado:
- * no minuto 2 de uma call de 45 min ninguém bateu o mínimo de minutos ainda,
- * então ler presença antes do fim é ler uma ausência que não existe.
- */
-export function fimDaSessao(session: { date: Date; time: string; durationMin: number }) {
-  // Soma em milissegundos, não com `setMinutes`: somar minutos num Date usa o
-  // calendário local do servidor e reintroduz a dependência de fuso.
-  return new Date(inicioDaSessao(session).getTime() + session.durationMin * 60_000);
-}
 
 /** Teto do `?w=`: uma semana por vez, mas sem passear por séculos. */
 const MAX_SEMANAS = 260;
@@ -98,7 +77,7 @@ export function SessionsView({
   // e "rodou" é a sala fechada, não começada: durante a call o tempo de quem
   // está lá dentro ainda está correndo.
   const realizadas = sessions.filter(
-    (s) => s.status !== "CANCELED" && fimDaSessao(s) <= now,
+    (s) => s.status !== "CANCELED" && s.endsAt <= now,
   );
 
   const inscritos = sessions.reduce((soma, s) => soma + s.inscritos, 0);
@@ -221,10 +200,10 @@ export function SessionsView({
             )}
 
             {sessions.map((session) => {
-              const inicio = inicioDaSessao(session);
+              const inicio = session.startsAt;
               const cancelada = session.status === "CANCELED";
               const futura = !cancelada && inicio > now;
-              const emAndamento = !cancelada && !futura && fimDaSessao(session) > now;
+              const emAndamento = !cancelada && !futura && session.endsAt > now;
               // Só com a sala fechada os números são a foto final.
               const medida = !cancelada && !futura && !emAndamento;
               const hoje = isSameDay(inicio, now);
@@ -262,8 +241,8 @@ export function SessionsView({
                           month: "short",
                         })}
                         {" · "}
-                        <span className="font-mono">{session.time}</span>
-                        {` · ${session.durationMin} min`}
+                        <span className="font-mono">{hhmm(session.startsAt)}</span>
+                        {` · ${Math.round((session.endsAt.getTime() - session.startsAt.getTime()) / 60_000)} min`}
                       </span>
                     </Link>
                   </td>
@@ -273,7 +252,7 @@ export function SessionsView({
                   <td className="px-4 py-3 text-right font-medium">
                     {session.inscritos}
                     <span className="block text-[11px] font-normal text-muted">
-                      de {session.capacity} vagas
+                      de {(session.capacity ?? 0)} vagas
                     </span>
                   </td>
 

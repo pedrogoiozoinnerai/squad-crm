@@ -1,6 +1,6 @@
 import { SECOES, SettingsView, type Secao } from "@/components/settings/SettingsView";
 import { requireUser } from "@/lib/auth";
-import { getConfig } from "@/lib/queries";
+import { getConfig, getOwners } from "@/lib/queries";
 
 const BASE = "/admin/configuracoes";
 
@@ -12,7 +12,7 @@ export default async function ConfiguracoesPage(props: PageProps<"/admin/configu
   const pedida = Array.isArray(secao) ? secao[0] : secao;
   const atual: Secao = SECOES.includes(pedida as Secao) ? (pedida as Secao) : "etapas";
 
-  const config = await getConfig();
+  const [config, owners] = await Promise.all([getConfig(), getOwners()]);
 
   return (
     <SettingsView
@@ -23,6 +23,8 @@ export default async function ConfiguracoesPage(props: PageProps<"/admin/configu
       templates={config.templates}
       automations={config.automations}
       cases={config.cases}
+      series={config.series}
+      owners={owners}
     />
   );
 }
