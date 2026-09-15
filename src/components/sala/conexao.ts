@@ -1,4 +1,4 @@
-import { Room, RoomEvent } from "livekit-client";
+import { Room } from "livekit-client";
 
 import type { Preferencias } from "@/components/sala/Preparo";
 
@@ -24,14 +24,12 @@ export async function conectar({
     dynacast: true,
   });
 
+  // Quem ouve `Disconnected` é a tela da reunião, que precisa mostrar "você
+  // saiu". Um `removeAllListeners` aqui apagaria justamente esse ouvinte, e o
+  // participante ficaria olhando uma sala congelada.
   await sala.connect(url, token);
   await sala.localParticipant.setMicrophoneEnabled(preferencias.microfone);
   await sala.localParticipant.setCameraEnabled(preferencias.camera);
-
-  sala.on(RoomEvent.Disconnected, () => {
-    // Por ora só solta os recursos; a tela de "você saiu" entra com a sala.
-    sala.removeAllListeners();
-  });
 
   return sala;
 }

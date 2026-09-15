@@ -4,7 +4,10 @@ import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle } from "lucide-react";
 
+import type { Room } from "livekit-client";
+
 import { Preparo, type Preferencias } from "@/components/sala/Preparo";
+import { Reuniao } from "@/components/sala/Reuniao";
 import type { SituacaoDaSala } from "@/lib/sala";
 
 type Fase = "preparo" | "conectando" | "dentro" | "saiu" | "erro";
@@ -28,6 +31,7 @@ export function SalaCliente({
 }) {
   const router = useRouter();
   const [fase, setFase] = useState<Fase>("preparo");
+  const [sala, setSala] = useState<Room | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
   const entrar = useCallback(
@@ -47,7 +51,7 @@ export function SalaCliente({
         // `livekit-client` pesa, e quem abre a antessala e desiste não devia
         // baixá-lo.
         const { conectar } = await import("@/components/sala/conexao");
-        await conectar({ url: dados.url, token: dados.token, preferencias });
+        setSala(await conectar({ url: dados.url, token: dados.token, preferencias }));
         setFase("dentro");
       } catch (e) {
         setErro(e instanceof Error ? e.message : "Não foi possível entrar.");
@@ -89,16 +93,25 @@ export function SalaCliente({
     return <Aviso texto="Entrando na sala…" voltarPara={null} />;
   }
 
+  if (fase === "saiu" || !sala) {
+    return (
+      <Aviso
+        texto={fase === "saiu" ? "Você saiu da reunião." : "A conexão caiu."}
+        voltarPara={voltarPara}
+      />
+    );
+  }
+
   return (
-    <div className="grid min-h-dvh place-items-center bg-[#0f172a] p-6 text-white">
-      <div className="text-center">
-        <p className="text-sm tracking-[0.16em] uppercase opacity-70">{host ? "Sala" : "Reunião"}</p>
-        <p className="mt-2 text-xl font-semibold">{titulo}</p>
-        <p className="mt-4 text-sm opacity-70">
-          Conectado como {nome}. A tela da chamada entra no próximo passo.
-        </p>
-      </div>
-    </div>
+    <Reuniao
+      sala={sala}
+      titulo={titulo}
+      host={host}
+      aoSair={() => {
+        setSala(null);
+        setFase("saiu");
+      }}
+    />
   );
 }
 
