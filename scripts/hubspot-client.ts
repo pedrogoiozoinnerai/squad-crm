@@ -172,8 +172,11 @@ export async function* buscar(
  * Buscar um a um seria 7.500 chamadas para os contatos do Squad — meia hora de
  * espera e um teto de rate limit. Em lote são 75.
  */
+/** Objetos do CRM que esta migração lê. */
+export type Objeto = "contacts" | "deals" | "companies" | "notes";
+
 export async function lote(
-  objeto: "contacts" | "deals" | "companies",
+  objeto: Objeto,
   ids: string[],
   propriedades: string[],
 ): Promise<HsObject[]> {
@@ -190,8 +193,8 @@ export async function lote(
 
 /** Associações em lote: id de origem → ids de destino. */
 export async function associacoes(
-  de: "deals" | "contacts",
-  para: "contacts" | "companies" | "deals",
+  de: Objeto,
+  para: Objeto,
   ids: string[],
 ): Promise<Map<string, string[]>> {
   const mapa = new Map<string, string[]>();
