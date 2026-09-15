@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight, Video } from "lucide-react";
 
 import { PageHeader } from "@/components/shell/PageHeader";
-import { hhmm, isSameDay, WEEK_DAYS, weekDays } from "@/lib/dates";
+import { diaCivil, hhmm, horaLocal, isSameDay, TZ, WEEK_DAYS, weekDays } from "@/lib/dates";
 import type { Space } from "@/lib/nav";
 
 type Meeting = {
@@ -41,7 +41,7 @@ export function CalendarView({
   const days = weekDays(start);
   const today = new Date();
 
-  const label = `${days[0].toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} – ${days[6].toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}`;
+  const label = `${days[0].toLocaleDateString("pt-BR", { timeZone: TZ, day: "2-digit", month: "short" })} – ${days[6].toLocaleDateString("pt-BR", { timeZone: TZ, day: "2-digit", month: "short", year: "numeric" })}`;
 
   return (
     <>
@@ -91,7 +91,7 @@ export function CalendarView({
                     isToday ? "bg-waz-30 text-white" : ""
                   }`}
                 >
-                  {day.getDate()}
+                  {diaCivil(day).dia}
                 </p>
               </div>
             );
@@ -109,8 +109,11 @@ export function CalendarView({
               </div>
 
               {days.map((day) => {
+                // `horaLocal` e não `getHours()`: este componente é renderizado
+                // no servidor, e na Vercel o relógio é UTC — uma reunião das
+                // 10:00 caía na linha das 13:00 para o time inteiro.
                 const slot = meetings.filter(
-                  (m) => isSameDay(m.startsAt, day) && m.startsAt.getHours() === hour,
+                  (m) => isSameDay(m.startsAt, day) && horaLocal(m.startsAt) === hour,
                 );
                 const isToday = isSameDay(day, today);
 

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { date, text } from "@/lib/forms";
+import { dataHora, text } from "@/lib/forms";
 import { assertOwns, currentUser, logActivity, revalidateBoth, type FormState } from "@/lib/guard";
 import { garantirConvite } from "@/lib/convites";
 import { prisma } from "@/lib/prisma";
@@ -12,7 +12,7 @@ const DURATIONS = [30, 45, 60, 90];
 export async function scheduleMeeting(_prev: FormState, formData: FormData): Promise<FormState> {
   const user = await currentUser();
 
-  const startsAt = date(formData.get("startsAt"));
+  const startsAt = dataHora(formData.get("startsAt"));
   if (!startsAt) return { error: "Escolha data e horário." };
 
   const minutes = Number(formData.get("duration"));

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { assertOwns, currentUser, logActivity, revalidateBoth, type FormState } from "@/lib/guard";
-import { date, moneyCents, phone, text } from "@/lib/forms";
+import { dataDoDia, moneyCents, phone, text } from "@/lib/forms";
 import { nextDealCode } from "@/lib/codes";
 import { prisma } from "@/lib/prisma";
 import { runStageAutomations } from "@/lib/automations";
@@ -165,7 +165,7 @@ export async function convertLead(_prev: FormState, formData: FormData): Promise
     return { error: "A probabilidade precisa estar entre 0 e 100." };
   }
 
-  const expectedAt = date(formData.get("expectedAt"));
+  const expectedAt = dataDoDia(formData.get("expectedAt"));
 
   const deal = await prisma.deal.create({
     data: {

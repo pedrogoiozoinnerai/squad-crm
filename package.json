@@ -12,13 +12,14 @@
     "db:studio": "prisma studio",
     "clean:icloud": "find .next -name '* [0-9].*' -delete 2>/dev/null || true",
     "predev": "prisma generate && npm run clean:icloud",
-    "prebuild": "npm run clean:icloud && npm test",
+    "prebuild": "npm run clean:icloud && npm run test:fusos",
     "prelint": "npm run clean:icloud",
     "db:seed:demo": "tsx prisma/seed-demo.ts",
     "hubspot:descobrir": "tsx scripts/hubspot-descobrir.ts",
     "vercel:vars": "tsx scripts/vars-vercel.ts",
     "hubspot:importar": "tsx scripts/hubspot-importar.ts",
-    "test": "node --import tsx --test testes/*.test.ts"
+    "test": "node --import tsx --test testes/*.test.ts",
+    "test:fusos": "TZ=UTC npm run test --silent && TZ=America/Sao_Paulo npm run test --silent"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

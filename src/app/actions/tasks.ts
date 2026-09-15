@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { date, text } from "@/lib/forms";
+import { dataHora, text } from "@/lib/forms";
 import {
   assertOwns,
   assertOwnsContext,
@@ -75,7 +75,7 @@ export async function createTask(_prev: FormState, formData: FormData): Promise<
       priority: (PRIORITIES as readonly string[]).includes(priority)
         ? (priority as (typeof PRIORITIES)[number])
         : "MEDIUM",
-      dueAt: date(formData.get("dueAt")),
+      dueAt: dataHora(formData.get("dueAt")),
       ownerId,
       leadId,
       dealId,

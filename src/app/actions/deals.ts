@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { date, moneyCents, text } from "@/lib/forms";
+import { dataDoDia, moneyCents, text } from "@/lib/forms";
 import {
   assertOwns,
   currentUser,
@@ -126,7 +126,7 @@ export async function saveDeal(_prev: FormState, formData: FormData): Promise<Fo
       valueCents: valueCents ?? 0,
       product: text(formData.get("product")),
       probability,
-      expectedAt: date(formData.get("expectedAt")),
+      expectedAt: dataDoDia(formData.get("expectedAt")),
       paymentMethod: text(formData.get("paymentMethod")),
       paymentLink: text(formData.get("paymentLink")),
       attendance: presenca,

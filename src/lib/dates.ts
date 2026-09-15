@@ -1,19 +1,35 @@
-import { addDays, startOfWeek } from "date-fns";
-
 /** A operação inteira roda no fuso de São Paulo. */
 export const TZ = "America/Sao_Paulo";
 
 export const WEEK_DAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 
-/** Segunda-feira da semana que contém `date`, com deslocamento em semanas. */
-export function weekStart(date = new Date(), offset = 0) {
-  const monday = startOfWeek(date, { weekStartsOn: 1 });
-  monday.setHours(0, 0, 0, 0);
-  return addDays(monday, offset * 7);
+/**
+ * Segunda-feira da semana que contém `date`, com deslocamento em semanas.
+ *
+ * O instante da meia-noite de segunda **em São Paulo**, não no relógio de quem
+ * executa. `startOfWeek` do date-fns seguido de `setHours(0,0,0,0)` dava
+ * meia-noite UTC na Vercel — que é 21:00 de domingo aqui, e jogava a grade
+ * inteira do calendário um dia para trás.
+ */
+export function weekStart(date = new Date(), offset = 0, tz = TZ) {
+  const { ano, mes, dia } = diaCivil(date, tz);
+  // 1 = segunda … 7 = domingo, como o resto do sistema já convenciona.
+  const diaDaSemana = diaIso(date, tz);
+  const meiaNoite = Date.UTC(ano, mes - 1, dia - (diaDaSemana - 1) + offset * 7);
+  return instanteLocal(new Date(meiaNoite), "00:00", tz);
 }
 
-export function weekDays(start: Date) {
-  return Array.from({ length: 7 }, (_, i) => addDays(start, i));
+/**
+ * Os sete dias da semana, como instantes de meia-noite local.
+ *
+ * Soma dias de CALENDÁRIO, não 24 horas: na virada do horário de verão um dia
+ * tem 23 ou 25 horas, e somar 86.400.000 deslocaria todos os dias seguintes.
+ */
+export function weekDays(start: Date, tz = TZ) {
+  const { ano, mes, dia } = diaCivil(start, tz);
+  return Array.from({ length: 7 }, (_, i) =>
+    instanteLocal(new Date(Date.UTC(ano, mes - 1, dia + i)), "00:00", tz),
+  );
 }
 
 /**
@@ -81,16 +97,88 @@ export function instanteLocal(dia: Date, hhmm: string, tz = TZ) {
   return primeira === segunda ? corrigido : new Date(parede - segunda * 60_000);
 }
 
-export function isSameDay(a: Date, b: Date) {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
+/**
+ * O dia de calendário de um instante, num fuso.
+ *
+ * `en-CA` devolve AAAA-MM-DD, que é o formato que ordena como texto e não
+ * depende de locale. `getFullYear()` e companhia leem o relógio do servidor —
+ * na Vercel isso é UTC, e três horas depois da meia-noite de São Paulo já é
+ * outro dia lá.
+ */
+export function diaCivil(instante: Date, tz = TZ) {
+  const [ano, mes, dia] = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+    .format(instante)
+    .split("-")
+    .map(Number);
+  return { ano, mes, dia };
 }
 
-export function hhmm(date: Date) {
-  return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+/** A chave "2026-10-06" de um instante no fuso. Serve para agrupar e comparar. */
+export function chaveDoDia(instante: Date, tz = TZ) {
+  const { ano, mes, dia } = diaCivil(instante, tz);
+  return `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+}
+
+/** Dia da semana no fuso: 1 = segunda … 7 = domingo. */
+export function diaIso(instante: Date, tz = TZ) {
+  const curto = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short" }).format(
+    instante,
+  );
+  const ordem = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  return ordem.indexOf(curto) + 1;
+}
+
+/** A hora cheia de um instante no fuso — a linha em que a reunião cai na grade. */
+export function horaLocal(instante: Date, tz = TZ) {
+  const h = Number(
+    new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "2-digit", hour12: false }).format(
+      instante,
+    ),
+  );
+  // `hour12: false` devolve 24 à meia-noite em alguns runtimes.
+  return h % 24;
+}
+
+/**
+ * O instante de um campo `datetime-local`, lido no fuso certo.
+ *
+ * `new Date("2026-10-06T14:00")` — sem fuso na string — é interpretado no
+ * relógio do RUNTIME, por especificação. Na Vercel, que roda em UTC, uma
+ * reunião marcada para as 14:00 virava 14:00Z, que são 11:00 aqui: o lead
+ * recebia o convite com a hora errada e a sala abria três horas antes.
+ */
+export function instanteDeCampoLocal(valor: string, tz = TZ): Date | null {
+  const casou = valor.trim().match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  if (!casou) return null;
+  const [, ano, mes, dia, hora, minuto] = casou;
+  const instante = instanteLocal(
+    new Date(Date.UTC(Number(ano), Number(mes) - 1, Number(dia))),
+    `${hora}:${minuto}`,
+    tz,
+  );
+  return Number.isNaN(instante.getTime()) ? null : instante;
+}
+
+/** O caminho de volta: o valor que preenche um `<input type="datetime-local">`. */
+export function paraCampoLocal(instante: Date, tz = TZ) {
+  return `${chaveDoDia(instante, tz)}T${hhmm(instante, tz)}`;
+}
+
+export function isSameDay(a: Date, b: Date, tz = TZ) {
+  return chaveDoDia(a, tz) === chaveDoDia(b, tz);
+}
+
+export function hhmm(date: Date, tz = TZ) {
+  return date.toLocaleTimeString("pt-BR", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 /** Formata um valor em CENTAVOS. Todo dinheiro no sistema é inteiro. */
@@ -108,21 +196,25 @@ export function centsToInput(cents: number) {
 }
 
 /** Dia/mês, do jeito que cabe num cartão: "15/09". */
-export function diaMes(date: Date) {
-  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+export function diaMes(date: Date, tz = TZ) {
+  return date.toLocaleDateString("pt-BR", { timeZone: tz, day: "2-digit", month: "2-digit" });
 }
 
 /**
  * Distância em dias de calendário, não em horas. "Venceu ontem" tem que dizer
  * 1 dia mesmo quando faltam 20 horas para completar 24 — é assim que a pessoa
  * lê um prazo.
+ *
+ * Os dias são os de São Paulo. `setHours(0,0,0,0)` zerava no relógio do
+ * servidor, então entre 21:00 e 00:00 daqui a Vercel já contava o dia seguinte
+ * e uma tarefa de hoje aparecia como "venceu ontem".
  */
-export function diasEntre(de: Date, para: Date) {
-  const inicio = new Date(de);
-  inicio.setHours(0, 0, 0, 0);
-  const fim = new Date(para);
-  fim.setHours(0, 0, 0, 0);
-  return Math.round((fim.getTime() - inicio.getTime()) / 86_400_000);
+export function diasEntre(de: Date, para: Date, tz = TZ) {
+  const meiaNoite = (d: Date) => {
+    const { ano, mes, dia } = diaCivil(d, tz);
+    return Date.UTC(ano, mes - 1, dia);
+  };
+  return Math.round((meiaNoite(para) - meiaNoite(de)) / 86_400_000);
 }
 
 /** Duração compacta para caber ao lado de outra informação: "3d", "2 sem". */
