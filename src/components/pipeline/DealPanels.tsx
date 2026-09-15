@@ -7,10 +7,8 @@ import {
   History,
   Loader2,
   MessageCircle,
-  Pencil,
   Sparkles,
   Trash2,
-  Video,
 } from "lucide-react";
 
 import { deleteTask, toggleTask } from "@/app/actions/tasks";
@@ -51,17 +49,20 @@ export type PanelCase = {
   exact: boolean;
 };
 
-type Tab = "task" | "note" | "activities" | "chat" | "nina" | "cases" | "plan";
+type Tab = "task" | "note" | "activities" | "chat" | "cases";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "task", label: "Nova Tarefa" },
   { key: "note", label: "Anotação" },
   { key: "activities", label: "Atividades" },
-  { key: "chat", label: "Chat" },
-  { key: "nina", label: "Chat Nina" },
+  { key: "chat", label: "WhatsApp" },
   { key: "cases", label: "Cases" },
-  { key: "plan", label: "Plano de Ação" },
 ];
+
+// "Chat Nina" e "Plano de Ação" saíram: as duas abas existiam para mostrar um
+// texto explicando que não existiam. Aba vazia não é promessa de roadmap, é
+// clique desperdiçado toda vez que alguém a tenta. Voltam quando houver o quê
+// mostrar. "Chat" virou "WhatsApp" porque é o que o botão de fato faz.
 
 const PRIORITY_LABEL = { HIGH: "ALTA", MEDIUM: "MÉDIA", LOW: "BAIXA" } as const;
 
@@ -111,9 +112,7 @@ export function DealPanels({
         {tab === "note" && <NoteForm dealId={dealId} leadId={leadId} onDone={() => setTab("activities")} />}
         {tab === "activities" && <Activities tasks={tasks} activities={activities} />}
         {tab === "chat" && <ChatEmpty leadName={leadName} leadPhone={leadPhone} />}
-        {tab === "nina" && <NinaEmpty />}
         {tab === "cases" && <Cases cases={cases} segment={leadSegment} />}
-        {tab === "plan" && <PlanEmpty />}
       </div>
     </div>
   );
@@ -295,10 +294,6 @@ function TaskRow({ task }: { task: PanelTask }) {
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-line pt-2.5">
-          <span className="chip text-muted">
-            <Video className="size-3" />
-            Abrir minha sala
-          </span>
           <form action={toggleTask}>
             <input type="hidden" name="taskId" value={task.id} />
             <button type="submit" className="chip text-muted transition hover:text-waz-20">
@@ -306,10 +301,6 @@ function TaskRow({ task }: { task: PanelTask }) {
               {done ? "Reabrir" : "Concluir"}
             </button>
           </form>
-          <span className="chip text-muted/60">
-            <Pencil className="size-3" />
-            Editar
-          </span>
           <form action={deleteTask}>
             <input type="hidden" name="taskId" value={task.id} />
             <button type="submit" className="chip text-red-700 transition hover:bg-red-50">
@@ -357,50 +348,6 @@ function ChatEmpty({ leadName, leadPhone }: { leadName: string; leadPhone: strin
         <p className="mt-5 text-xs text-muted">Cadastre um telefone para abrir a conversa.</p>
       )}
     </div>
-  );
-}
-
-function NinaEmpty() {
-  return (
-    <div className="grid place-items-center py-16 text-center">
-      <span className="grid size-14 place-items-center rounded-full bg-surface-2 text-muted">
-        <Sparkles className="size-6" />
-      </span>
-      <p className="mt-4 text-base font-semibold">Nina ainda não está conectada</p>
-      <p className="mt-1 max-w-sm text-sm text-muted">
-        Quando a instância de WhatsApp estiver no ar, as mensagens automáticas da Nina
-        aparecem aqui — confirmação de agendamento, retomada e pedido de ligação.
-      </p>
-    </div>
-  );
-}
-
-function PlanEmpty() {
-  return (
-    <>
-      <div className="flex items-start justify-between gap-4 rounded-xl border border-line bg-surface-2/40 p-4">
-        <div>
-          <p className="text-sm font-semibold">Apresentação de vendas</p>
-          <p className="mt-0.5 text-xs text-muted">
-            Personalizada por IA — cruza o lead, o resumo da call, cases e soluções.
-          </p>
-        </div>
-        <span className="chip shrink-0 border border-line bg-surface text-muted/60">
-          <Sparkles className="size-3" />
-          Gerar apresentação
-        </span>
-      </div>
-
-      <div className="grid place-items-center py-14 text-center">
-        <span className="grid size-14 place-items-center rounded-full bg-surface-2 text-muted">
-          <ClipboardList className="size-6" />
-        </span>
-        <p className="mt-4 text-base font-semibold">Sem plano de ação</p>
-        <p className="mt-1 max-w-sm text-sm text-muted">
-          O plano é gerado automaticamente após uma call individual com transcrição.
-        </p>
-      </div>
-    </>
   );
 }
 

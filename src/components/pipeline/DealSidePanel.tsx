@@ -5,6 +5,7 @@ import { Calendar, Copy, DollarSign, GraduationCap, Globe, Loader2, MousePointer
 
 import { saveDeal } from "@/app/actions/deals";
 import { centsToInput } from "@/lib/dates";
+import { Copiavel } from "@/components/ui/Copiavel";
 import { FormFeedback } from "@/components/ui/FormFeedback";
 import type { FormState } from "@/lib/guard";
 
@@ -23,6 +24,9 @@ export type SidePanelDeal = {
   createdAt: Date;
   owner: { name: string };
   lead: {
+    name: string;
+    email: string | null;
+    phone: string | null;
     company: string | null;
     jobTitle: string | null;
     segment: string | null;
@@ -82,11 +86,14 @@ export function DealSidePanel({
         <div className="flex items-start justify-between gap-3">
           <p className="flex items-center gap-2">
             <Calendar className="size-4 text-muted" />
-            <span className="text-xl font-semibold">
-              {nextMeetingAt
-                ? nextMeetingAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
-                : "—"}
-            </span>
+            {/* Sem reunião a data some, em vez de virar travessão: o texto
+                ao lado já diz que não há nenhuma, e "— sem reunião agendada"
+                lê como campo que deveria ter valor e não tem. */}
+            {nextMeetingAt && (
+              <span className="text-xl font-semibold">
+                {nextMeetingAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+              </span>
+            )}
             <span className="text-sm text-muted">
               {nextMeetingAt
                 ? `${nextMeetingAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · ${nextMeetingAt.toLocaleDateString("pt-BR", { weekday: "long" })}`
@@ -110,11 +117,10 @@ export function DealSidePanel({
             </select>
           </label>
         </div>
-
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <span className="flex flex-col gap-1">
             <Label>Empresa</Label>
-            <span className="text-sm font-semibold">{deal.lead.company ?? "—"}</span>
+            <Copiavel valor={deal.lead.company} className="text-sm font-semibold" />
           </span>
           <span className="flex flex-col gap-1">
             <Label>Cargo</Label>
@@ -245,9 +251,15 @@ export function DealSidePanel({
           </h3>
           <span className={`chip ${mentorship.tone}`}>{mentorship.text}</span>
         </div>
+        {/* O texto anterior dizia que o mentor era sorteado e o cliente
+            recebia e-mail e convite automaticamente. Nada disso existe — não há
+            sequer biblioteca de e-mail no projeto. Era pior que um botão morto:
+            o vendedor lia, assumia que o cliente tinha sido avisado, e não
+            fazia o contato. */}
         <p className="mt-2 text-xs text-muted">
-          Obrigatória antes de dar o <strong className="text-foreground">Ganho</strong>. O mentor é
-          sorteado e o cliente recebe e-mail + convite automaticamente.
+          Obrigatória antes de dar o <strong className="text-foreground">Ganho</strong> — o botão
+          fica bloqueado até você marcar como concluída. Agendar com o mentor e avisar o cliente é
+          manual por enquanto.
         </p>
         <label className="mt-3 flex flex-col gap-1.5">
           <Label>Status da mentoria</Label>
@@ -263,7 +275,10 @@ export function DealSidePanel({
         </label>
       </Card>
 
-      {/* ── Logs de acesso ─────────────────────────────────────────── */}
+      {/* Só com link rastreado: nada no CRM gera esses links hoje, então para
+          todo mundo este cartão mostrava "0 cliques · nenhum acesso" para
+          sempre — espaço ocupado dizendo que nada aconteceu. */}
+      {deal.lead.trackedLink && (
       <Card>
         <h3 className="flex items-center gap-2 text-[10px] font-semibold tracking-wider text-muted uppercase">
           <MousePointerClick className="size-3.5" />
@@ -279,6 +294,7 @@ export function DealSidePanel({
             : "Nenhum acesso registrado ainda."}
         </p>
       </Card>
+      )}
 
       {/* ── UTMs ───────────────────────────────────────────────────── */}
       <Card>

@@ -11,6 +11,7 @@ import { X } from "lucide-react";
 export function Drawer({
   closeHref,
   title,
+  tituloAcessivel,
   subtitle,
   badge,
   children,
@@ -20,7 +21,11 @@ export function Drawer({
   width = "narrow",
 }: {
   closeHref: string;
-  title: string;
+  /// Nó, não string: o nome do lead virou botão de copiar.
+  title: React.ReactNode;
+  /// O que o leitor de tela anuncia. Obrigatório quando `title` não é texto:
+  /// `aria-label` só aceita string, e um nó ali silenciaria o rótulo do diálogo.
+  tituloAcessivel?: string;
   subtitle?: React.ReactNode;
   badge?: React.ReactNode;
   children: React.ReactNode;
@@ -52,7 +57,7 @@ export function Drawer({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-label={tituloAcessivel ?? (typeof title === "string" ? title : undefined)}
         className={`relative flex h-full w-full flex-col border-l border-line bg-surface shadow-2xl ${
           width === "wide" ? "max-w-[1180px]" : "max-w-[640px]"
         }`}

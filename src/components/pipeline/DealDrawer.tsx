@@ -1,10 +1,11 @@
-import { Mail, Phone, Trophy, Undo2, Video, X } from "lucide-react";
+import { Mail, Phone, Trophy, Undo2, X } from "lucide-react";
 
 import { closeDeal, reopenDeal } from "@/app/actions/deals";
 import { DealPanels } from "@/components/pipeline/DealPanels";
 import { DealSidePanel } from "@/components/pipeline/DealSidePanel";
 import { StageStepper } from "@/components/pipeline/StageStepper";
 import { Drawer } from "@/components/ui/Drawer";
+import { Copiavel } from "@/components/ui/Copiavel";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import type { SessionUser } from "@/lib/auth";
 import { getDealDetail, getLossReasons, getRelevantCases, getStages } from "@/lib/queries";
@@ -50,25 +51,30 @@ export async function DealDrawer({
     <Drawer
       width="wide"
       closeHref={closeHref}
-      title={deal.lead.name}
+      title={<Copiavel valor={deal.lead.name} titulo="Copiar o nome" />}
+      tituloAcessivel={deal.lead.name}
       badge={<ScoreBadge score={deal.lead.score} />}
       subtitle={
         <span className="flex flex-col gap-1.5">
           {deal.lead.company && (
-            <span className="text-base text-foreground">{deal.lead.company}</span>
+            <Copiavel
+              valor={deal.lead.company}
+              titulo="Copiar a empresa"
+              className="text-base text-foreground"
+            />
           )}
           <span className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
             {deal.lead.email && (
               <span className="inline-flex items-center gap-1.5">
-                <Mail className="size-3.5" />
-                {deal.lead.email}
+                <Mail className="size-3.5 shrink-0" />
+                <Copiavel valor={deal.lead.email} titulo="Copiar o e-mail" />
               </span>
             )}
             {deal.lead.phone && (
               <>
                 <span className="inline-flex items-center gap-1.5">
-                  <Phone className="size-3.5" />
-                  {deal.lead.phone}
+                  <Phone className="size-3.5 shrink-0" />
+                  <Copiavel valor={deal.lead.phone} titulo="Copiar o telefone" />
                 </span>
                 <a href={`tel:${deal.lead.phone}`} className="btn-ghost py-1.5 text-xs">
                   <Phone className="size-3.5" />
@@ -84,11 +90,6 @@ export async function DealDrawer({
           <span className={`chip ${status.tone}`}>
             {status.text}
             {deal.status === "LOST" && deal.lossReason && ` · ${deal.lossReason.name}`}
-          </span>
-
-          <span className="chip border border-line bg-surface text-muted/60">
-            <Video className="size-3.5" />
-            Ver Call
           </span>
 
           {isOpen ? (
