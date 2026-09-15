@@ -45,6 +45,20 @@ const PROPS_NEGOCIO = ["dealname", "amount", "dealstage", "pipeline", "hubspot_o
 const PROPS_CONTATO = ["firstname", "lastname", "email", "phone", "mobilephone", "company", "jobtitle", "createdate"];
 const PROPS_NOTA = ["hs_note_body", "hs_timestamp", "hubspot_owner_id"];
 
+/**
+ * Nome de pessoa como ele deveria ter sido digitado.
+ *
+ * Muita gente no HubSpot tem sobrenome "." ou "-", resquício de importação
+ * anterior ou de formulário que exigia o campo. Sem limpar, a lista de leads
+ * fica cheia de "Juciele ." e ninguém entende se é erro nosso.
+ */
+function nomeLimpo(valor: string) {
+  return valor
+    .replace(/\s+/g, " ")
+    .replace(/(^|\s)[.\-_]+(?=\s|$)/g, "")
+    .trim();
+}
+
 /** Código estável: derivado do id do HubSpot, igual em toda reimportação. */
 const codigoDe = (id: string) => `#h${Number(id).toString(36)}`;
 
@@ -193,9 +207,9 @@ async function main() {
     const contato = contatos.get(chave);
     const primeiro = doGrupo[0];
     const nome =
-      [contato?.firstname, contato?.lastname].filter(Boolean).join(" ").trim() ||
+      nomeLimpo([contato?.firstname, contato?.lastname].filter(Boolean).join(" ")) ||
       contato?.email ||
-      primeiro.props.dealname ||
+      nomeLimpo(primeiro.props.dealname ?? "") ||
       "Sem nome";
     const donoHs = primeiro.props.hubspot_owner_id;
     const ownerIdLead = (donoHs && donos.get(donoHs)) || naoAtribuido;

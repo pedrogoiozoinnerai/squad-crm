@@ -189,38 +189,85 @@ export async function getStages() {
 }
 
 /** Tabela completa de negócios (tela Deals), com busca e filtro por status. */
+/** Teto da lista de negócios: busca estreita o resultado, não a rolagem. */
+const LISTA_NEGOCIOS = 300;
+
+/** O filtro, isolado: a lista e a exportação têm de enxergar o mesmo conjunto. */
+function filtroDeals(user: SessionUser, filters: { q?: string; status?: string }) {
+  const q = filters.q?.trim();
+
+  return {
+    ...ownerScope(user),
+    ...(filters.status && filters.status !== "all"
+      ? { status: filters.status as "OPEN" | "WON" | "LOST" }
+      : {}),
+    ...(q
+      ? {
+          lead: {
+            OR: [
+              // `insensitive` importa desde que há dado de gente de verdade:
+              // sem ele, procurar "joão" não encontra "João".
+              { name: { contains: q, mode: "insensitive" as const } },
+              { email: { contains: q, mode: "insensitive" as const } },
+              { phone: { contains: q } },
+              { company: { contains: q, mode: "insensitive" as const } },
+            ],
+          },
+        }
+      : {}),
+  };
+}
+
 export async function getAllDeals(
   user: SessionUser,
   filters: { q?: string; status?: string },
 ) {
-  const q = filters.q?.trim();
+  const where = filtroDeals(user, filters);
 
+  // Contagem e somas vêm do filtro inteiro, não das 300 linhas carregadas —
+  // senão o cabeçalho anuncia "300 resultados · R$ 72 mil" para uma busca que
+  // casou com 9 mil negócios e R$ 15 milhões.
+  const [deals, agregado, ganho] = await Promise.all([
+    prisma.deal.findMany({
+      where,
+      include: {
+        lead: { select: { name: true, company: true, email: true } },
+        stage: { select: { name: true, color: true } },
+        owner: { select: { name: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: LISTA_NEGOCIOS,
+    }),
+    prisma.deal.aggregate({ where, _count: true, _sum: { valueCents: true } }),
+    prisma.deal.aggregate({ where: { ...where, status: "WON" }, _sum: { valueCents: true } }),
+  ]);
+
+  return {
+    deals,
+    total: agregado._count,
+    valueCents: agregado._sum.valueCents ?? 0,
+    wonCents: ganho._sum.valueCents ?? 0,
+  };
+}
+
+/**
+ * Exportação: o filtro inteiro, sem o teto da tela.
+ *
+ * Reaproveitar `getAllDeals` aqui faria o CSV sair com 300 linhas de 9.504 sem
+ * avisar ninguém — o pior tipo de erro, porque o arquivo parece completo.
+ */
+export async function getDealsParaExportar(
+  user: SessionUser,
+  filters: { q?: string; status?: string },
+) {
   return prisma.deal.findMany({
-    where: {
-      ...ownerScope(user),
-      ...(filters.status && filters.status !== "all"
-        ? { status: filters.status as "OPEN" | "WON" | "LOST" }
-        : {}),
-      ...(q
-        ? {
-            lead: {
-              OR: [
-                { name: { contains: q } },
-                { email: { contains: q } },
-                { phone: { contains: q } },
-                { company: { contains: q } },
-              ],
-            },
-          }
-        : {}),
-    },
+    where: filtroDeals(user, filters),
     include: {
       lead: { select: { name: true, company: true, email: true } },
       stage: { select: { name: true, color: true } },
       owner: { select: { name: true } },
     },
     orderBy: { createdAt: "desc" },
-    take: 300,
   });
 }
 

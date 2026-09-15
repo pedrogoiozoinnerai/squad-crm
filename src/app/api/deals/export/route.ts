@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
-import { getAllDeals } from "@/lib/queries";
+import { getDealsParaExportar } from "@/lib/queries";
 
 /** Aspas duplas escapadas e campo entre aspas — evita quebrar o CSV. */
 function cell(value: unknown) {
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   const status = request.nextUrl.searchParams.get("status") ?? undefined;
 
   // getAllDeals já aplica o escopo: vendedor nunca exporta negócio de outro.
-  const deals = await getAllDeals(user, { q, status });
+  const deals = await getDealsParaExportar(user, { q, status });
 
   const header = [
     "Código", "Lead", "Empresa", "E-mail", "Etapa", "Status",

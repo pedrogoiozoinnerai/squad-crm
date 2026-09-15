@@ -37,6 +37,9 @@ export function DealsView({
   pipelinePath,
   query,
   status,
+  total,
+  valueCents,
+  wonCents,
 }: {
   deals: Row[];
   showOwner: boolean;
@@ -44,9 +47,14 @@ export function DealsView({
   pipelinePath: string;
   query: string;
   status: string;
+  /// Vêm do banco, sobre o filtro inteiro. `deals` é só a primeira página:
+  /// somar o array anunciaria "300 resultados · R$ 72 mil" para uma busca que
+  /// casou com milhares de negócios e milhões em valor.
+  total: number;
+  valueCents: number;
+  wonCents: number;
 }) {
-  const total = deals.reduce((sum, deal) => sum + deal.valueCents, 0);
-  const won = deals.filter((d) => d.status === "WON").reduce((s, d) => s + d.valueCents, 0);
+  const escondidos = Math.max(0, total - deals.length);
 
   const params = new URLSearchParams();
   if (query) params.set("q", query);
@@ -56,7 +64,10 @@ export function DealsView({
     <>
       <PageHeader
         title="Negócios"
-        subtitle={`${deals.length} ${deals.length === 1 ? "resultado" : "resultados"} · ${brl(total)} no filtro · ${brl(won)} ganho`}
+        subtitle={
+          `${total} ${total === 1 ? "resultado" : "resultados"} · ${brl(valueCents)} no filtro · ${brl(wonCents)} ganho` +
+          (escondidos > 0 ? ` · listando os ${deals.length} mais recentes` : "")
+        }
         actions={
           <a href={`/api/deals/export?${params.toString()}`} className="btn-ghost">
             <Download className="size-4" />
