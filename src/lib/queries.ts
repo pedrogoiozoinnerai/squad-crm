@@ -5,7 +5,39 @@ import { addDays } from "date-fns";
 import { weekStart } from "@/lib/dates";
 
 import { ownerScope, type SessionUser } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { DB_SCHEMA, prisma } from "@/lib/prisma";
+
+/**
+ * As três somas do topo do início, calculadas no banco.
+ *
+ * `$queryRawUnsafe` porque o schema entra por interpolação — identificador não
+ * aceita bind param. Ele vem de `DB_SCHEMA`, já validado por `identificador()`
+ * na subida do cliente, e todo valor de fato variável vai como parâmetro.
+ */
+async function somasDoPipeline(ownerId: string | undefined, inicioMes: Date, fimMes: Date) {
+  const linhas = await prisma.$queryRawUnsafe<
+    { bruto: bigint; ponderado: bigint; previsto: bigint }[]
+  >(
+    `SELECT
+       COALESCE(SUM("valueCents"), 0)::bigint AS bruto,
+       COALESCE(ROUND(SUM("valueCents"::numeric * "probability") / 100), 0)::bigint AS ponderado,
+       COALESCE(ROUND(SUM(CASE WHEN "expectedAt" >= $1 AND "expectedAt" < $2
+                               THEN "valueCents"::numeric * "probability" ELSE 0 END) / 100), 0)::bigint AS previsto
+     FROM "${DB_SCHEMA}"."Deal"
+     WHERE status = 'OPEN'
+       AND ($3::text IS NULL OR "ownerId" = $3)`,
+    inicioMes,
+    fimMes,
+    ownerId ?? null,
+  );
+
+  const linha = linhas[0];
+  return {
+    pipelineBruto: Number(linha?.bruto ?? 0),
+    pipelinePonderado: Number(linha?.ponderado ?? 0),
+    previstoMes: Number(linha?.previsto ?? 0),
+  };
+}
 
 /** Reuniões da semana, já no escopo do usuário. */
 export async function getWeekMeetings(user: SessionUser, start: Date) {
@@ -100,9 +132,23 @@ export async function getPipeline(user: SessionUser) {
   };
 }
 
+/**
+ * Teto da fila de tarefas.
+ *
+ * A fila é ordenada por pendentes primeiro e prazo mais próximo, então as 200
+ * do topo são exatamente as que importam hoje. Sem teto, a tela crescia junto
+ * com o histórico: 398 tarefas já eram 267 KB, e a migração do HubSpot só
+ * acrescenta.
+ */
+const FILA_TAREFAS = 200;
+
 export async function getTasks(user: SessionUser) {
-  return prisma.task.findMany({
-    where: ownerScope(user),
+  const escopo = ownerScope(user);
+  const agora = new Date();
+
+  const [tasks, pendentes, atrasadas, concluidas] = await Promise.all([
+    prisma.task.findMany({
+      where: escopo,
     include: {
       lead: { select: { name: true, phone: true, company: true } },
       deal: { select: { code: true, stage: { select: { name: true, color: true } } } },
@@ -111,8 +157,17 @@ export async function getTasks(user: SessionUser) {
       // a conversa em branco e cada vendedor reescreve a frase do seu jeito.
       template: { select: { messageText: true } },
     },
-    orderBy: [{ status: "asc" }, { dueAt: "asc" }],
-  });
+      orderBy: [{ status: "asc" }, { dueAt: "asc" }],
+      take: FILA_TAREFAS,
+    }),
+    // Contados no banco, não no que coube na página: "Pendentes: 200" numa
+    // fila de 400 mandaria o vendedor para casa achando o trabalho menor.
+    prisma.task.count({ where: { ...escopo, status: "PENDING" } }),
+    prisma.task.count({ where: { ...escopo, status: "PENDING", dueAt: { lt: agora } } }),
+    prisma.task.count({ where: { ...escopo, status: "DONE" } }),
+  ]);
+
+  return { tasks, totais: { pendentes, atrasadas, concluidas } };
 }
 
 export async function getUsers() {
@@ -414,20 +469,15 @@ export async function getDashboard(user: SessionUser) {
       : Promise.resolve([]),
   ]);
 
-  // Ponderado precisa do valor × probabilidade linha a linha, não do total.
-  const abertos = await prisma.deal.findMany({
-    where: { ...scope, status: "OPEN" },
-    select: { valueCents: true, probability: true, expectedAt: true },
-  });
-
-  const pipelineBruto = abertos.reduce((s, d) => s + d.valueCents, 0);
-  const pipelinePonderado = Math.round(
-    abertos.reduce((s, d) => s + d.valueCents * (d.probability / 100), 0),
-  );
-  const previstoMes = Math.round(
-    abertos
-      .filter((d) => d.expectedAt && d.expectedAt >= inicioMes && d.expectedAt < addDays(inicioMes, 31))
-      .reduce((s, d) => s + d.valueCents * (d.probability / 100), 0),
+  // Ponderado é valor × probabilidade linha a linha, e o `_sum` do Prisma não
+  // multiplica duas colunas. A versão anterior contornava trazendo TODAS as
+  // linhas abertas para somar em JavaScript: com a base do HubSpot dentro são
+  // 8.593 negócios e 445 KB atravessando a rede a cada carregamento do início,
+  // para produzir três números. O Postgres soma e devolve os três.
+  const { pipelineBruto, pipelinePonderado, previstoMes } = await somasDoPipeline(
+    scope.ownerId,
+    inicioMes,
+    addDays(inicioMes, 31),
   );
 
   // Nomes do RANKING, não da lista de atribuição: aqui entram também contas

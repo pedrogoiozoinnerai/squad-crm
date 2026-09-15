@@ -49,30 +49,42 @@ function dueLabel(dueAt: Date | null, now: number) {
 
 export function TasksView({
   tasks,
+  totais,
   showOwner,
   now,
 }: {
   tasks: Task[];
+  /// Contagens do banco, sobre a fila inteira. `tasks` é só o topo dela:
+  /// contar o array daria um número menor que a verdade no cabeçalho.
+  totais: { pendentes: number; atrasadas: number; concluidas: number };
   showOwner: boolean;
   /** Instante único vindo do servidor: todas as linhas comparam com o mesmo "agora". */
   now: Date;
 }) {
   const reference = now.getTime();
-  const pending = tasks.filter((t) => t.status === "PENDING");
-  const overdue = pending.filter((t) => t.dueAt && t.dueAt.getTime() < reference);
+  const escondidas = Math.max(0, totais.pendentes + totais.concluidas - tasks.length);
 
   return (
     <>
-      <PageHeader title="Tarefas" subtitle="Sua fila de trabalho do dia" />
+      <PageHeader
+        title="Tarefas"
+        subtitle={
+          escondidas > 0
+            ? `Sua fila de trabalho do dia — mostrando as ${tasks.length} mais urgentes`
+            : "Sua fila de trabalho do dia"
+        }
+      />
 
       <StatBar
         items={[
-          { label: "Pendentes", value: pending.length },
+          { label: "Pendentes", value: totais.pendentes },
           {
             label: "Atrasadas",
-            value: <span className={overdue.length ? "text-red-600" : ""}>{overdue.length}</span>,
+            value: (
+              <span className={totais.atrasadas ? "text-red-600" : ""}>{totais.atrasadas}</span>
+            ),
           },
-          { label: "Concluídas", value: tasks.filter((t) => t.status === "DONE").length },
+          { label: "Concluídas", value: totais.concluidas },
         ]}
       />
 

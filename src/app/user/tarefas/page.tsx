@@ -4,7 +4,7 @@ import { getTasks } from "@/lib/queries";
 
 export default async function TasksPage() {
   const user = await requireUser("user");
-  const tasks = await getTasks(user);
+  const { tasks, totais } = await getTasks(user);
 
-  return <TasksView tasks={tasks} showOwner={user.role === "ADMIN"} now={new Date()} />;
+  return <TasksView tasks={tasks} totais={totais} showOwner={user.role === "ADMIN"} now={new Date()} />;
 }
