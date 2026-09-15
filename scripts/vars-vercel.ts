@@ -30,12 +30,27 @@ const PRODUCAO: Record<string, string | undefined> = {
   GOOGLE_CLIENT_SECRET: env("GOOGLE_CLIENT_SECRET"),
 };
 
+/**
+ * `--bloco` imprime no formato CHAVE=valor, para colar de uma vez só.
+ *
+ * O painel da Vercel aceita um .env inteiro colado no campo da chave e o
+ * quebra em várias variáveis. Colar o `.env` do projeto direto seria um erro:
+ * ele aponta para `crm_dev` e `type_dev`. Este bloco é o mesmo conteúdo já
+ * corrigido para produção, que é a única diferença que importa — e a que todo
+ * mundo esquece.
+ */
+const BLOCO = process.argv.includes("--bloco");
+
 let problemas = 0;
-console.log("\nVercel → Settings → Environment Variables → Production");
-console.log("Um campo por variável. Cole só o que vem depois do nome.\n");
+if (!BLOCO) {
+  console.log("\nVercel → Settings → Environment Variables → Production");
+  console.log("Um campo por variável. Cole só o que vem depois do nome.");
+  console.log("Para colar tudo de uma vez:  npm run vercel:vars -- --bloco\n");
+}
 
 for (const [nome, valor] of Object.entries(PRODUCAO)) {
   if (!valor) {
+    if (BLOCO) continue;
     const opcional = nome.startsWith("GOOGLE_");
     console.log(`  ${nome}\n    ${opcional ? "— vazio (entrada com Google fica desligada)" : "✗ ausente no .env local"}\n`);
     if (!opcional) problemas++;
@@ -50,9 +65,15 @@ for (const [nome, valor] of Object.entries(PRODUCAO)) {
     problemas++;
     continue;
   }
-  console.log(`  ${nome}`);
-  console.log(`  ${valor}\n`);
+  if (BLOCO) {
+    console.log(`${nome}=${valor}`);
+  } else {
+    console.log(`  ${nome}`);
+    console.log(`  ${valor}\n`);
+  }
 }
+
+if (BLOCO) process.exit(problemas === 0 ? 0 : 1);
 
 console.log(
   problemas === 0

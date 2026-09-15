@@ -15,8 +15,16 @@ específico deste app.
 
 ## 1. Variáveis na Vercel
 
-Project Settings → Environment Variables, escopo **Production**.
-Copie os valores do `.env` local — **exceto os dois schemas, que mudam**:
+    npm run vercel:vars -- --bloco
+
+Imprime as nove no formato `CHAVE=valor`, pronto para colar de uma vez no campo
+da chave — o painel da Vercel quebra o bloco em variáveis separadas.
+
+Colar o `.env` do projeto direto **não** serve: ele aponta para `crm_dev` e
+`type_dev`. O comando imprime o mesmo conteúdo já corrigido para produção, que
+é a única diferença que importa e a que todo mundo esquece.
+
+Project Settings → Environment Variables, escopo **Production**:
 
 | Variável | Valor |
 |---|---|
