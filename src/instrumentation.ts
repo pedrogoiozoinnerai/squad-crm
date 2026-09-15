@@ -19,6 +19,12 @@ import type { Instrumentation } from "next";
  *
  * A importação do Prisma é preguiçosa. Este módulo é carregado na subida do
  * servidor, antes das variáveis de ambiente valerem em alguns ambientes.
+ *
+ * E é guardada por `NEXT_RUNTIME`. Sem essa guarda o empacotador arrasta o
+ * Prisma para o pacote do runtime Edge, onde ele não compila — o build
+ * avisava "Ecmascript file had an error · Edge Instrumentation" e seguia, o
+ * registrador nunca subia, e a tabela de erros ficava vazia justamente quando
+ * havia erro. Foi assim que um 500 em produção passou sem deixar rastro.
  */
 const SEGREDOS = [
   /postgres(ql)?:\/\/[^@\s]+@/gi, // string de conexão com usuário e senha
@@ -32,6 +38,10 @@ function higienizar(texto: string) {
 }
 
 export const onRequestError: Instrumentation.onRequestError = async (erro, request, context) => {
+  // Só no runtime Node: é o único onde o Prisma existe. No Edge esta função
+  // ainda roda, e sem a guarda a importação derruba o próprio tratador.
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+
   try {
     const { prisma } = await import("@/lib/prisma");
 
