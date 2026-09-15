@@ -175,11 +175,15 @@ export function DashboardView({
           }
         />
         <MiniCard href={`/${space}/calendar`} label="Reuniões na semana" value={data.reunioesSemana} />
+        {/* O número grande é o que exige ação hoje: lead completo esperando
+            contato. Antes o destaque era o incompleto, então a tela dizia "0"
+            enquanto dois leads prontos esperavam — e quem lesse só o número
+            concluiria que não havia nada a fazer. */}
         <MiniCard
           href={`/${space}/leads`}
-          label="Leads a qualificar"
-          value={data.leads.INCOMPLETE ?? 0}
-          hint={`${data.leads.COMPLETE ?? 0} prontos para contato`}
+          label="Leads para contatar"
+          value={data.leads.COMPLETE ?? 0}
+          hint={`${data.leads.INCOMPLETE ?? 0} ainda sem qualificação`}
         />
         <MiniCard
           href={`/${space}/leads`}

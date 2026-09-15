@@ -19,6 +19,21 @@ type Lead = {
   owner: { name: string } | null;
 };
 
+/**
+ * Rótulo da origem.
+ *
+ * `source` guarda código nosso — `funil_type_sem_agenda` — e a tela mostrava o
+ * código cru. O vendedor não tem por que aprender a nomenclatura do banco para
+ * entender de onde o lead veio. Origem desconhecida cai no próprio valor, que
+ * é melhor do que esconder.
+ */
+const ORIGEM: Record<string, string> = {
+  funil_type: "Funil do Type",
+  funil_type_sem_agenda: "Funil · não agendou",
+  HubSpot: "HubSpot",
+  "HubSpot (negócio sem contato)": "HubSpot · sem contato",
+};
+
 const COLUMNS = [
   {
     status: "INCOMPLETE" as const,
@@ -157,7 +172,7 @@ export function LeadsView({
                         <span className="text-xs text-muted italic">Sem telefone</span>
                       )}
                       {lead.source && (
-                        <span className="chip bg-surface-2 text-muted">{lead.source}</span>
+                        <span className="chip bg-surface-2 text-muted">{ORIGEM[lead.source] ?? lead.source}</span>
                       )}
                     </div>
 

@@ -427,6 +427,10 @@ async function importarAtividades(
 
       if (objeto === "tasks") {
         const assunto = texto(p.hs_task_subject) || "Tarefa importada";
+        // No HubSpot é comum o corpo repetir o título. Guardar os dois faria a
+        // fila mostrar a mesma frase duas vezes, uma embaixo da outra.
+        const corpo = texto(p.hs_task_body);
+        const descricao = corpo && corpo !== assunto ? corpo : null;
         const status = STATUS_TAREFA[p.hs_task_status ?? ""] ?? "PENDING";
         await prisma.task.upsert({
           where: { hubspotTaskId: reg.id },
@@ -435,7 +439,7 @@ async function importarAtividades(
           // redistribuição feita aqui dentro.
           update: {
             subject: assunto,
-            description: texto(p.hs_task_body) || null,
+            description: descricao,
             status,
             priority: PRIORIDADE[p.hs_task_priority ?? ""] ?? "MEDIUM",
             dueAt: data(p.hs_timestamp),
@@ -443,7 +447,7 @@ async function importarAtividades(
           create: {
             hubspotTaskId: reg.id,
             subject: assunto,
-            description: texto(p.hs_task_body) || null,
+            description: descricao,
             type: TIPO_TAREFA[p.hs_task_type ?? ""] ?? "follow_up",
             status,
             priority: PRIORIDADE[p.hs_task_priority ?? ""] ?? "MEDIUM",

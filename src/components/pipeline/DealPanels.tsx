@@ -22,6 +22,7 @@ import { linkWhatsapp } from "@/lib/mensagem";
 export type PanelTask = {
   id: string;
   subject: string;
+  description: string | null;
   type: string;
   status: "PENDING" | "DONE" | "CANCELED";
   priority: "LOW" | "MEDIUM" | "HIGH";
@@ -279,6 +280,9 @@ function TaskRow({ task }: { task: PanelTask }) {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className={`text-sm font-semibold ${done ? "line-through" : ""}`}>{task.subject}</p>
+            {task.description && (
+              <p className="mt-0.5 text-xs whitespace-pre-line text-muted">{task.description}</p>
+            )}
             {task.dueAt && (
               <p className="mt-0.5 text-xs text-muted">
                 vence{" "}

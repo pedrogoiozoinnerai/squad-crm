@@ -12,6 +12,9 @@ type Task = {
   status: "PENDING" | "DONE" | "CANCELED";
   priority: "LOW" | "MEDIUM" | "HIGH";
   dueAt: Date | null;
+  /// Corpo da tarefa. Veio junto na migração e não aparecia em lugar nenhum:
+  /// o vendedor lia "Verificar se a Meta foi aprovada" sem saber o que checar.
+  description: string | null;
   lead: { name: string; phone: string | null; company: string | null } | null;
   deal: { code: string; stage: { name: string; color: string } } | null;
   owner: { name: string };
@@ -134,8 +137,15 @@ export function TasksView({
                       </button>
                     </form>
                   </td>
-                  <td className={`px-4 py-3 font-medium ${done ? "line-through" : ""}`}>
-                    {task.subject}
+                  <td className="px-4 py-3">
+                    <span className={`font-medium ${done ? "line-through" : ""}`}>
+                      {task.subject}
+                    </span>
+                    {task.description && (
+                      <span className="mt-0.5 block max-w-[38ch] truncate text-xs text-muted" title={task.description}>
+                        {task.description}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-muted">
                     {TYPE_LABEL[task.type] ?? task.type}
