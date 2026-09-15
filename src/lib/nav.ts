@@ -5,6 +5,7 @@ import {
   KanbanSquare,
   LayoutDashboard,
   ListChecks,
+  Activity,
   DownloadCloud,
   Settings,
   UserPlus,
@@ -30,6 +31,7 @@ export const NAV = [
 export const ADMIN_NAV = [
   { slug: "time", label: "Meu Time", icon: Users, feature: "time" },
   { slug: "usuarios", label: "Usuários", icon: Users, feature: "usuarios" },
+  { slug: "monitoramento", label: "Monitoramento", icon: Activity, feature: "monitoramento" },
   { slug: "configuracoes", label: "Configurações", icon: Settings, feature: "configuracoes" },
   { slug: "importar", label: "Importar do Funil", icon: DownloadCloud, feature: "importar" },
 ] as const;

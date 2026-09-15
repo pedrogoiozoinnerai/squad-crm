@@ -538,6 +538,9 @@ model Meeting {
   leadId String?
   lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
 
+  roomEvents RoomEvent[]
+  presences  Presence[]
+
   @@index([startsAt])
   @@index([ownerId, startsAt])
   @@index([leadId])
@@ -677,4 +680,92 @@ model SendQueue {
   @@index([status, priority, createdAt])
   @@index([leadId])
   @@index([instanceId])
+}
+
+// ── LiveKit: presença em três camadas ────────────────────────────────────────
+//
+// 1. `RoomEvent` guarda o que o LiveKit contou, cru e sem interpretação.
+// 2. `Presence` é DERIVADA dos eventos por reconciliação idempotente.
+// 3. A tela de monitoramento mostra quando a camada 1 parou de chegar.
+//
+// A razão de ser: no CRM de referência a presença é escrita direto pelo
+// webhook, o webhook precisa ser configurado à mão no painel do LiveKit e
+// ninguém verifica se foi. São 1.028 participações esperando um botão manual
+// de reprocessar. Evento cru + derivação idempotente conserta sozinho quando
+// os dados voltam; estado escrito direto não tem como se recuperar.
+
+/// Evento cru de sala. Só o webhook escreve aqui, e nada além de INSERT.
+model RoomEvent {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  /// Id do evento no LiveKit. Único porque ele REENTREGA quando não recebe
+  /// 200 — sem isso a mesma entrada contaria duas vezes e inflaria o tempo
+  /// de permanência.
+  livekitId String @unique
+
+  /// room_started | room_finished | participant_joined | participant_left
+  type String
+  room String
+
+  /// Quando aconteceu no LiveKit — não quando chegou aqui. A diferença
+  /// importa: uma reentrega de ontem tem que somar no tempo de ontem.
+  at DateTime
+
+  /// "u_<userId>" ou "l_<leadId>", como o token emitiu. Nulo em room_started
+  /// e room_finished.
+  identity String?
+  name     String?
+
+  meetingId String?
+  meeting   Meeting? @relation(fields: [meetingId], references: [id], onDelete: SetNull)
+
+  @@index([room, at])
+  @@index([meetingId])
+  @@index([type, at])
+  @@index([createdAt])
+}
+
+/// Presença consolidada de um participante numa reunião. Recalculável: apagar
+/// tudo aqui e rodar a reconciliação de novo devolve exatamente o mesmo.
+model Presence {
+  id        String   @id @default(cuid())
+  updatedAt DateTime @updatedAt
+
+  meetingId String
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  identity String
+  name     String?
+
+  /// Preenchidos a partir do prefixo da identidade. Um dos dois, nunca ambos.
+  userId String?
+  leadId String?
+
+  /// Primeira entrada e última saída.
+  joinedAt DateTime
+  leftAt   DateTime?
+
+  /// Tempo somado de permanência. Soma de TODOS os pares entrada/saída:
+  /// queda de conexão no meio da call é normal, e contar só o primeiro par
+  /// subestimaria quem ficou até o fim.
+  seconds Int @default(0)
+
+  @@unique([meetingId, identity])
+  @@index([meetingId])
+  @@index([leadId])
+}
+
+/// Configuração da plataforma. Uma linha só — o id fixo garante isso.
+model Config {
+  id        String   @id @default("unica")
+  updatedAt DateTime @updatedAt
+
+  /// Quando um participante "esteve" na reunião.
+  ///
+  /// São regra de negócio, não constante: o que conta como presença numa demo
+  /// de 20 minutos não é o que conta numa mentoria de 2 horas. Os dois
+  /// critérios valem juntos — precisa passar nos dois.
+  presencaMinutos    Int @default(5)
+  presencaPercentual Int @default(0)
 }
