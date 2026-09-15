@@ -41,3 +41,53 @@ export function brl(cents: number) {
 export function centsToInput(cents: number) {
   return cents ? (cents / 100).toFixed(2) : "";
 }
+
+/** Dia/mês, do jeito que cabe num cartão: "15/09". */
+export function diaMes(date: Date) {
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+}
+
+/**
+ * Distância em dias de calendário, não em horas. "Venceu ontem" tem que dizer
+ * 1 dia mesmo quando faltam 20 horas para completar 24 — é assim que a pessoa
+ * lê um prazo.
+ */
+export function diasEntre(de: Date, para: Date) {
+  const inicio = new Date(de);
+  inicio.setHours(0, 0, 0, 0);
+  const fim = new Date(para);
+  fim.setHours(0, 0, 0, 0);
+  return Math.round((fim.getTime() - inicio.getTime()) / 86_400_000);
+}
+
+/** Duração compacta para caber ao lado de outra informação: "3d", "2 sem". */
+export function rotuloDeDias(dias: number) {
+  const n = Math.abs(dias);
+  if (n < 7) return `${n}d`;
+  if (n < 30) return `${Math.floor(n / 7)} sem`;
+  if (n < 365) return `${Math.floor(n / 30)} m`;
+  return `${Math.floor(n / 365)} a`;
+}
+
+/**
+ * Como um prazo se lê em relação a agora. Recebe `agora` em vez de chamar
+ * `new Date()`: o cartão é renderizado no servidor e reidratado no cliente, e
+ * duas leituras de relógio diferentes dariam textos diferentes nos dois lados.
+ */
+export function prazoRelativo(prazo: Date, agora: Date) {
+  const dias = diasEntre(agora, prazo);
+
+  // O que decide se está atrasado é o instante, não o dia: uma tarefa marcada
+  // para hoje às 9h já venceu às 14h. O cartão conta as atrasadas por esta
+  // mesma régua, e "1 atrasada" ao lado de "vence hoje" não faz sentido.
+  if (prazo < agora) {
+    return {
+      texto: dias === 0 ? "venceu hoje" : `atrasada ${rotuloDeDias(dias)}`,
+      atrasado: true,
+    };
+  }
+
+  if (dias === 0) return { texto: "vence hoje", atrasado: false };
+  if (dias === 1) return { texto: "vence amanhã", atrasado: false };
+  return { texto: `em ${rotuloDeDias(dias)}`, atrasado: false };
+}

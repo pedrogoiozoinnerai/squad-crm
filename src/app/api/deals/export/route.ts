@@ -14,11 +14,19 @@ export async function GET(request: NextRequest) {
   const user = await getSessionUser();
   if (!user) return new Response("Não autenticado.", { status: 401 });
 
-  const q = request.nextUrl.searchParams.get("q") ?? undefined;
-  const status = request.nextUrl.searchParams.get("status") ?? undefined;
+  // Os mesmos parâmetros que as telas usam. Um CSV que ignora o filtro da tela
+  // é pior que não ter botão: quem exporta confere o total e acha que o
+  // sistema perdeu negócios.
+  const params = request.nextUrl.searchParams;
+  const texto = (nome: string) => params.get(nome) ?? undefined;
 
-  // getAllDeals já aplica o escopo: vendedor nunca exporta negócio de outro.
-  const deals = await getDealsParaExportar(user, { q, status });
+  // getDealsParaExportar já aplica o escopo: vendedor nunca exporta negócio de outro.
+  const deals = await getDealsParaExportar(user, {
+    q: texto("q"),
+    status: texto("status"),
+    closer: texto("closer"),
+    prazo: texto("prazo"),
+  });
 
   const header = [
     "Código", "Lead", "Empresa", "E-mail", "Etapa", "Status",

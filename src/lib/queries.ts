@@ -96,15 +96,105 @@ export async function getLeads(user: SessionUser) {
   };
 }
 
-export async function getPipeline(user: SessionUser) {
-  const escopo = { ...ownerScope(user), status: "OPEN" as const };
+/**
+ * Filtros do board, todos vindos da URL — recarregar a página não perde o
+ * recorte, e o vendedor pode mandar o link de uma busca para o gestor.
+ */
+export type FiltroPipeline = {
+  q?: string;
+  closer?: string;
+  prazo?: string;
+  ordem?: string;
+};
+
+/**
+ * Recorte por prazo de tarefa. O último é o mais útil no dia a dia: negócio
+ * aberto sem nenhum próximo passo marcado é exatamente o que some do radar —
+ * não aparece em lista de atrasados nem em agenda, e envelhece calado.
+ */
+function recorteDePrazo(prazo: string | undefined, agora: Date) {
+  const hoje = new Date(agora);
+  hoje.setHours(0, 0, 0, 0);
+  const pendente = { status: "PENDING" as const };
+
+  switch (prazo) {
+    case "atrasados":
+      return { tasks: { some: { ...pendente, dueAt: { lt: agora } } } };
+    // "Até hoje" inclui o que venceu ontem de propósito: a pergunta que o
+    // vendedor faz de manhã é "o que eu tenho que fazer", não "o que venceu
+    // exatamente hoje".
+    case "hoje":
+      return { tasks: { some: { ...pendente, dueAt: { lt: addDays(hoje, 1) } } } };
+    case "semana":
+      return { tasks: { some: { ...pendente, dueAt: { lt: addDays(hoje, 7) } } } };
+    case "sem-tarefa":
+      return { tasks: { none: pendente } };
+    default:
+      return {};
+  }
+}
+
+function ordenacaoDoBoard(ordem: string | undefined) {
+  switch (ordem) {
+    case "valor":
+      return { valueCents: "desc" as const };
+    // `nulls: last` importa: no Postgres o NULL vem primeiro no ASC, então
+    // sem isso a ordenação por previsão começaria justamente pelos negócios
+    // que não têm previsão nenhuma.
+    case "prazo":
+      return { expectedAt: { sort: "asc" as const, nulls: "last" as const } };
+    case "parado":
+      return { updatedAt: "asc" as const };
+    default:
+      return { updatedAt: "desc" as const };
+  }
+}
+
+export async function getPipeline(
+  user: SessionUser,
+  filtros: FiltroPipeline = {},
+  agora = new Date(),
+) {
+  const q = filtros.q?.trim();
+  // Só admin escolhe closer. Para vendedor o parâmetro é ignorado, e o escopo
+  // do próprio usuário continua sendo o único filtro de dono que vale.
+  const closer = user.role === "ADMIN" ? filtros.closer?.trim() : undefined;
+
+  const escopo = {
+    ...ownerScope(user),
+    ...(closer ? { ownerId: closer } : {}),
+    status: "OPEN" as const,
+    ...recorteDePrazo(filtros.prazo, agora),
+    ...(q
+      ? {
+          lead: {
+            OR: [
+              { name: { contains: q, mode: "insensitive" as const } },
+              { email: { contains: q, mode: "insensitive" as const } },
+              { phone: { contains: q } },
+              { company: { contains: q, mode: "insensitive" as const } },
+            ],
+          },
+        }
+      : {}),
+  };
+
   const stages = await prisma.stage.findMany({ orderBy: { order: "asc" } });
 
-  // Soma e contagem saem de um groupBy sobre a etapa inteira. Somar o que veio
-  // na fatia daria um valor de pipeline menor que o real — e um número de
-  // previsão errado é pior do que número nenhum.
+  // Contagem, soma e ponderado saem de um groupBy sobre a etapa inteira.
+  // Somar o que veio na fatia daria um pipeline menor que o real.
+  //
+  // O groupBy inclui `probability` porque o Prisma não multiplica duas colunas
+  // numa agregação. Agrupando também por ela, cada linha tem uma probabilidade
+  // só e o ponderado vira uma multiplicação exata — são poucas dezenas de
+  // linhas (etapas × probabilidades distintas), não os 8 mil negócios.
   const [totais, fatias] = await Promise.all([
-    prisma.deal.groupBy({ by: ["stageId"], where: escopo, _count: true, _sum: { valueCents: true } }),
+    prisma.deal.groupBy({
+      by: ["stageId", "probability"],
+      where: escopo,
+      _count: true,
+      _sum: { valueCents: true },
+    }),
     Promise.all(
       stages.map((stage) =>
         prisma.deal.findMany({
@@ -112,23 +202,123 @@ export async function getPipeline(user: SessionUser) {
           include: {
             lead: { select: { id: true, name: true, company: true, phone: true, score: true } },
             owner: { select: { name: true } },
-            _count: { select: { tasks: true } },
           },
-          orderBy: { updatedAt: "desc" },
+          orderBy: ordenacaoDoBoard(filtros.ordem),
           take: POR_COLUNA,
         }),
       ),
     ),
   ]);
 
-  const porEtapa = new Map(totais.map((t) => [t.stageId, t]));
-  return {
-    stages: stages.map((stage) => ({
+  const porEtapa = new Map<
+    string,
+    { total: number; valueCents: number; ponderadoBruto: number }
+  >();
+  for (const linha of totais) {
+    const atual = porEtapa.get(linha.stageId) ?? {
+      total: 0,
+      valueCents: 0,
+      ponderadoBruto: 0,
+    };
+    const soma = linha._sum.valueCents ?? 0;
+    atual.total += linha._count;
+    atual.valueCents += soma;
+    // Acumula sem dividir: arredondar a cada grupo somaria o erro de
+    // arredondamento dezenas de vezes no total da tela.
+    atual.ponderadoBruto += soma * linha.probability;
+    porEtapa.set(linha.stageId, atual);
+  }
+
+  const cartoes = fatias.flat();
+
+  // Os sinais de urgência do cartão. Duas consultas a mais, ambas limitadas
+  // aos ids que já estão na tela — e sem elas o board não diz ao vendedor
+  // onde ele está atrasado, que é a única pergunta que ele faz olhando pro
+  // quadro.
+  const dealIds = cartoes.map((deal) => deal.id);
+  const leadIds = [...new Set(cartoes.map((deal) => deal.leadId))];
+
+  const [tarefas, reunioes] = await Promise.all([
+    dealIds.length
+      ? prisma.task.findMany({
+          where: { dealId: { in: dealIds }, status: "PENDING" },
+          select: { dealId: true, dueAt: true },
+        })
+      : [],
+    leadIds.length
+      ? prisma.meeting.findMany({
+          where: {
+            leadId: { in: leadIds },
+            status: { not: "CANCELED" },
+            // Reunião de três meses atrás não é sinal de nada. O recorte
+            // também impede que um lead com histórico longo traga dezenas
+            // de linhas inúteis.
+            startsAt: { gte: addDays(agora, -30) },
+          },
+          select: { leadId: true, startsAt: true, status: true },
+          orderBy: { startsAt: "asc" },
+        })
+      : [],
+  ]);
+
+  const porDeal = new Map<
+    string,
+    { pendentes: number; atrasadas: number; proxima: Date | null }
+  >();
+  for (const tarefa of tarefas) {
+    if (!tarefa.dealId) continue;
+    const atual = porDeal.get(tarefa.dealId) ?? {
+      pendentes: 0,
+      atrasadas: 0,
+      proxima: null,
+    };
+    atual.pendentes += 1;
+    if (tarefa.dueAt) {
+      if (tarefa.dueAt < agora) atual.atrasadas += 1;
+      if (!atual.proxima || tarefa.dueAt < atual.proxima) atual.proxima = tarefa.dueAt;
+    }
+    porDeal.set(tarefa.dealId, atual);
+  }
+
+  // Vem ordenado por data: guarda a próxima reunião futura; enquanto só
+  // houver passado, mantém a mais recente. A troca para enquanto a guardada
+  // já for futura, porque daí as seguintes também são.
+  const porLead = new Map<string, { startsAt: Date; status: string }>();
+  for (const reuniao of reunioes) {
+    if (!reuniao.leadId) continue;
+    const atual = porLead.get(reuniao.leadId);
+    if (!atual || atual.startsAt < agora) porLead.set(reuniao.leadId, reuniao);
+  }
+
+  const etapas = stages.map((stage) => {
+    const soma = porEtapa.get(stage.id);
+    return {
       ...stage,
-      total: porEtapa.get(stage.id)?._count ?? 0,
-      valueCents: porEtapa.get(stage.id)?._sum.valueCents ?? 0,
-    })),
-    deals: fatias.flat(),
+      total: soma?.total ?? 0,
+      valueCents: soma?.valueCents ?? 0,
+      weightedCents: Math.round((soma?.ponderadoBruto ?? 0) / 100),
+    };
+  });
+
+  return {
+    stages: etapas,
+    deals: cartoes.map((deal) => {
+      const tarefa = porDeal.get(deal.id);
+      const reuniao = porLead.get(deal.leadId) ?? null;
+      return {
+        ...deal,
+        tarefasPendentes: tarefa?.pendentes ?? 0,
+        tarefasAtrasadas: tarefa?.atrasadas ?? 0,
+        proximaTarefa: tarefa?.proxima ?? null,
+        reuniao,
+      };
+    }),
+    // Totais do topo somados sobre as etapas, não sobre os cartões
+    // carregados: a fatia é de 60 por coluna, e somar ela anunciava um
+    // pipeline menor do que a própria soma das colunas logo abaixo.
+    total: etapas.reduce((soma, etapa) => soma + etapa.total, 0),
+    valueCents: etapas.reduce((soma, etapa) => soma + etapa.valueCents, 0),
+    weightedCents: etapas.reduce((soma, etapa) => soma + etapa.weightedCents, 0),
   };
 }
 
@@ -265,14 +455,26 @@ export async function getStages() {
 const LISTA_NEGOCIOS = 300;
 
 /** O filtro, isolado: a lista e a exportação têm de enxergar o mesmo conjunto. */
-function filtroDeals(user: SessionUser, filters: { q?: string; status?: string }) {
+export type FiltroDeals = {
+  q?: string;
+  status?: string;
+  closer?: string;
+  prazo?: string;
+};
+
+function filtroDeals(user: SessionUser, filters: FiltroDeals, agora = new Date()) {
   const q = filters.q?.trim();
+  // Mesma regra do board: escolher closer é coisa de admin. Vale repetir aqui
+  // porque esta função também alimenta a exportação, que é uma rota própria.
+  const closer = user.role === "ADMIN" ? filters.closer?.trim() : undefined;
 
   return {
     ...ownerScope(user),
+    ...(closer ? { ownerId: closer } : {}),
     ...(filters.status && filters.status !== "all"
       ? { status: filters.status as "OPEN" | "WON" | "LOST" }
       : {}),
+    ...recorteDePrazo(filters.prazo, agora),
     ...(q
       ? {
           lead: {
@@ -290,10 +492,7 @@ function filtroDeals(user: SessionUser, filters: { q?: string; status?: string }
   };
 }
 
-export async function getAllDeals(
-  user: SessionUser,
-  filters: { q?: string; status?: string },
-) {
+export async function getAllDeals(user: SessionUser, filters: FiltroDeals) {
   const where = filtroDeals(user, filters);
 
   // Contagem e somas vêm do filtro inteiro, não das 300 linhas carregadas —
@@ -328,10 +527,7 @@ export async function getAllDeals(
  * Reaproveitar `getAllDeals` aqui faria o CSV sair com 300 linhas de 9.504 sem
  * avisar ninguém — o pior tipo de erro, porque o arquivo parece completo.
  */
-export async function getDealsParaExportar(
-  user: SessionUser,
-  filters: { q?: string; status?: string },
-) {
+export async function getDealsParaExportar(user: SessionUser, filters: FiltroDeals) {
   return prisma.deal.findMany({
     where: filtroDeals(user, filters),
     include: {
