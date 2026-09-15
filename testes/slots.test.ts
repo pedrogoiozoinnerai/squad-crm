@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { diasDaSemana, slotsDaSerie } from "../src/lib/slots";
+import { diasDaSemana, horariosDaSerie, LIMITE_DE_SLOTS, slotsDaSerie } from "../src/lib/slots";
 
-const base = { time: "10:00", timezone: "America/Sao_Paulo" };
+const base = { times: "10:00", timezone: "America/Sao_Paulo" };
 const dia = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 
 describe("dias da semana da série", () => {
@@ -56,7 +56,7 @@ describe("slots da série", () => {
     // que continuar 10:00 nos dois lados — é o que quebra quando se anda de 24
     // em 24 horas a partir do primeiro instante.
     const slots = slotsDaSerie(
-      { weekdays: "1", time: "10:00", timezone: "America/New_York" },
+      { weekdays: "1", times: "10:00", timezone: "America/New_York" },
       dia("2026-03-02"),
       dia("2026-03-17"),
     );
@@ -80,5 +80,100 @@ describe("slots da série", () => {
   it("janela absurda não vira laço infinito", () => {
     const slots = slotsDaSerie({ ...base, weekdays: "1" }, dia("2026-01-01"), dia("2099-01-01"));
     assert.ok(slots.length < 100, `teto respeitado (${slots.length})`);
+  });
+});
+
+describe("horários da série", () => {
+  it("lê a lista e ordena", () => {
+    assert.deepEqual(horariosDaSerie("10:00,08:00,09:00"), ["08:00", "09:00", "10:00"]);
+  });
+
+  it("normaliza a hora de um dígito", () => {
+    // O `<input type="time">` manda "08:00", mas quem digitar o CSV à mão
+    // escreve "8:00" — e as duas são o mesmo horário.
+    assert.deepEqual(horariosDaSerie("8:00,08:00"), ["08:00"]);
+  });
+
+  it("descarta lixo em vez de quebrar o materializador de madrugada", () => {
+    assert.deepEqual(horariosDaSerie("25:00,10:60,abc,,10:00"), ["10:00"]);
+    assert.deepEqual(horariosDaSerie(""), []);
+  });
+
+  it("corta em 24: mais horários que horas no dia é sempre engano", () => {
+    const muitos = Array.from({ length: 40 }, (_, i) => `${String(i % 24).padStart(2, "0")}:30`);
+    assert.equal(horariosDaSerie(muitos.join(",")).length, 24);
+  });
+});
+
+describe("série com vários horários por dia", () => {
+  /// O pedido real: 08:00 às 20:00, de hora em hora.
+  const TREZE = Array.from({ length: 13 }, (_, i) => `${String(i + 8).padStart(2, "0")}:00`).join(",");
+
+  it("gera 13 horários em cada dia da série", () => {
+    // 15/09/2026 é terça. Janela de uma terça só.
+    const slots = slotsDaSerie(
+      { ...base, weekdays: "2", times: TREZE },
+      dia("2026-09-15"),
+      dia("2026-09-16"),
+    );
+    assert.equal(slots.length, 13);
+    assert.equal(slots[0].toISOString(), "2026-09-15T11:00:00.000Z", "08:00 em SP");
+    assert.equal(slots[12].toISOString(), "2026-09-15T23:00:00.000Z", "20:00 em SP");
+  });
+
+  it("sai em ordem cronológica — o corte do materializador conta com isso", () => {
+    const slots = slotsDaSerie(
+      { ...base, weekdays: "1,2,3,4,5,6", times: TREZE },
+      dia("2026-09-14"),
+      dia("2026-09-20"),
+    );
+    for (let i = 1; i < slots.length; i++) {
+      assert.ok(slots[i] > slots[i - 1], `slot ${i} depois do anterior`);
+    }
+  });
+
+  it("seg a sáb, 13 por dia, um mês inteiro", () => {
+    // Outubro de 2026 tem 27 dias de segunda a sábado.
+    const slots = slotsDaSerie(
+      { ...base, weekdays: "1,2,3,4,5,6", times: TREZE },
+      dia("2026-10-01"),
+      new Date("2026-11-01T02:59:59.999Z"),
+    );
+    assert.equal(slots.length, 27 * 13, "27 dias úteis-com-sábado × 13 horários");
+    // Nenhum domingo.
+    for (const s of slots) assert.notEqual(s.getUTCDay(), 0);
+  });
+
+  it("o teto de slots corta a CAUDA, e o chamador consegue perceber", () => {
+    const slots = slotsDaSerie(
+      { ...base, weekdays: "1,2,3,4,5,6,7", times: TREZE },
+      dia("2026-01-01"),
+      dia("2099-01-01"),
+    );
+    assert.equal(slots.length, LIMITE_DE_SLOTS);
+    // Ordenado e truncado no fim: o começo da janela está inteiro.
+    assert.equal(slots[0].toISOString(), "2026-01-01T11:00:00.000Z");
+  });
+
+  it("cada horário mantém sua hora de parede na virada do horário de verão", () => {
+    const parede = (d: Date) =>
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/New_York", hour: "2-digit", hour12: false,
+      }).format(d);
+    const slots = slotsDaSerie(
+      { weekdays: "1", times: "09:00,13:00,17:00", timezone: "America/New_York" },
+      dia("2026-03-02"),
+      dia("2026-03-17"),
+    );
+    assert.equal(slots.length, 9, "3 segundas × 3 horários");
+    const horas = slots.map(parede);
+    assert.deepEqual(horas, ["09", "13", "17", "09", "13", "17", "09", "13", "17"]);
+  });
+
+  it("série sem horário nenhum não gera nada", () => {
+    assert.deepEqual(
+      slotsDaSerie({ ...base, weekdays: "1,2,3", times: "" }, dia("2026-09-01"), dia("2026-12-01")),
+      [],
+    );
   });
 });

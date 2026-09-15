@@ -1,4 +1,7 @@
-import { TZ } from "@/lib/dates";
+import type { NextRequest } from "next/server";
+
+import { instanteDeCampoLocal, TZ } from "@/lib/dates";
+import { horizonteDaAgenda } from "@/lib/horizonte";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -18,31 +21,65 @@ export const dynamic = "force-dynamic";
 /// depois do começo — e a sessão em grupo não espera.
 const ANTECEDENCIA_MIN = 15;
 
-/// Teto de dias à frente. Mais que isso e o lead escolhe uma data que ele
-/// mesmo não lembra quando chegar.
-const HORIZONTE_DIAS = 21;
+/// Teto de linhas. Não é o corte esperado: fica logo acima do que uma série
+/// materializa num mês (650), para uma configuração errada não virar um JSON
+/// de megabytes num endereço público.
+const TETO_SESSOES = 700;
 
-export async function GET() {
+/**
+ * Um recorte opcional de dias, se o chamador pedir.
+ *
+ * Valor torto é IGNORADO, não vira 400: este endereço é público e uma query
+ * string estragada não pode virar tela de erro no meio do funil.
+ */
+function recorte(request: NextRequest, de: Date, ate: Date) {
+  const p = request.nextUrl.searchParams;
+  const pedido = (nome: string, hora: string) => {
+    const bruto = p.get(nome);
+    if (!bruto) return null;
+    return instanteDeCampoLocal(`${bruto}T${hora}`);
+  };
+  const deP = pedido("de", "00:00");
+  const ateP = pedido("ate", "23:59");
+  return {
+    // Nunca alarga a janela: o recorte só pode estreitar o que a agenda abre.
+    de: deP && deP > de ? deP : de,
+    ate: ateP && ateP < ate ? ateP : ate,
+  };
+}
+
+export async function GET(request: NextRequest) {
   const agora = new Date();
-  const de = new Date(agora.getTime() + ANTECEDENCIA_MIN * 60_000);
-  const ate = new Date(agora.getTime() + HORIZONTE_DIAS * 24 * 60 * 60 * 1000);
+  const janela = recorte(
+    request,
+    new Date(agora.getTime() + ANTECEDENCIA_MIN * 60_000),
+    // A MESMA função que o materializador usa. Duas regras foi o que fez a
+    // rota mostrar 21 dias enquanto a série enchia 28.
+    horizonteDaAgenda(agora),
+  );
 
-  const sessoes = await prisma.meeting.findMany({
-    where: {
-      type: "GROUP",
-      status: "SCHEDULED",
-      startsAt: { gte: de, lte: ate },
-      capacity: { not: null },
-    },
-    orderBy: { startsAt: "asc" },
-    select: {
-      id: true,
-      startsAt: true,
-      endsAt: true,
-      capacity: true,
-      _count: { select: { attendees: { where: { status: { in: ["INSCRITO", "CONFIRMADO"] } } } } },
-    },
-  });
+  const sessoes =
+    janela.ate <= janela.de
+      ? []
+      : await prisma.meeting.findMany({
+          where: {
+            type: "GROUP",
+            status: "SCHEDULED",
+            startsAt: { gte: janela.de, lte: janela.ate },
+            capacity: { not: null },
+          },
+          orderBy: { startsAt: "asc" },
+          take: TETO_SESSOES,
+          select: {
+            id: true,
+            startsAt: true,
+            endsAt: true,
+            capacity: true,
+            _count: {
+              select: { attendees: { where: { status: { in: ["INSCRITO", "CONFIRMADO"] } } } },
+            },
+          },
+        });
 
   const comVaga = sessoes
     .map((s) => ({
@@ -56,13 +93,21 @@ export async function GET() {
     .filter((s) => s.vagas > 0);
 
   return Response.json(
-    { timezone: TZ, sessoes: comVaga },
+    {
+      timezone: TZ,
+      /// Até quando a agenda vai. O funil pode dizer "aberta até 31 de
+      /// outubro" em vez de deixar a pessoa rolar procurando o fim.
+      horizonteAte: janela.ate.toISOString(),
+      sessoes: comVaga,
+    },
     {
       headers: {
-        // Meio minuto de cache: o funil consulta a cada carregamento de tela, e
-        // a lotação não muda tão rápido a ponto de justificar ir ao banco toda
-        // vez. Mais que isso e alguém veria vaga numa sessão já lotada.
-        "cache-control": "public, max-age=30",
+        // `max-age` sozinho é só do navegador — e o funil consulta do SERVIDOR
+        // dele, com `no-store`. Na prática toda carga de tela do funil batia no
+        // banco, num endereço sem autenticação nem limite de taxa. `s-maxage`
+        // põe o CDN da Vercel na frente; `stale-while-revalidate` evita que a
+        // expiração do cache vire uma rajada simultânea.
+        "cache-control": "public, max-age=30, s-maxage=30, stale-while-revalidate=60",
       },
     },
   );

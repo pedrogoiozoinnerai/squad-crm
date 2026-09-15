@@ -2,11 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 
-import { text } from "@/lib/forms";
+import { TZ } from "@/lib/dates";
+import { dataDoDia, text } from "@/lib/forms";
 import { currentUser, revalidateBoth, type FormState } from "@/lib/guard";
 import { prisma } from "@/lib/prisma";
 import { materializarSessoes } from "@/lib/sessoes";
-import { diasDaSemana } from "@/lib/slots";
+import { diasDaSemana, horariosDaSerie } from "@/lib/slots";
 
 const DURACOES = [30, 45, 60, 90, 120];
 
@@ -26,9 +27,13 @@ export async function salvarSerie(_prev: FormState, formData: FormData): Promise
   const dias = diasDaSemana(String(formData.get("weekdays") ?? ""));
   if (dias.length === 0) return { error: "Escolha ao menos um dia da semana." };
 
-  const hora = String(formData.get("time") ?? "").trim();
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(hora)) {
-    return { error: "Horário inválido. Use o formato HH:MM, como 10:00." };
+  // `getAll` porque a tela manda um campo por horário marcado; o CSV continua
+  // aceito para quem editar à mão ou por script.
+  const horarios = horariosDaSerie(
+    formData.getAll("times").map(String).join(","),
+  );
+  if (horarios.length === 0) {
+    return { error: "Escolha ao menos um horário." };
   }
 
   const duracao = Number(formData.get("durationMin"));
@@ -44,13 +49,39 @@ export async function salvarSerie(_prev: FormState, formData: FormData): Promise
   const dono = await prisma.user.findUnique({ where: { id: ownerId }, select: { id: true } });
   if (!dono) return { error: "Responsável não encontrado." };
 
+  // Colunas que existiam no schema, eram respeitadas por `slotsDaSerie` e
+  // NUNCA eram escritas por aqui — então nenhuma delas era alcançável pela
+  // interface e todas ficavam no padrão para sempre.
+  const horizonte = formData.get("horizonte") === "DIAS" ? ("DIAS" as const) : ("FIM_DO_MES" as const);
+
+  const horizonDias = Number(formData.get("horizonDias") ?? 28);
+  if (horizonte === "DIAS" && (!Number.isInteger(horizonDias) || horizonDias < 1 || horizonDias > 90)) {
+    return { error: "O horizonte em dias precisa ser um número entre 1 e 90." };
+  }
+
+  const fuso = text(formData.get("timezone")) ?? TZ;
+  if (!Intl.supportedValuesOf("timeZone").includes(fuso)) {
+    return { error: "Fuso horário desconhecido." };
+  }
+
+  const inicioEm = dataDoDia(formData.get("startsOn"));
+  const fimEm = dataDoDia(formData.get("endsOn"));
+  if (inicioEm && fimEm && fimEm < inicioEm) {
+    return { error: "A série não pode terminar antes de começar." };
+  }
+
   const id = text(formData.get("id"));
   const dados = {
     name: nome,
     weekdays: dias.join(","),
-    time: hora,
+    times: horarios.join(","),
     durationMin: duracao,
     capacity: capacidade,
+    timezone: fuso,
+    horizonte,
+    horizonDias,
+    startsOn: inicioEm,
+    endsOn: fimEm,
     ownerId,
   };
 

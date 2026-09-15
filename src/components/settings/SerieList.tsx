@@ -12,10 +12,12 @@ export type SerieRow = {
   id: string;
   name: string;
   weekdays: string;
-  time: string;
+  times: string;
   durationMin: number;
   capacity: number;
   active: boolean;
+  horizonte: "FIM_DO_MES" | "DIAS";
+  horizonDias: number;
   owner: { id: string; name: string };
   _count: { meetings: number };
 };
@@ -30,9 +32,29 @@ const DIAS = [
   { n: 7, curto: "Dom" },
 ];
 
+/// As 24 horas cheias. A grade é de hora em hora porque é assim que a agenda
+/// do funil abre; meia hora exigiria 48 caixas e ninguém pediu.
+const HORAS = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, "0")}:00`);
+
+/// O atalho que resolve o caso real de um clique: 08:00 às 20:00.
+const COMERCIAL = HORAS.slice(8, 21);
+
 function porExtenso(weekdays: string) {
   const dias = weekdays.split(",").map(Number);
   return DIAS.filter((d) => dias.includes(d.n)).map((d) => d.curto).join(" · ") || "—";
+}
+
+/**
+ * Treze horários não cabem na linha de resumo.
+ *
+ * Com um ou dois, o valor é a informação. A partir daí o que importa é quantos
+ * são e onde começam e terminam.
+ */
+function resumoDeHorarios(times: string) {
+  const lista = times.split(",").map((t) => t.trim()).filter(Boolean);
+  if (lista.length === 0) return "—";
+  if (lista.length <= 2) return lista.join(" e ");
+  return `${lista.length} horários · ${lista[0]}–${lista[lista.length - 1]}`;
 }
 
 /**
@@ -61,7 +83,7 @@ export function SerieList({
         <div>
           <h2 className="text-sm font-semibold">Sessões recorrentes</h2>
           <p className="mt-0.5 text-sm text-muted">
-            A série é a regra; as sessões da agenda nascem dela, com 28 dias de antecedência.
+            A série é a regra; as sessões da agenda nascem dela e vão até o fim do mês.
           </p>
         </div>
         <button
@@ -116,16 +138,9 @@ export function SerieList({
             </div>
           </fieldset>
 
+          <GradeDeHorarios key={emEdicao?.id ?? "nova"} inicial={emEdicao?.times ?? "10:00"} />
+
           <div className="mt-4 grid gap-4 sm:grid-cols-3">
-            <Field label="Horário" hint="No fuso de São Paulo">
-              <input
-                name="time"
-                type="time"
-                defaultValue={emEdicao?.time ?? "10:00"}
-                required
-                className="field"
-              />
-            </Field>
             <Field label="Duração">
               <select name="durationMin" defaultValue={emEdicao?.durationMin ?? 45} className="field">
                 {[30, 45, 60, 90, 120].map((m) => (
@@ -145,6 +160,35 @@ export function SerieList({
                 required
                 className="field"
               />
+            </Field>
+            <Field label="Até quando encher" hint="O que o funil mostra">
+              <select
+                name="horizonte"
+                defaultValue={emEdicao?.horizonte ?? "FIM_DO_MES"}
+                className="field"
+              >
+                <option value="FIM_DO_MES">Até o fim do mês</option>
+                <option value="DIAS">Um número fixo de dias</option>
+              </select>
+            </Field>
+          </div>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-3">
+            <Field label="Dias à frente" hint='Só vale em "número fixo de dias"'>
+              <input
+                name="horizonDias"
+                type="number"
+                min={1}
+                max={90}
+                defaultValue={emEdicao?.horizonDias ?? 28}
+                className="field"
+              />
+            </Field>
+            <Field label="Começa em" hint="Opcional">
+              <input name="startsOn" type="date" className="field" />
+            </Field>
+            <Field label="Termina em" hint="Opcional">
+              <input name="endsOn" type="date" className="field" />
             </Field>
           </div>
 
@@ -187,8 +231,8 @@ export function SerieList({
                   {!s.active && <span className="ml-2 chip bg-surface-2 text-muted">desligada</span>}
                 </span>
                 <span className="block text-sm text-muted">
-                  {porExtenso(s.weekdays)} · {s.time} · {s.durationMin} min · {s.capacity} vagas ·{" "}
-                  {s.owner.name}
+                  {porExtenso(s.weekdays)} · {resumoDeHorarios(s.times)} · {s.durationMin} min ·{" "}
+                  {s.capacity} vagas · {s.owner.name}
                 </span>
               </span>
 
@@ -223,5 +267,86 @@ export function SerieList({
         cancelar uma sessão marcada é decisão de cada sessão, não da série.
       </p>
     </section>
+  );
+}
+
+/**
+ * Os horários do dia, um por hora.
+ *
+ * Estado controlado, e não `defaultChecked`, por causa dos atalhos: marcar as
+ * treze caixas de 08:00 a 20:00 no clique é o caso real desta tela, e um campo
+ * não controlado não pode ser mexido de fora.
+ */
+function GradeDeHorarios({ inicial }: { inicial: string }) {
+  const [marcados, setMarcados] = useState<string[]>(() =>
+    inicial.split(",").map((t) => t.trim()).filter(Boolean),
+  );
+
+  const alternar = (hora: string) =>
+    setMarcados((atual) =>
+      atual.includes(hora) ? atual.filter((h) => h !== hora) : [...atual, hora].sort(),
+    );
+
+  return (
+    <fieldset className="mt-4">
+      <legend className="mb-1.5 text-xs font-semibold text-muted">
+        Horários de cada dia
+      </legend>
+
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setMarcados(COMERCIAL)}
+          className="chip border border-line bg-surface text-muted transition hover:text-foreground"
+        >
+          08h–20h, de hora em hora
+        </button>
+        <button
+          type="button"
+          onClick={() => setMarcados([])}
+          className="chip border border-line bg-surface text-muted transition hover:text-foreground"
+        >
+          Limpar
+        </button>
+        <span className="text-xs text-muted">
+          {marcados.length === 0
+            ? "nenhum horário"
+            : `${marcados.length} ${marcados.length === 1 ? "horário" : "horários"} por dia`}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6 lg:grid-cols-8">
+        {HORAS.map((hora) => {
+          const ligado = marcados.includes(hora);
+          return (
+            <label key={hora} className="cursor-pointer">
+              {/* O valor só vai no POST quando marcado — é o que `getAll`
+                  recolhe do outro lado. */}
+              {ligado && <input type="hidden" name="times" value={hora} />}
+              <input
+                type="checkbox"
+                checked={ligado}
+                onChange={() => alternar(hora)}
+                className="peer sr-only"
+              />
+              <span
+                className={`block rounded-lg border px-2 py-1.5 text-center font-mono text-xs transition peer-focus-visible:ring-4 peer-focus-visible:ring-waz-90 ${
+                  ligado
+                    ? "border-waz-50 bg-waz-95 text-waz-20"
+                    : "border-line bg-surface text-muted hover:text-foreground"
+                }`}
+              >
+                {hora}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+
+      <p className="mt-2 text-[11px] text-muted">
+        No fuso de São Paulo. Cada horário marcado vira uma sessão em cada dia da semana
+        escolhido acima.
+      </p>
+    </fieldset>
   );
 }

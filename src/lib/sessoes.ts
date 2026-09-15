@@ -1,5 +1,6 @@
 import "server-only";
 
+import { horizonteDaAgenda } from "@/lib/horizonte";
 import { prisma } from "@/lib/prisma";
 import { slotsDaSerie } from "@/lib/slots";
 
@@ -7,10 +8,19 @@ export type RelatorioDeMaterializacao = {
   templates: number;
   criadas: number;
   jaExistiam: number;
+  /// Séries cuja geração bateu no teto — o fim do mês pode ter ficado de fora.
+  truncadas: string[];
 };
 
-/// Teto por execução: um horizonte mal configurado não pode virar mil linhas.
-const POR_TEMPLATE = 60;
+/// Teto por execução, por série.
+///
+/// A janela máxima é um mês: 13 horários × 31 dias = 403 no pior caso. 650
+/// cobre isso com folga e ainda corta uma série disparatada antes que ela vire
+/// mil linhas por engano.
+///
+/// Era 60, de quando a série tinha um horário só — e 60 truncaria a agenda no
+/// quinto dia do mês sem dizer nada.
+const POR_TEMPLATE = 650;
 
 /**
  * Transforma as séries recorrentes em reuniões concretas.
@@ -26,20 +36,43 @@ const POR_TEMPLATE = 60;
  */
 export async function materializarSessoes(
   agora = new Date(),
-  opcoes: { templateId?: string; horizonteDias?: number } = {},
+  opcoes: { templateId?: string; ate?: Date } = {},
 ): Promise<RelatorioDeMaterializacao> {
   const templates = await prisma.sessionTemplate.findMany({
     where: { active: true, ...(opcoes.templateId ? { id: opcoes.templateId } : {}) },
   });
 
-  const relatorio: RelatorioDeMaterializacao = { templates: 0, criadas: 0, jaExistiam: 0 };
+  const relatorio: RelatorioDeMaterializacao = {
+    templates: 0,
+    criadas: 0,
+    jaExistiam: 0,
+    truncadas: [],
+  };
 
   for (const t of templates) {
     relatorio.templates += 1;
 
-    const dias = opcoes.horizonteDias ?? t.horizonDays;
-    const ate = new Date(agora.getTime() + dias * 24 * 60 * 60 * 1000);
-    const slots = slotsDaSerie(t, agora, ate).slice(0, POR_TEMPLATE);
+    // O horizonte vem de `lib/horizonte`, que é a MESMA função que a rota
+    // pública de disponibilidade chama. Antes eram duas regras — 28 dias aqui,
+    // 21 lá — e materializar mais do que se mostra é desperdício, enquanto
+    // mostrar mais do que se materializa é lista com buraco.
+    const ate =
+      opcoes.ate ??
+      (t.horizonte === "DIAS"
+        ? new Date(agora.getTime() + t.horizonDias * 24 * 60 * 60 * 1000)
+        : horizonteDaAgenda(agora, t.timezone));
+
+    const todos = slotsDaSerie(t, agora, ate);
+    const slots = todos.slice(0, POR_TEMPLATE);
+    if (todos.length > POR_TEMPLATE) {
+      // O corte tira a CAUDA, que é o fim do mês — justamente o que a agenda
+      // promete cobrir. Silenciar isso só seria descoberto por um lead sem
+      // horário no dia 28.
+      relatorio.truncadas.push(t.name);
+      console.warn(
+        `[sessoes] série "${t.name}" gerou ${todos.length} slots e foi cortada em ${POR_TEMPLATE}: o fim da janela ficou de fora.`,
+      );
+    }
     if (slots.length === 0) continue;
 
     const existentes = new Set(

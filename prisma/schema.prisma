@@ -415,26 +415,47 @@ model Task {
 
 // ───────────────────── Sessões recorrentes ────────────────────────────
 
+enum Horizonte {
+  /// Até o último dia do mês corrente.
+  FIM_DO_MES
+  /// Um número fixo de dias à frente (`horizonDias`).
+  DIAS
+}
+
 /// Série recorrente ("toda terça 10h"). Não é um evento — é a regra.
 model SessionTemplate {
   id          String   @id @default(cuid())
   name        String
   /// Dias da semana em que ocorre: 1=segunda … 7=domingo, separados por vírgula.
   weekdays    String
-  time        String // "HH:MM"
+  /// Horários do dia, "HH:MM" separados por vírgula: "08:00,09:00,…,20:00".
+  ///
+  /// Lista, e não um horário só, desde que a agenda do funil passou a abrir um
+  /// horário por hora. Mesma convenção de `weekdays`, no mesmo model — e o
+  /// nome no plural porque `time` guardando lista é a armadilha que
+  /// `horizonDays` já foi.
+  times       String
   durationMin Int      @default(45)
   capacity    Int      @default(20)
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
 
-  /// Fuso em que `weekdays` e `time` são lidos.
+  /// Fuso em que `weekdays` e `times` são lidos.
   ///
   /// Sem ele, materializar no runner da Vercel — que roda em UTC — moveria
   /// toda sessão em três horas. É o mesmo defeito que a grade já teve.
   timezone String @default("America/Sao_Paulo")
 
-  /// Quantos dias à frente o materializador enche a agenda.
-  horizonDays Int @default(28)
+  /// Até onde o materializador enche a agenda.
+  ///
+  /// `FIM_DO_MES` é o que a operação usa: a agenda vai até o último dia do mês
+  /// corrente e para. É estrito de propósito — no dia 30 sobra um dia, e quem
+  /// precisa ver isso chegando é o time, pelo monitoramento, não o lead.
+  ///
+  /// `DIAS` mantém o comportamento antigo para uma série pontual, usando
+  /// `horizonDias`.
+  horizonte   Horizonte @default(FIM_DO_MES)
+  horizonDias Int       @default(28)
 
   /// A partir de quando a série vale, e até quando. Nulo = sem limite.
   startsOn DateTime?
@@ -516,6 +537,7 @@ model Meeting {
   attendees  MeetingAttendee[]
 
   @@unique([templateId, startsAt])
+  @@index([type, status, startsAt])
   @@index([startsAt])
   @@index([ownerId, startsAt])
   @@index([leadId])

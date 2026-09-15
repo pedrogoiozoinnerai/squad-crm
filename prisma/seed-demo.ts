@@ -8,7 +8,7 @@ import { env, identificador } from "../src/lib/env";
 import { atingiuPresenca } from "../src/lib/presenca";
 import { randomBytes } from "node:crypto";
 import { instanteLocal } from "../src/lib/dates";
-import { diasDaSemana } from "../src/lib/slots";
+import { diasDaSemana, horariosDaSerie } from "../src/lib/slots";
 
 // ─────────────────────────── Trava de segurança ───────────────────────────
 // Este seed APAGA a base inteira. Com os três apps dentro do mesmo projeto
@@ -220,7 +220,7 @@ async function main() {
   // Uma série recorrente e as ocorrências que ela geraria — agora reuniões de
   // verdade, com sala, convite e presença como qualquer outra.
   const template = await prisma.sessionTemplate.create({
-    data: { name: "Demo coletiva", weekdays: "2,4", time: "10:00", durationMin: 45, capacity: 20, ownerId: admin.id },
+    data: { name: "Demo coletiva", weekdays: "2,4", times: "10:00", durationMin: 45, capacity: 20, ownerId: admin.id },
   });
 
   for (let d = -14; d <= 14; d++) {
@@ -228,7 +228,7 @@ async function main() {
     const diaIso = dia.getUTCDay() === 0 ? 7 : dia.getUTCDay();
     if (!diasDaSemana(template.weekdays).includes(diaIso)) continue;
 
-    const inicio = instanteLocal(dia, template.time, template.timezone);
+    const inicio = instanteLocal(dia, horariosDaSerie(template.times)[0], template.timezone);
     await prisma.meeting.create({
       data: {
         title: template.name,
