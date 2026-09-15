@@ -173,7 +173,7 @@ export async function* buscar(
  * espera e um teto de rate limit. Em lote são 75.
  */
 /** Objetos do CRM que esta migração lê. */
-export type Objeto = "contacts" | "deals" | "companies" | "notes";
+export type Objeto = "contacts" | "deals" | "companies" | "notes" | "tasks" | "meetings";
 
 export async function lote(
   objeto: Objeto,

@@ -351,7 +351,13 @@ model Task {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// Ponte com a tarefa de origem no HubSpot — ver Lead.hubspotContactId.
+  hubspotTaskId String? @unique
+
   subject     String
+  /// Detalhe livre: no HubSpot é o corpo da tarefa, e sem ele o vendedor lê só
+  /// o assunto e não sabe o que foi combinado.
+  description String?
   type        String       @default("follow_up")
   status      TaskStatus   @default(PENDING)
   priority    TaskPriority @default(MEDIUM)
@@ -496,6 +502,9 @@ model Meeting {
 
   /// Onde a reunião acontece, como o Cal.com informou (link, telefone, sala).
   location String?
+
+  /// Ponte com a reunião de origem no HubSpot.
+  hubspotMeetingId String? @unique
 
   // Reservado pro projeto 3 (Meet com LiveKit)
   roomId String?
