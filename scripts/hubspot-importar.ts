@@ -227,7 +227,11 @@ async function main() {
     for (const n of doGrupo) {
       const ganho = n.destino.tipo === "ganho";
       const perdido = n.destino.tipo === "perdido";
-      const fechadoEm = data(n.props.closedate);
+      // Sem data de fechamento no HubSpot, cai para a de criação. Negócio
+      // ganho com wonAt nulo existe no total mas some de qualquer série
+      // temporal — o Dashboard o perderia sem ninguém notar.
+      const criadoEm = data(n.props.createdate) ?? new Date();
+      const fechadoEm = data(n.props.closedate) ?? criadoEm;
       const dono = (n.props.hubspot_owner_id && donos.get(n.props.hubspot_owner_id)) || naoAtribuido;
 
       const campos = {
@@ -249,7 +253,7 @@ async function main() {
           hubspotDealId: n.id,
           code: codigoDe(n.id),
           leadId: lead.id,
-          createdAt: data(n.props.createdate) ?? new Date(),
+          createdAt: criadoEm,
         },
       });
       idPorHubspotDeal.set(n.id, salvo.id);
@@ -266,7 +270,7 @@ async function main() {
           content:
             `Importado do HubSpot · pipeline "${PIPELINES[n.pipelineId].nome}" · etapa "${n.rotulo}"` +
             (n.props.description ? `\n\n${texto(n.props.description)}` : ""),
-          createdAt: data(n.props.createdate) ?? new Date(),
+          createdAt: criadoEm,
           authorId: naoAtribuido,
           dealId: salvo.id,
           leadId: lead.id,

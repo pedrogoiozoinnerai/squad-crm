@@ -23,29 +23,79 @@ export async function getWeekMeetings(user: SessionUser, start: Date) {
   });
 }
 
+/**
+ * Teto por coluna nas telas que listam.
+ *
+ * Com a base do HubSpot dentro, "trazer tudo" são 8.347 leads e 8.551 negócios
+ * abertos: 5 MB e 6 MB de payload a cada carregamento, e um board com 6.397
+ * cartões numa coluna só. O teto é por coluna, e o total vem do banco — assim
+ * o número no cabeçalho continua verdadeiro mesmo mostrando uma fatia.
+ */
+const POR_COLUNA = 60;
+
+const STATUS_LEAD = ["INCOMPLETE", "COMPLETE", "CONVERTED"] as const;
+
 export async function getLeads(user: SessionUser) {
-  return prisma.lead.findMany({
-    where: ownerScope(user),
-    include: { owner: { select: { name: true } } },
-    orderBy: { createdAt: "desc" },
-  });
+  const escopo = ownerScope(user);
+
+  const [totais, fatias] = await Promise.all([
+    prisma.lead.groupBy({ by: ["status"], where: escopo, _count: true }),
+    Promise.all(
+      STATUS_LEAD.map((status) =>
+        prisma.lead.findMany({
+          where: { ...escopo, status },
+          include: { owner: { select: { name: true } } },
+          orderBy: { createdAt: "desc" },
+          take: POR_COLUNA,
+        }),
+      ),
+    ),
+  ]);
+
+  const porStatus = new Map(totais.map((t) => [t.status, t._count]));
+  return {
+    leads: fatias.flat(),
+    totais: Object.fromEntries(STATUS_LEAD.map((s) => [s, porStatus.get(s) ?? 0])) as Record<
+      (typeof STATUS_LEAD)[number],
+      number
+    >,
+  };
 }
 
 export async function getPipeline(user: SessionUser) {
-  const [stages, deals] = await Promise.all([
-    prisma.stage.findMany({ orderBy: { order: "asc" } }),
-    prisma.deal.findMany({
-      where: { ...ownerScope(user), status: "OPEN" },
-      include: {
-        lead: { select: { id: true, name: true, company: true, phone: true, score: true } },
-        owner: { select: { name: true } },
-        _count: { select: { tasks: true } },
-      },
-      orderBy: { updatedAt: "desc" },
-    }),
+  const escopo = { ...ownerScope(user), status: "OPEN" as const };
+  const stages = await prisma.stage.findMany({ orderBy: { order: "asc" } });
+
+  // Soma e contagem saem de um groupBy sobre a etapa inteira. Somar o que veio
+  // na fatia daria um valor de pipeline menor que o real — e um número de
+  // previsão errado é pior do que número nenhum.
+  const [totais, fatias] = await Promise.all([
+    prisma.deal.groupBy({ by: ["stageId"], where: escopo, _count: true, _sum: { valueCents: true } }),
+    Promise.all(
+      stages.map((stage) =>
+        prisma.deal.findMany({
+          where: { ...escopo, stageId: stage.id },
+          include: {
+            lead: { select: { id: true, name: true, company: true, phone: true, score: true } },
+            owner: { select: { name: true } },
+            _count: { select: { tasks: true } },
+          },
+          orderBy: { updatedAt: "desc" },
+          take: POR_COLUNA,
+        }),
+      ),
+    ),
   ]);
 
-  return { stages, deals };
+  const porEtapa = new Map(totais.map((t) => [t.stageId, t]));
+  return {
+    stages: stages.map((stage) => ({
+      ...stage,
+      total: porEtapa.get(stage.id)?._count ?? 0,
+      valueCents: porEtapa.get(stage.id)?._sum.valueCents ?? 0,
+    })),
+    deals: fatias.flat(),
+  };
 }
 
 export async function getTasks(user: SessionUser) {

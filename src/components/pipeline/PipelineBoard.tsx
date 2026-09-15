@@ -8,7 +8,17 @@ import { moveDeal } from "@/app/actions/deals";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { brl } from "@/lib/dates";
 
-export type BoardStage = { id: string; key: string; name: string; color: string };
+export type BoardStage = {
+  id: string;
+  key: string;
+  name: string;
+  color: string;
+  /// Quantos negócios a etapa tem de verdade, e quanto somam. Vem do banco:
+  /// a coluna mostra no máximo os 60 mais recentes, e contar os cartões
+  /// visíveis daria uma previsão de receita menor que a real.
+  total: number;
+  valueCents: number;
+};
 
 export type BoardDeal = {
   id: string;
@@ -71,7 +81,7 @@ export function PipelineBoard({
     <div className="flex gap-4 overflow-x-auto pb-4">
       {stages.map((stage) => {
         const items = board.filter((deal) => deal.stageId === stage.id);
-        const total = items.reduce((sum, deal) => sum + deal.valueCents, 0);
+        const escondidos = Math.max(0, stage.total - items.length);
         const isOver = dragOver === stage.id;
 
         return (
@@ -99,9 +109,14 @@ export function PipelineBoard({
                 {stage.name}
               </h2>
               <p className="mt-1 text-xs text-muted">
-                {items.length} {items.length === 1 ? "negócio" : "negócios"} ·{" "}
-                <span className="font-semibold text-foreground">{brl(total)}</span>
+                {stage.total} {stage.total === 1 ? "negócio" : "negócios"} ·{" "}
+                <span className="font-semibold text-foreground">{brl(stage.valueCents)}</span>
               </p>
+              {escondidos > 0 && (
+                <p className="mt-0.5 text-xs text-muted">
+                  mostrando os {items.length} mais recentes
+                </p>
+              )}
             </header>
 
             <div className="flex min-h-[120px] flex-col gap-2">

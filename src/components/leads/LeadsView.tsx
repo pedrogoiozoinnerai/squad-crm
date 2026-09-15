@@ -41,14 +41,19 @@ const COLUMNS = [
 
 export function LeadsView({
   leads,
+  totais,
   showOwner,
   basePath,
 }: {
   leads: Lead[];
+  /// Contagem real por status, do banco. `leads` traz só as primeiras de cada
+  /// coluna — contar o array daria um número menor que a verdade.
+  totais: Record<"INCOMPLETE" | "COMPLETE" | "CONVERTED", number>;
   showOwner: boolean;
   basePath: string;
 }) {
-  const count = (status: Lead["status"]) => leads.filter((l) => l.status === status).length;
+  const count = (status: Lead["status"]) =>
+    status === "LOST" ? leads.filter((l) => l.status === status).length : totais[status];
 
   return (
     <>
@@ -76,6 +81,7 @@ export function LeadsView({
       <div className="grid gap-4 lg:grid-cols-3">
         {COLUMNS.map((column) => {
           const items = leads.filter((lead) => lead.status === column.status);
+          const escondidos = Math.max(0, count(column.status) - items.length);
 
           return (
             <section key={column.status} className="card flex flex-col p-4">
@@ -87,8 +93,14 @@ export function LeadsView({
                   </h2>
                   <p className="mt-0.5 text-xs text-muted">{column.hint}</p>
                 </div>
-                <span className="chip bg-surface-2 text-muted">{items.length}</span>
+                <span className="chip bg-surface-2 text-muted">{count(column.status)}</span>
               </header>
+
+              {escondidos > 0 && (
+                <p className="mb-2 text-xs text-muted">
+                  mostrando os {items.length} mais recentes
+                </p>
+              )}
 
               <div className="flex flex-col gap-2">
                 {items.length === 0 && (

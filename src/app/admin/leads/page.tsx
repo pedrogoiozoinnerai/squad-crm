@@ -10,11 +10,11 @@ export default async function LeadsPage(props: PageProps<"/admin/leads">) {
   const { lead: leadParam } = await props.searchParams;
   const leadId = Array.isArray(leadParam) ? leadParam[0] : leadParam;
 
-  const leads = await getLeads(user);
+  const { leads, totais } = await getLeads(user);
 
   return (
     <>
-      <LeadsView leads={leads} showOwner={user.role === "ADMIN"} basePath={BASE} />
+      <LeadsView leads={leads} totais={totais} showOwner={user.role === "ADMIN"} basePath={BASE} />
       {leadId && <LeadDrawer leadId={leadId} user={user} closeHref={BASE} />}
     </>
   );
