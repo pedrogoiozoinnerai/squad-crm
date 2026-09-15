@@ -427,7 +427,17 @@ export async function getDashboard(user: SessionUser) {
       .reduce((s, d) => s + d.valueCents * (d.probability / 100), 0),
   );
 
-  const nomes = user.role === "ADMIN" ? await getOwners() : [];
+  // Nomes do RANKING, não da lista de atribuição: aqui entram também contas
+  // inativas, como o "Não atribuído" que recebeu 41% dos negócios importados.
+  // `getOwners()` filtra por ativo — correto para um seletor, errado aqui, onde
+  // o dono de 3.914 negócios apareceria como um travessão.
+  const nomes =
+    user.role === "ADMIN"
+      ? await prisma.user.findMany({
+          where: { id: { in: porCloser.map((c) => c.ownerId) } },
+          select: { id: true, name: true },
+        })
+      : [];
 
   const funil = stages.map((stage) => {
     const linha = abertosPorEtapa.find((a) => a.stageId === stage.id);

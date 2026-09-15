@@ -6,6 +6,7 @@ import { PrismaClient } from "../src/generated/prisma/client";
 import { env, envObrigatorio, identificador } from "../src/lib/env";
 import { associacoes, buscar, lote, owners } from "./hubspot-client";
 import { PIPELINES, destinoDe, type Destino } from "./hubspot-mapa";
+import { classificarMotivo } from "./hubspot-motivos";
 
 /**
  * Traz os 8 pipelines do Squad do HubSpot para cá.
@@ -41,7 +42,7 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: envObrigatorio("DATABASE_URL"), max: 8 }, { schema: SCHEMA }),
 });
 
-const PROPS_NEGOCIO = ["dealname", "amount", "dealstage", "pipeline", "hubspot_owner_id", "createdate", "closedate", "description"];
+const PROPS_NEGOCIO = ["dealname", "amount", "dealstage", "pipeline", "hubspot_owner_id", "createdate", "closedate", "description", "closed_lost_reason"];
 const PROPS_CONTATO = ["firstname", "lastname", "email", "phone", "mobilephone", "company", "jobtitle", "createdate"];
 const PROPS_NOTA = ["hs_note_body", "hs_timestamp", "hubspot_owner_id"];
 
@@ -154,6 +155,7 @@ async function main() {
 
   const etapas = new Map((await prisma.stage.findMany()).map((e) => [e.key, e.id]));
   if (!etapas.get("fechamento")) throw new Error("Catálogo de etapas ausente. Rode 'npm run db:seed' antes.");
+  const motivos = new Map((await prisma.lossReason.findMany()).map((m) => [m.name, m.id]));
 
   // ─── 2. Ler tudo do HubSpot antes de escrever ──────────────────────────
   // O de-para é validado aqui, com a leitura ainda em memória: etapa
@@ -248,14 +250,25 @@ async function main() {
       const fechadoEm = data(n.props.closedate) ?? criadoEm;
       const dono = (n.props.hubspot_owner_id && donos.get(n.props.hubspot_owner_id)) || naoAtribuido;
 
+      // O texto original vai inteiro para `lostNote`; a classificação é uma
+      // leitura em cima dele, não um substituto. Só em negócio perdido: o campo
+      // do HubSpot às vezes fica preenchido em negócio que depois foi ganho.
+      const motivoTexto = perdido ? (n.props.closed_lost_reason ?? "").trim() : "";
+      const motivoNome = perdido ? classificarMotivo(motivoTexto) : null;
+
       const campos = {
         stageId: ganho || perdido ? etapas.get("fechamento")! : etapas.get((n.destino as { etapa: string }).etapa)!,
         status: ganho ? ("WON" as const) : perdido ? ("LOST" as const) : ("OPEN" as const),
         valueCents: centavos(n.props.amount),
         product: n.props.dealname ?? null,
-        expectedAt: fechadoEm,
+        // Só a data que o HubSpot realmente tem. `fechadoEm` já caiu para a
+        // data de criação quando faltava — usá-lo aqui encheria a previsão do
+        // mês com negócios que nunca tiveram previsão nenhuma.
+        expectedAt: data(n.props.closedate),
         wonAt: ganho ? fechadoEm : null,
         lostAt: perdido ? fechadoEm : null,
+        lostNote: motivoTexto || null,
+        lossReasonId: (motivoNome && motivos.get(motivoNome)) || null,
         ownerId: dono,
       };
 
