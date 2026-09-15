@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 
 import { PrismaClient } from "../src/generated/prisma/client";
 import { env, identificador } from "../src/lib/env";
+import { atingiuPresenca } from "../src/lib/presenca";
 
 // ─────────────────────────── Trava de segurança ───────────────────────────
 // Este seed APAGA a base inteira. Com os três apps dentro do mesmo projeto
@@ -233,6 +234,10 @@ async function main() {
 
   const instancias = await prisma.sessionInstance.findMany({ orderBy: { date: "asc" } });
 
+  // A régua de presença sai do banco, igual ao runtime. Upsert porque o seed
+  // pode rodar num schema que ainda não tem a linha única.
+  const regra = await prisma.config.upsert({ where: { id: "unica" }, update: {}, create: {} });
+
   // ── Leads, reuniões e negócios ao longo de 6 meses ──
   console.log("→ 400 leads ao longo de 6 meses…");
   const DIAS = 182;
@@ -317,8 +322,10 @@ async function main() {
             leftAt: entrou ? new Date(entrou.getTime() + ficou * 1000) : null,
             joinCount: entrou ? int(1, 2) : 0,
             totalSeconds: ficou,
-            // Presença é consequência do tempo, não um checkbox: ≥5 min.
-            attended: ficou >= 300,
+            // Presença é consequência do tempo, não um checkbox — e a régua é
+            // a mesma que o runtime usa. O `>= 300` literal que estava aqui
+            // era a terceira cópia divergente da mesma regra.
+            attended: atingiuPresenca(ficou, inst.durationMin * 60, regra),
           },
         });
       } catch {

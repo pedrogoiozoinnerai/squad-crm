@@ -98,6 +98,17 @@ export function consolidar(eventos: EventoBruto[], fimDaSala: Date | null): Pres
 export type RegraDePresenca = { presencaMinutos: number; presencaPercentual: number };
 
 /**
+ * O ponto de partida — não a regra em vigor.
+ *
+ * A regra que vale é a linha única de `Config`, editável no painel. Esta
+ * constante existe só para o caso de ainda não haver linha, e tem que bater
+ * com o `@default` do schema: `testes/presenca.test.ts` compara os dois e
+ * quebra o build se divergirem. Já tivemos três cópias desta regra em lugares
+ * diferentes, e nenhuma sabia das outras.
+ */
+export const REGRA_PADRAO: RegraDePresenca = { presencaMinutos: 5, presencaPercentual: 0 };
+
+/**
  * Esteve na reunião?
  *
  * Os dois critérios valem JUNTOS. Só o percentual deixaria "3 minutos de uma

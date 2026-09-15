@@ -2,11 +2,8 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight, Sparkles, Timer, UserCheck, Users } from "lucide-react";
 
 import { PageHeader } from "@/components/shell/PageHeader";
-import { isSameDay, weekDays } from "@/lib/dates";
+import { instanteLocal, isSameDay, weekDays } from "@/lib/dates";
 import type { Space } from "@/lib/nav";
-
-/** Regra da operação: presente é quem fica 5 minutos ou mais na sala. */
-export const MINUTOS_MINIMOS = 5;
 
 /** Meta de presença do time — vira a cor da barra. */
 const META_PRESENCA = 60;
@@ -26,12 +23,16 @@ export type SessionRow = {
   qualificados: number;
 };
 
-/** `date` é o dia às 00:00 e `time` é "HH:MM" — o início real sai da soma. */
+/**
+ * `date` é o dia às 00:00 e `time` é "HH:MM" — o início real sai da soma, no
+ * fuso da operação.
+ *
+ * Antes isto era `new Date(date).setHours(hora)`, que compõe no fuso do
+ * SERVIDOR. Na máquina do dev é São Paulo e parecia certo; na Vercel é UTC, e
+ * a sessão das 10:00 aparecia às 07:00 para o time inteiro.
+ */
 export function inicioDaSessao(session: { date: Date; time: string }) {
-  const [hora, minuto] = session.time.split(":").map(Number);
-  const inicio = new Date(session.date);
-  inicio.setHours(hora || 0, minuto || 0, 0, 0);
-  return inicio;
+  return instanteLocal(session.date, session.time);
 }
 
 /**
@@ -40,9 +41,9 @@ export function inicioDaSessao(session: { date: Date; time: string }) {
  * então ler presença antes do fim é ler uma ausência que não existe.
  */
 export function fimDaSessao(session: { date: Date; time: string; durationMin: number }) {
-  const fim = inicioDaSessao(session);
-  fim.setMinutes(fim.getMinutes() + session.durationMin);
-  return fim;
+  // Soma em milissegundos, não com `setMinutes`: somar minutos num Date usa o
+  // calendário local do servidor e reintroduz a dependência de fuso.
+  return new Date(inicioDaSessao(session).getTime() + session.durationMin * 60_000);
 }
 
 /** Teto do `?w=`: uma semana por vez, mas sem passear por séculos. */
@@ -75,12 +76,17 @@ export function SessionsView({
   start,
   offset,
   now,
+  minutosMinimos,
 }: {
   space: Space;
   sessions: SessionRow[];
   start: Date;
   offset: number;
   now: Date;
+  /// A regra vem do banco (`Config.presencaMinutos`), não de uma constante
+  /// aqui: ela é editável no painel, e três cópias divergentes foi o que
+  /// tínhamos antes.
+  minutosMinimos: number;
 }) {
   const base = `/${space}/sessoes`;
   const days = weekDays(start);
@@ -150,7 +156,7 @@ export function SessionsView({
           value={inscritosRealizados ? `${taxaMedia}%` : "—"}
           hint={
             inscritosRealizados
-              ? `${presentes} de ${inscritosRealizados} inscritos ficaram ${MINUTOS_MINIMOS} min ou mais na sala`
+              ? `${presentes} de ${inscritosRealizados} inscritos ficaram ${minutosMinimos} min ou mais na sala`
               : "Nenhuma sessão desta semana terminou ainda"
           }
           icon={Timer}
@@ -175,7 +181,7 @@ export function SessionsView({
         <Timer className="mt-0.5 size-4 shrink-0" />
         <span>
           <strong>Presença aqui não é checkbox.</strong> A sala mede o tempo real de cada
-          inscrito e quem permanece <strong>{MINUTOS_MINIMOS} minutos ou mais</strong> conta
+          inscrito e quem permanece <strong>{minutosMinimos} minutos ou mais</strong> conta
           como presente — ninguém marca presença na mão, e por isso a taxa desta tela é a
           mesma que o time discute na reunião de operação.
         </span>
@@ -192,7 +198,7 @@ export function SessionsView({
               <th className="w-[200px] px-4 py-3">
                 Presença
                 <span className="block text-[10px] font-medium">
-                  medida por tempo de sala (≥ {MINUTOS_MINIMOS} min)
+                  medida por tempo de sala (≥ {minutosMinimos} min)
                 </span>
               </th>
               <th className="px-4 py-3 text-right">

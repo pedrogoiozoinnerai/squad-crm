@@ -3,7 +3,6 @@ import { CircleSlash, Timer, UserCheck } from "lucide-react";
 import {
   fimDaSessao,
   inicioDaSessao,
-  MINUTOS_MINIMOS,
   tempoNaSala,
 } from "@/components/sessions/SessionsView";
 import { Drawer } from "@/components/ui/Drawer";
@@ -24,11 +23,14 @@ export async function SessionDrawer({
   user,
   now,
   closeHref,
+  minutosMinimos,
 }: {
   sessionId: string;
   user: SessionUser;
   now: Date;
   closeHref: string;
+  /// Ver SessionsView: a regra é dado do banco, não constante.
+  minutosMinimos: number;
 }) {
   const session = await getSessionDetail(user, sessionId);
 
@@ -89,7 +91,7 @@ export async function SessionDrawer({
         <Numero
           label="Taxa de presença"
           value={medida ? `${taxa}%` : "—"}
-          hint={medida ? `≥ ${MINUTOS_MINIMOS} min na sala` : undefined}
+          hint={medida ? `≥ ${minutosMinimos} min na sala` : undefined}
         />
         <Numero
           label="Leads A/B"
@@ -103,7 +105,7 @@ export async function SessionDrawer({
         <span>
           Cada linha abaixo traz o <strong className="text-foreground">tempo real na sala</strong>,
           medido pela própria call. O chip <em>Presente</em> é consequência desse tempo —{" "}
-          {MINUTOS_MINIMOS} minutos ou mais —, não de uma marcação manual.
+          {minutosMinimos} minutos ou mais —, não de uma marcação manual.
         </span>
       </p>
 

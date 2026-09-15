@@ -16,6 +16,71 @@ export function weekDays(start: Date) {
   return Array.from({ length: 7 }, (_, i) => addDays(start, i));
 }
 
+/**
+ * Quantos minutos o fuso `tz` está à frente do UTC **naquele instante**.
+ *
+ * Tem que ser por instante, não por fuso: São Paulo já foi -02 no horário de
+ * verão e é -03 fora dele, e o histórico importado atravessa os dois.
+ */
+function minutosDeDiferenca(instante: Date, tz: string) {
+  const partes = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(instante);
+
+  const campo = (tipo: string) => Number(partes.find((p) => p.type === tipo)?.value ?? 0);
+  // `hour12: false` devolve 24 à meia-noite em alguns runtimes; 24 e 0 são o
+  // mesmo instante, e deixar passar erraria o dia inteiro por 24 horas.
+  const hora = campo("hour") % 24;
+
+  const comoSeFosseUTC = Date.UTC(
+    campo("year"),
+    campo("month") - 1,
+    campo("day"),
+    hora,
+    campo("minute"),
+    campo("second"),
+  );
+  return (comoSeFosseUTC - instante.getTime()) / 60_000;
+}
+
+/**
+ * O instante exato de uma hora de parede num dia, num fuso.
+ *
+ * Existe porque `new Date(dia).setHours(10)` usa o fuso **do servidor**. Na sua
+ * máquina isso é São Paulo e parece certo; na Vercel é UTC, e uma sessão das
+ * 10:00 aparecia às 07:00 para o time inteiro. O bug já estava em produção.
+ *
+ * O dia sai dos componentes **UTC** de `dia` de propósito: a coluna guarda um
+ * dia de calendário às 00:00, e quem escreveu pode ter sido um runtime em UTC
+ * ou em São Paulo — as duas gravações caem no mesmo dia UTC.
+ */
+export function instanteLocal(dia: Date, hhmm: string, tz = TZ) {
+  const [hora, minuto] = hhmm.split(":").map(Number);
+  const parede = Date.UTC(
+    dia.getUTCFullYear(),
+    dia.getUTCMonth(),
+    dia.getUTCDate(),
+    Number.isFinite(hora) ? hora : 0,
+    Number.isFinite(minuto) ? minuto : 0,
+  );
+
+  // Duas passadas: a primeira estima a diferença tratando a hora de parede
+  // como UTC, a segunda confere no instante corrigido. Elas só divergem na
+  // virada do horário de verão — e é exatamente ali que uma passada só erra
+  // em uma hora.
+  const primeira = minutosDeDiferenca(new Date(parede), tz);
+  const corrigido = new Date(parede - primeira * 60_000);
+  const segunda = minutosDeDiferenca(corrigido, tz);
+  return primeira === segunda ? corrigido : new Date(parede - segunda * 60_000);
+}
+
 export function isSameDay(a: Date, b: Date) {
   return (
     a.getFullYear() === b.getFullYear() &&

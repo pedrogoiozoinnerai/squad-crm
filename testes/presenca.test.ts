@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
-import { atingiuPresenca, consolidar, veredicto, type EventoBruto } from "../src/lib/presenca";
+import {
+  atingiuPresenca,
+  consolidar,
+  REGRA_PADRAO,
+  veredicto,
+  type EventoBruto,
+} from "../src/lib/presenca";
 
 const T = (minuto: number) => new Date(`2026-09-15T14:${String(minuto).padStart(2, "0")}:00Z`);
 
@@ -137,5 +144,34 @@ describe("veredicto da reunião", () => {
       null,
     );
     assert.equal(veredicto(p, true, duracao, regra).situacao, "participou");
+  });
+});
+
+describe("uma fonte só para a regra de presença", () => {
+  it("o padrão do código bate com o @default do schema", () => {
+    // Três cópias divergentes desta regra já conviveram no projeto: a coluna
+    // no banco, um `MINUTOS_MINIMOS = 5` na tela e um `>= 300` no seed.
+    // Este teste é o que impede a quarta.
+    const schema = readFileSync(new URL("../prisma/schema.prisma", import.meta.url), "utf8");
+
+    const doSchema = (campo: string) => {
+      const achado = schema.match(new RegExp(`${campo}\\s+Int\\s+@default\\((\\d+)\\)`));
+      assert.ok(achado, `${campo} não encontrado no schema`);
+      return Number(achado[1]);
+    };
+
+    assert.equal(doSchema("presencaMinutos"), REGRA_PADRAO.presencaMinutos);
+    assert.equal(doSchema("presencaPercentual"), REGRA_PADRAO.presencaPercentual);
+  });
+
+  it("nenhum componente declara a regra por conta própria", () => {
+    // Uma constante nova na tela voltaria a divergir em silêncio.
+    for (const arquivo of ["SessionsView.tsx", "SessionDrawer.tsx"]) {
+      const fonte = readFileSync(
+        new URL(`../src/components/sessions/${arquivo}`, import.meta.url),
+        "utf8",
+      );
+      assert.doesNotMatch(fonte, /MINUTOS_MINIMOS/, `${arquivo} voltou a declarar a regra`);
+    }
   });
 });

@@ -5,6 +5,7 @@ import { parseWeekOffset, SessionsView } from "@/components/sessions/SessionsVie
 import { requireUser } from "@/lib/auth";
 import { weekStart } from "@/lib/dates";
 import { getSessions } from "@/lib/queries";
+import { configuracao } from "@/lib/reconciliar";
 
 const BASE = "/user/sessoes";
 
@@ -18,16 +19,19 @@ export default async function SessoesPage(props: PageProps<"/user/sessoes">) {
   // `now` nasce aqui e desce como prop: componente puro não lê o relógio.
   const now = new Date();
   const start = weekStart(now, offset);
-  const sessions = await getSessions(user, start, addDays(start, 7));
+  const [sessions, regra] = await Promise.all([
+    getSessions(user, start, addDays(start, 7)),
+    configuracao(),
+  ]);
 
   // Fechar o drawer volta para a mesma semana que o usuário estava vendo.
   const closeHref = offset ? `${BASE}?w=${offset}` : BASE;
 
   return (
     <>
-      <SessionsView space="user" sessions={sessions} start={start} offset={offset} now={now} />
+      <SessionsView space="user" sessions={sessions} start={start} offset={offset} now={now} minutosMinimos={regra.presencaMinutos} />
       {sessionId && (
-        <SessionDrawer sessionId={sessionId} user={user} now={now} closeHref={closeHref} />
+        <SessionDrawer sessionId={sessionId} user={user} now={now} closeHref={closeHref} minutosMinimos={regra.presencaMinutos} />
       )}
     </>
   );
