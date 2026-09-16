@@ -58,7 +58,7 @@ export function Quadro({
 
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl bg-[#1a2540] transition ${
+      className={`relative overflow-hidden rounded-2xl bg-sala-superficie transition ${
         grande ? "size-full" : "aspect-video w-full"
       } ${falando ? "ring-2 ring-waz-50" : ""}`}
     >

@@ -22,6 +22,19 @@
   --font-sans: var(--font-fustat);
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 
+  /* ── A sala de reunião ──────────────────────────────────────────────
+     Escura porque vídeo precisa de contraste: fundo claro atrás de uma
+     webcam lava a imagem e cansa em call de uma hora.
+
+     Mas escuro não quer dizer azul-marinho. Estes quatro tons descem do
+     MESMO verde do manual (`waz-10` é o terceiro deles) — antes eram
+     #0d1424, #111a2e, #131c33 e #1a2540, uma paleta que não existe em
+     lugar nenhum da marca e que veio junto das telas de referência. */
+  --color-sala-fundo: #05170c;
+  --color-sala-painel: #072110;
+  --color-sala-superficie: #092a16;
+  --color-sala-elevado: #0e3a1f;
+
   /* Waz — paleta oficial do manual de marca Squad.com */
   --color-waz-10: #092a16;
   --color-waz-20: #13532c;

@@ -66,7 +66,7 @@ export function BarraDeControles({
 }) {
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-center p-4">
-      <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-white/10 bg-[#111a2e]/95 px-3 py-2 shadow-2xl backdrop-blur">
+      <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-white/10 bg-sala-painel/95 px-3 py-2 shadow-2xl backdrop-blur">
         <Botao
           ativo={!estado.microfone}
           dica={estado.microfone ? "Silenciar meu microfone" : "Ativar microfone"}
@@ -179,9 +179,9 @@ function Botao({
         aria-label={dica}
         className={`grid size-11 place-items-center rounded-full text-white/80 transition
           hover:bg-white/10 hover:text-white
-          focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:outline-none
+          focus-visible:ring-2 focus-visible:ring-waz-50 focus-visible:outline-none
           disabled:cursor-not-allowed disabled:text-white/25 disabled:hover:bg-transparent
-          ${ativo ? (tom === "perigo" ? "bg-red-500/25 text-red-300" : "bg-white/15 text-white") : ""}
+          ${ativo ? (tom === "perigo" ? "bg-red-500/25 text-red-300" : "bg-waz-50/20 text-waz-80") : ""}
           ${tom === "perigo" && !ativo ? "text-red-400/90" : ""}`}
       >
         {children}
@@ -192,7 +192,7 @@ function Botao({
           deles é irreversível para quem está falando. */}
       <span
         role="tooltip"
-        className="pointer-events-none absolute bottom-[calc(100%+10px)] left-1/2 z-10 -translate-x-1/2 rounded-xl bg-[#1c2740] px-3.5 py-2 text-sm whitespace-nowrap text-white opacity-0 shadow-lg transition group-hover:opacity-100 group-focus-within:opacity-100"
+        className="pointer-events-none absolute bottom-[calc(100%+10px)] left-1/2 z-10 -translate-x-1/2 rounded-xl bg-sala-elevado px-3.5 py-2 text-sm whitespace-nowrap text-white opacity-0 shadow-lg transition group-hover:opacity-100 group-focus-within:opacity-100"
       >
         {dica}
       </span>
@@ -216,13 +216,13 @@ function Seletor({
         type="button"
         onClick={aoClicar}
         aria-label={dica}
-        className="grid size-7 place-items-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:outline-none"
+        className="grid size-7 place-items-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-waz-50 focus-visible:outline-none"
       >
         <ChevronUp className="size-4" />
       </button>
       <span
         role="tooltip"
-        className="pointer-events-none absolute bottom-[calc(100%+10px)] left-1/2 z-10 -translate-x-1/2 rounded-xl bg-[#1c2740] px-3.5 py-2 text-sm whitespace-nowrap text-white opacity-0 shadow-lg transition group-hover:opacity-100 group-focus-within:opacity-100"
+        className="pointer-events-none absolute bottom-[calc(100%+10px)] left-1/2 z-10 -translate-x-1/2 rounded-xl bg-sala-elevado px-3.5 py-2 text-sm whitespace-nowrap text-white opacity-0 shadow-lg transition group-hover:opacity-100 group-focus-within:opacity-100"
       >
         {dica}
       </span>

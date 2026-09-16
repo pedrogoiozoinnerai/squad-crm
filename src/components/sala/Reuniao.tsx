@@ -92,7 +92,7 @@ export function Reuniao({
   }
 
   return (
-    <div className="flex h-dvh flex-col bg-[#0d1424] text-white">
+    <div className="flex h-dvh flex-col bg-sala-fundo text-white">
       <header className="flex shrink-0 items-center gap-3 px-5 py-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/brand/logo-white.svg" alt="Squad.com" className="h-4 w-auto shrink-0 opacity-90" />
@@ -242,7 +242,12 @@ function Aba({
       onClick={aoClicar}
       aria-pressed={ativa}
       className={`relative flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition ${
-        ativa ? "bg-white/15 text-white" : "bg-white/5 text-white/70 hover:bg-white/10"
+        ativa
+          // Ativo é VERDE, não cinza: é o que diz que a tela é da Squad e
+          // não de um player de vídeo qualquer. O cinza neutro servia para
+          // qualquer marca — que é o problema.
+          ? "bg-waz-50/20 text-waz-80"
+          : "bg-white/5 text-white/70 hover:bg-white/10"
       }`}
     >
       {children}

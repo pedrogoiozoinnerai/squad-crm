@@ -44,7 +44,7 @@ export function SeletorDeAparelho({
   }[tipo as string];
 
   return (
-    <div className="absolute bottom-[calc(100%+12px)] left-1/2 z-30 w-[290px] -translate-x-1/2 overflow-hidden rounded-2xl bg-[#1c2740] shadow-2xl">
+    <div className="absolute bottom-[calc(100%+12px)] left-1/2 z-30 w-[290px] -translate-x-1/2 overflow-hidden rounded-2xl bg-sala-elevado shadow-2xl">
       <p className="px-4 pt-3 pb-2 text-[11px] font-semibold tracking-[0.12em] text-white/40 uppercase">
         {titulo}
       </p>

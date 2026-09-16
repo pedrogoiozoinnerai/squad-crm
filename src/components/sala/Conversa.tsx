@@ -87,7 +87,7 @@ export function Conversa({ sala }: { sala: Room }) {
   }
 
   return (
-    <section className="flex w-[290px] shrink-0 flex-col overflow-hidden rounded-2xl bg-[#131c33]">
+    <section className="flex w-[290px] shrink-0 flex-col overflow-hidden rounded-2xl bg-sala-superficie">
       <header className="flex items-center gap-2 px-4 py-3.5">
         <MessageSquare className="size-4 text-white/50" />
         <h2 className="text-[11px] font-semibold tracking-[0.14em] text-white/80 uppercase">

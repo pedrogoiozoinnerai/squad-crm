@@ -26,7 +26,7 @@ export function Participantes({
   aoRemover: (identidade: string) => void;
 }) {
   return (
-    <section className="flex w-[260px] shrink-0 flex-col overflow-hidden rounded-2xl bg-[#131c33]">
+    <section className="flex w-[260px] shrink-0 flex-col overflow-hidden rounded-2xl bg-sala-superficie">
       <header className="flex items-center gap-2 px-4 py-3.5">
         <Users className="size-4 text-white/50" />
         <h2 className="flex-1 text-[11px] font-semibold tracking-[0.14em] text-white/80 uppercase">
@@ -51,7 +51,7 @@ export function Participantes({
             >
               <span
                 className={`grid size-8 shrink-0 place-items-center rounded-full text-xs font-semibold transition ${
-                  p.isSpeaking ? "bg-waz-50 text-[#0d1424]" : "bg-white/10 text-white/70"
+                  p.isSpeaking ? "bg-waz-50 text-sala-fundo" : "bg-white/10 text-white/70"
                 }`}
               >
                 {iniciaisDe(p.name || p.identity)}
