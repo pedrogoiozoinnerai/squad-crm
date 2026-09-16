@@ -80,6 +80,17 @@ export function fimDaJanela(agora: Date, janelaSegundos: number): Date {
  *
  * Truncado em 45 caracteres, tamanho máximo de um IPv6: sem isso um cabeçalho
  * forjado de 8 KB vira chave primária.
+ *
+ * **Sobre confiar no cabeçalho.** Na Vercel ele é SOBRESCRITO pela borda com o
+ * endereço real de quem conectou — conferi em produção mandando um IP inventado
+ * em 34 requisições e vendo o contador registrar o endereço verdadeiro. Ou
+ * seja: aqui ninguém escapa do limite nem envenena o balde de outro forjando o
+ * cabeçalho.
+ *
+ * Isso vale para ESTA hospedagem. Atrás de um proxy que apenas acrescenta ao
+ * cabeçalho em vez de reescrevê-lo, o primeiro valor passa a ser escolhido por
+ * quem chama, e a proteção cai. Se um dia sair da Vercel, este é o ponto a
+ * revisar.
  */
 export function quemPede(cabecalho: string | null): string {
   const primeiro = cabecalho?.split(",")[0]?.trim();
