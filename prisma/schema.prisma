@@ -127,6 +127,22 @@ model ErrorLog {
   @@index([digest])
 }
 
+/// Balde de limite de taxa: uma linha por rota, por quem pede, por janela.
+///
+/// Em banco pela mesma razão de `LoginAttempt`: serverless não compartilha
+/// memória, e um contador em processo protege só a instância que atendeu.
+///
+/// A janela entra na CHAVE, não numa coluna de data. Assim a virada é
+/// automática — a janela seguinte é outra linha — e não há relógio para
+/// comparar nem contador para zerar.
+model RateLimit {
+  chave    String   @id
+  contagem Int      @default(1)
+  expiraEm DateTime
+
+  @@index([expiraEm])
+}
+
 /// Tentativa de login, para travar força bruta.
 ///
 /// Em banco e não em memória porque a aplicação roda serverless: cada requisição

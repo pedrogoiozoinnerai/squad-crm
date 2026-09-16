@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { env } from "@/lib/env";
+import { limparBaldesVencidos } from "@/lib/limite-servidor";
 import { materializarSessoes } from "@/lib/sessoes";
 
 /**
@@ -35,7 +36,13 @@ export async function GET(request: NextRequest) {
   try {
     const r = await materializarSessoes();
     if (r.criadas) console.log("[cron/sessoes]", JSON.stringify(r));
-    return NextResponse.json({ ok: true, ...r });
+
+    // Carona na execução que já roda de hora em hora: sem faxina, a tabela de
+    // limite cresce uma linha por IP por minuto e nunca encolhe. Linha vencida
+    // não afeta contagem nenhuma — só ocupa espaço.
+    const baldes = await limparBaldesVencidos().catch(() => 0);
+
+    return NextResponse.json({ ok: true, ...r, baldesLimpos: baldes });
   } catch (erro) {
     console.error("[cron/sessoes] falhou:", erro);
     return NextResponse.json(

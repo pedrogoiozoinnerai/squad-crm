@@ -5,6 +5,7 @@ import { novoTokenDeConvite } from "@/lib/codes";
 import { linkDoConvite } from "@/lib/convites";
 import { env } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
+import { guardaDeTaxa } from "@/lib/limite-servidor";
 import { inscrever } from "@/lib/sessoes";
 
 /**
@@ -33,6 +34,10 @@ function chaveConfere(recebida: string | null) {
 }
 
 export async function POST(request: NextRequest) {
+  // Antes da chave: quem está martelando não deve nem custar a comparação.
+  const barrado = await guardaDeTaxa("reservar", request);
+  if (barrado) return barrado;
+
   if (!env("FUNIL_API_KEY")) {
     return Response.json({ erro: "Agendamento pelo funil não configurado." }, { status: 503 });
   }

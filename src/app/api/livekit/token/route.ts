@@ -11,6 +11,7 @@ import {
 } from "@/lib/livekit";
 import { chavesDoLiveKit, criarSala } from "@/lib/livekit-servidor";
 import { prisma } from "@/lib/prisma";
+import { guardaDeTaxa } from "@/lib/limite-servidor";
 import { janelaDaSala, situacaoDaSala } from "@/lib/sala";
 
 /**
@@ -26,6 +27,11 @@ import { janelaDaSala, situacaoDaSala } from "@/lib/sala";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
+  // Esta rota resolve convites e links: sem teto, ela vira o oráculo de quais
+  // tokens existem, um palpite por requisição.
+  const barrado = await guardaDeTaxa("token", request);
+  if (barrado) return barrado;
+
   const chaves = chavesDoLiveKit();
   if (!chaves) {
     return Response.json({ erro: "As reuniões por vídeo ainda não foram configuradas." }, { status: 503 });

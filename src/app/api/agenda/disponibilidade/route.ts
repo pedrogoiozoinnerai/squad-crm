@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 
 import { instanteDeCampoLocal, TZ } from "@/lib/dates";
 import { horizonteDaAgenda } from "@/lib/horizonte";
+import { guardaDeTaxa } from "@/lib/limite-servidor";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -56,6 +57,12 @@ function recorte(request: NextRequest, de: Date, ate: Date) {
 }
 
 export async function GET(request: NextRequest) {
+  // O cabeçalho de cache já faz o CDN absorver a maior parte — mas a chave de
+  // cache inclui a query string, então `?x=1`, `?x=2`… fura o cache e bate
+  // aqui. O limite é o que sobra quando o cache é contornado de propósito.
+  const barrado = await guardaDeTaxa("disponibilidade", request);
+  if (barrado) return barrado;
+
   const agora = new Date();
   const janela = recorte(
     request,
