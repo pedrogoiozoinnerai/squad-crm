@@ -5,6 +5,7 @@ import { LossReasonList, type LossReasonRow } from "@/components/settings/LossRe
 import { StageList, type StageRow } from "@/components/settings/StageList";
 import { TaskTemplateList, type TemplateRow } from "@/components/settings/TaskTemplateList";
 import { PageHeader } from "@/components/shell/PageHeader";
+import { RegraDePresenca } from "@/components/settings/RegraDePresenca";
 import { SerieList, type SerieRow } from "@/components/settings/SerieList";
 
 export type AutomationRow = {
@@ -27,7 +28,7 @@ export type CaseRow = {
   active: boolean;
 };
 
-export const SECOES = ["etapas", "motivos", "templates", "sessoes", "automacoes"] as const;
+export const SECOES = ["etapas", "motivos", "templates", "sessoes", "reunioes", "automacoes"] as const;
 export type Secao = (typeof SECOES)[number];
 
 export function SettingsView({
@@ -40,6 +41,7 @@ export function SettingsView({
   cases,
   series,
   owners,
+  regra,
 }: {
   basePath: string;
   secao: Secao;
@@ -50,12 +52,14 @@ export function SettingsView({
   cases: CaseRow[];
   series: SerieRow[];
   owners: { id: string; name: string }[];
+  regra: { presencaMinutos: number; presencaPercentual: number };
 }) {
   const abas: { key: Secao; label: string; count: number }[] = [
     { key: "etapas", label: "Etapas do pipeline", count: stages.length },
     { key: "motivos", label: "Motivos de perda", count: lossReasons.length },
     { key: "templates", label: "Templates de tarefa", count: templates.length },
     { key: "sessoes", label: "Sessões recorrentes", count: series.length },
+    { key: "reunioes", label: "Reuniões e presença", count: 1 },
     { key: "automacoes", label: "Automações e cases", count: automations.length + cases.length },
   ];
 
@@ -96,6 +100,12 @@ export function SettingsView({
       {secao === "motivos" && <LossReasonList reasons={lossReasons} />}
       {secao === "templates" && <TaskTemplateList templates={templates} />}
       {secao === "sessoes" && <SerieList series={series} owners={owners} />}
+      {secao === "reunioes" && (
+        <RegraDePresenca
+          presencaMinutos={regra.presencaMinutos}
+          presencaPercentual={regra.presencaPercentual}
+        />
+      )}
       {secao === "automacoes" && <ReadOnlySection automations={automations} cases={cases} />}
     </>
   );

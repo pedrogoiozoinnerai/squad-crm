@@ -25,6 +25,7 @@ export default async function ConfiguracoesPage(props: PageProps<"/admin/configu
       cases={config.cases}
       series={config.series}
       owners={owners}
+      regra={config.regra}
     />
   );
 }

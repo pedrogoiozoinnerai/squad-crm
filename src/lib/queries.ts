@@ -916,7 +916,7 @@ export async function getTeamOverview() {
 // ───────────────────── Configuração da operação ─────────────────────
 
 export async function getConfig() {
-  const [stages, lossReasons, templates, automations, cases, permissions, series] = await Promise.all([
+  const [stages, lossReasons, templates, automations, cases, permissions, series, regra] = await Promise.all([
     prisma.stage.findMany({ orderBy: { order: "asc" }, include: { _count: { select: { deals: true } } } }),
     prisma.lossReason.findMany({ orderBy: { orderIndex: "asc" }, include: { _count: { select: { deals: true } } } }),
     prisma.taskTemplate.findMany({ orderBy: { name: "asc" }, include: { _count: { select: { tasks: true } } } }),
@@ -932,9 +932,12 @@ export async function getConfig() {
         _count: { select: { meetings: true } },
       },
     }),
+    // A régua de presença. Era lida por três telas e escrita por nenhuma —
+    // `getConfig` nem sequer tocava na tabela `Config`.
+    prisma.config.upsert({ where: { id: "unica" }, update: {}, create: {} }),
   ]);
 
-  return { stages, lossReasons, templates, automations, cases, permissions, series };
+  return { stages, lossReasons, templates, automations, cases, permissions, series, regra };
 }
 
 /**

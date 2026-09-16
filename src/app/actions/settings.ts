@@ -413,3 +413,45 @@ export async function alternarTemplate(formData: FormData) {
 
   revalidarTemplates();
 }
+
+// ── A régua de presença ──────────────────────────────────────────────────────
+
+/**
+ * Salva quando um participante "esteve" na reunião.
+ *
+ * Esta tela faltava desde sempre. `SessionsView` diz, em comentário e na
+ * própria página, que a regra "vem do banco, não de uma constante aqui: ela é
+ * editável no painel" — e o painel não existia. `Config` era lido por três
+ * telas e escrito por ninguém, então a régua ficava presa no `@default` do
+ * schema e mudá-la exigia migração.
+ *
+ * Não reescreve o passado: `MeetingAttendee.regraMinutos` guarda a régua que
+ * produziu cada veredicto. A próxima reconciliação aplica a nova aos que ela
+ * recalcular, e os números antigos continuam dizendo de qual régua vieram.
+ */
+export async function salvarRegraDePresenca(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  await requireAdminAction();
+
+  const minutos = Number(formData.get("presencaMinutos"));
+  if (!Number.isInteger(minutos) || minutos < 0 || minutos > 240) {
+    return { error: "Os minutos mínimos precisam ser um número entre 0 e 240." };
+  }
+
+  const percentual = Number(formData.get("presencaPercentual"));
+  if (!Number.isInteger(percentual) || percentual < 0 || percentual > 100) {
+    return { error: "O percentual precisa ser um número entre 0 e 100." };
+  }
+
+  await prisma.config.upsert({
+    where: { id: "unica" },
+    update: { presencaMinutos: minutos, presencaPercentual: percentual },
+    create: { presencaMinutos: minutos, presencaPercentual: percentual },
+  });
+
+  revalidatePath(CONFIG_PATH);
+  revalidateBoth(revalidatePath, "sessoes", "participantes");
+  return { ok: true };
+}
