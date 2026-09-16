@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { NextRequest } from "next/server";
 
 import { novoTokenDeConvite } from "@/lib/codes";
+import { TZ } from "@/lib/dates";
 import { linkDoConvite } from "@/lib/convites";
 import { env } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
@@ -129,6 +130,32 @@ export async function POST(request: NextRequest) {
     // 409 e não 500: a sessão encheu entre a consulta e o clique, e o funil
     // precisa saber que é para mostrar a lista de novo — não que deu erro.
     return Response.json({ erro: "Esta sessão lotou.", lotada: true }, { status: 409 });
+  }
+
+  // A linha do tempo do lead.
+  //
+  // Sem isto o vendedor abre o lead que acabou de se inscrever e não vê nada:
+  // o histórico começa vazio, como se a pessoa tivesse aparecido do nada. O
+  // registro é o primeiro contexto que ele tem antes da call — de onde veio e
+  // para quando marcou.
+  //
+  // Só na inscrição NOVA: `jaEstava` significa que o funil reenviou a mesma
+  // reserva, e uma linha por reenvio encheria o histórico de ruído.
+  if (r.situacao === "inscrito") {
+    await prisma.activity.create({
+      data: {
+        kind: "MEETING_SCHEDULED",
+        title: `Inscreveu-se na sessão de ${sessao.startsAt.toLocaleString("pt-BR", {
+          timeZone: TZ,
+          dateStyle: "short",
+          timeStyle: "short",
+        })}`,
+        detail: [corpo.utmSource && `origem: ${corpo.utmSource}`, "pelo funil do Type"]
+          .filter(Boolean)
+          .join(" · "),
+        leadId: lead.id,
+      },
+    });
   }
 
   return Response.json({

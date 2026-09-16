@@ -8,6 +8,7 @@ import type { Room } from "livekit-client";
 
 import { Preparo, type Preferencias } from "@/components/sala/Preparo";
 import { Reuniao } from "@/components/sala/Reuniao";
+import { lerFalhaDaSala, type FalhaDaSala } from "@/lib/falhas-da-sala";
 import type { SituacaoDaSala } from "@/lib/sala";
 
 type Fase = "preparo" | "conectando" | "dentro" | "saiu" | "erro";
@@ -36,7 +37,7 @@ export function SalaCliente({
   const router = useRouter();
   const [fase, setFase] = useState<Fase>("preparo");
   const [sala, setSala] = useState<Room | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
+  const [erro, setErro] = useState<FalhaDaSala | null>(null);
 
   // Desconecta ao sair da página.
   //
@@ -67,7 +68,12 @@ export function SalaCliente({
           ),
         });
         const dados = await resposta.json();
-        if (!resposta.ok) throw new Error(dados.erro ?? "Não foi possível entrar.");
+        if (!resposta.ok) {
+          // Erro da NOSSA rota: a mensagem já foi escrita para ser lida.
+          setErro(lerFalhaDaSala(dados.erro ?? "Não foi possível entrar.", "api"));
+          setFase("erro");
+          return;
+        }
 
         // A conexão em si vive num módulo à parte, carregado só aqui: o
         // `livekit-client` pesa, e quem abre a antessala e desiste não devia
@@ -76,7 +82,11 @@ export function SalaCliente({
         setSala(await conectar({ url: dados.url, token: dados.token, preferencias }));
         setFase("dentro");
       } catch (e) {
-        setErro(e instanceof Error ? e.message : "Não foi possível entrar.");
+        // O detalhe técnico fica no console para quem for investigar; a tela
+        // recebe a versão que diz o que fazer. "could not establish pc
+        // connection" não é frase para quem clicou em entrar numa call.
+        console.error("[sala] falha ao entrar:", e);
+        setErro(lerFalhaDaSala(e));
         setFase("erro");
       }
     },
@@ -99,7 +109,10 @@ export function SalaCliente({
         {erro && (
           <div className="mx-auto mt-6 flex max-w-[640px] items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
             <AlertCircle className="mt-0.5 size-4 shrink-0 text-red-600" />
-            <p className="text-sm text-red-800">{erro}</p>
+            <p className="text-sm text-red-800">
+              <strong className="font-semibold">{erro.titulo}</strong>
+              {erro.acao && <span className="mt-0.5 block font-normal">{erro.acao}</span>}
+            </p>
           </div>
         )}
         <Preparo

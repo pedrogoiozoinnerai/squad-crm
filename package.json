@@ -22,7 +22,8 @@
     "test:fusos": "TZ=UTC npm run test --silent && TZ=America/Sao_Paulo npm run test --silent",
     "verificar:meetsquad": "tsx scripts/verificar-meetsquad.ts",
     "links:faltantes": "tsx scripts/gerar-links-faltantes.ts",
-    "senha": "tsx scripts/definir-senha.ts"
+    "senha": "tsx scripts/definir-senha.ts",
+    "verificar:jornada": "tsx scripts/verificar-jornada.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

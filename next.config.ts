@@ -68,8 +68,17 @@ const nextConfig: NextConfig = {
     return [
       { source: "/:path*", headers: seguranca },
       // Depois da genérica, de propósito: ver o comentário em `salaDeReuniao`.
+      //
+      // As TRÊS portas da sala precisam estar aqui — são três porque são três
+      // jeitos de entrar: `/sala` com sessão do CRM, `/convite` com o token do
+      // lead inscrito, `/entrar` com o link que se manda para qualquer um.
+      // `/entrar` nasceu depois e ficou de fora desta lista: quem chegava por
+      // ele via a antessala, clicava em ligar a câmera e não acontecia nada —
+      // o navegador negava antes de o código pedir, e o erro aparecia como
+      // "acesso negado" sem que ninguém tivesse negado.
       { source: "/sala/:path*", headers: salaDeReuniao },
       { source: "/convite/:path*", headers: salaDeReuniao },
+      { source: "/entrar/:path*", headers: salaDeReuniao },
     ];
   },
 };
