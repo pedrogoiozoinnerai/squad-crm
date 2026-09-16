@@ -21,7 +21,8 @@
     "test": "node --import tsx --test testes/*.test.ts",
     "test:fusos": "TZ=UTC npm run test --silent && TZ=America/Sao_Paulo npm run test --silent",
     "verificar:meetsquad": "tsx scripts/verificar-meetsquad.ts",
-    "links:faltantes": "tsx scripts/gerar-links-faltantes.ts"
+    "links:faltantes": "tsx scripts/gerar-links-faltantes.ts",
+    "senha": "tsx scripts/definir-senha.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
