@@ -68,7 +68,23 @@ export function identidadeDoLead(leadId: string) {
 export function lerIdentidade(identidade: string) {
   if (identidade.startsWith("u_")) return { tipo: "usuario" as const, id: identidade.slice(2) };
   if (identidade.startsWith("l_")) return { tipo: "lead" as const, id: identidade.slice(2) };
+  if (identidade.startsWith("c_")) return { tipo: "convidado" as const, id: identidade.slice(2) };
   return { tipo: "desconhecido" as const, id: identidade };
+}
+
+/**
+ * Identidade de quem entra pelo link da reunião.
+ *
+ * O sufixo é aleatório por ENTRADA, não por pessoa: o link é um só e pode ser
+ * aberto por várias pessoas ao mesmo tempo, e identidade repetida faz o LiveKit
+ * derrubar quem entrou antes. Duas pessoas pelo mesmo link viram dois
+ * participantes, que é a verdade.
+ *
+ * Aparece em `Presence` como qualquer um — e não vira inscrito de ninguém,
+ * porque ninguém o inscreveu. É a diferença entre medir e atribuir.
+ */
+export function identidadeDeConvidado(sufixo: string) {
+  return `c_${sufixo}`;
 }
 
 export type Concessao = {

@@ -77,12 +77,14 @@ export function DealSidePanel({
   nextMeetingAt,
   reuniaoId,
   convite,
+  link,
   reuniaoFimEm,
 }: {
   deal: SidePanelDeal;
   nextMeetingAt: Date | null;
   reuniaoId: string | null;
   convite: string | null;
+  link?: string | null;
   reuniaoFimEm: Date | null;
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(saveDeal, null);
@@ -129,6 +131,7 @@ export function DealSidePanel({
           <SalaDoNegocio
             reuniaoId={reuniaoId}
             convite={convite}
+            link={link}
             comecaEm={nextMeetingAt}
             terminaEm={reuniaoFimEm}
           />

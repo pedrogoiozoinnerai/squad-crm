@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarPlus, Plus, X } from "lucide-react";
+import { CalendarPlus, Plus, X, Zap } from "lucide-react";
 
 import {
   FormularioDeReuniao,
@@ -25,7 +25,7 @@ export function NovaReuniao({
   padrao?: PadraoDaReuniao;
   owners?: { id: string; name: string }[];
   rotulo?: string;
-  variante?: "primaria" | "discreta";
+  variante?: "primaria" | "discreta" | "agora";
 }) {
   const [aberto, setAberto] = useState(false);
 
@@ -34,9 +34,15 @@ export function NovaReuniao({
       <button
         type="button"
         onClick={() => setAberto(true)}
-        className={variante === "primaria" ? "btn-primary shrink-0" : "btn-ghost shrink-0"}
+        className={variante === "discreta" ? "btn-ghost shrink-0" : "btn-primary shrink-0"}
       >
-        {variante === "primaria" ? <Plus className="size-4" /> : <CalendarPlus className="size-4" />}
+        {variante === "agora" ? (
+          <Zap className="size-4" />
+        ) : variante === "primaria" ? (
+          <Plus className="size-4" />
+        ) : (
+          <CalendarPlus className="size-4" />
+        )}
         {rotulo}
       </button>
     );
@@ -55,7 +61,7 @@ export function NovaReuniao({
           <div>
             <h2 className="text-sm font-semibold">{rotulo}</h2>
             <p className="mt-0.5 text-xs text-muted">
-              A sala abre 30 minutos antes e o convite do lead nasce junto.
+              O link sai pronto na tela seguinte. A sala abre 30 minutos antes do horário.
             </p>
           </div>
           <button

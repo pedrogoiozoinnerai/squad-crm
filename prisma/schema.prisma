@@ -511,6 +511,18 @@ model Meeting {
   // Reservado pro projeto 3 (Meet com LiveKit)
   roomId String?
 
+  /// O link da reunião — o que se manda para quem não tem conta nem convite.
+  ///
+  /// Existe porque nem toda reunião tem lead: uma call interna, um convidado
+  /// que não está no funil, uma conversa marcada na hora. Sem ele, a única
+  /// porta para quem está de fora era o convite do roster, que exige um lead.
+  ///
+  /// 32 bytes aleatórios, único, e NUNCA o `id` da reunião: id é adivinhável a
+  /// partir de outro, e daria a sala de qualquer reunião a quem tivesse um.
+  /// Quem entra por aqui é "convidado" — aparece em `Presence`, que é a
+  /// verdade crua, e não vira inscrito de ninguém.
+  guestToken String? @unique
+
   ownerId String
   owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 

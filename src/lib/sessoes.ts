@@ -1,5 +1,6 @@
 import "server-only";
 
+import { novoTokenDeConvite } from "@/lib/codes";
 import { horizonteDaAgenda } from "@/lib/horizonte";
 import { prisma } from "@/lib/prisma";
 import { slotsDaSerie } from "@/lib/slots";
@@ -99,6 +100,10 @@ export async function materializarSessoes(
         ownerId: t.ownerId,
         capacity: t.capacity,
         templateId: t.id,
+        // O link nasce com a sessão, como nasce com a reunião avulsa. Sem
+        // isto as sessões do funil — que são a maioria da agenda — seriam
+        // justamente as únicas sem link para mandar.
+        guestToken: novoTokenDeConvite(),
       })),
       skipDuplicates: true,
     });

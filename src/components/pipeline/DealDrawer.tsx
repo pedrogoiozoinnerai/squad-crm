@@ -167,6 +167,7 @@ export async function DealDrawer({
           nextMeetingAt={nextMeeting}
           reuniaoId={proxima?.id ?? null}
           convite={proxima?.attendees[0]?.inviteToken ?? null}
+          link={proxima?.guestToken ?? null}
           reuniaoFimEm={proxima?.endsAt ?? null}
         />
 

@@ -5,7 +5,7 @@ import { AlertCircle, ArrowRight, Camera, CameraOff, Mic, MicOff, Sparkles } fro
 
 import { desligar, lerFalha, type FalhaDeMidia } from "@/components/sala/dispositivos";
 
-export type Preferencias = { camera: boolean; microfone: boolean };
+export type Preferencias = { camera: boolean; microfone: boolean; nome?: string };
 
 /**
  * "Preparar para entrar" — a antessala.
@@ -23,11 +23,18 @@ export function Preparo({
   nome,
   aoEntrar,
   aoCancelar,
+  pedirNome,
 }: {
   nome: string;
   aoEntrar: (preferencias: Preferencias) => void;
   aoCancelar?: () => void;
+  /// Quem chega pelo LINK da reunião não tem nome: o token é da sala, não da
+  /// pessoa. Inventar "Convidado 1" jogaria fora a única informação que ela
+  /// mesma daria — e quem está do outro lado precisa saber quem entrou.
+  pedirNome?: boolean;
 }) {
+  const [nomeDigitado, setNomeDigitado] = useState("");
+  const comoMeChamo = pedirNome ? nomeDigitado.trim() : nome;
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
 
@@ -135,9 +142,23 @@ export function Preparo({
           )}
 
           <span className="absolute bottom-3 left-3 rounded-lg bg-surface/90 px-2.5 py-1 text-xs font-medium backdrop-blur">
-            {nome}
+            {comoMeChamo || "Você"}
           </span>
         </div>
+
+        {pedirNome && (
+          <label className="mt-4 flex flex-col gap-1.5 text-left">
+            <span className="text-xs font-semibold text-muted">Como você quer aparecer</span>
+            <input
+              value={nomeDigitado}
+              onChange={(e) => setNomeDigitado(e.target.value)}
+              placeholder="Seu nome"
+              maxLength={60}
+              autoComplete="name"
+              className="field"
+            />
+          </label>
+        )}
 
         <div className="mt-4 flex flex-wrap justify-center gap-2">
           <Alternar
@@ -180,8 +201,9 @@ export function Preparo({
               // capturas da mesma câmera dão NotReadableError no próprio app.
               desligar(stream.current);
               stream.current = null;
-              aoEntrar({ camera: camera && temVideo, microfone });
+              aoEntrar({ camera: camera && temVideo, microfone, nome: comoMeChamo });
             }}
+            disabled={pedirNome && comoMeChamo.length < 2}
             className="btn-primary flex-[2] py-3"
           >
             Entrar na sala

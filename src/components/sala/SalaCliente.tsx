@@ -15,6 +15,7 @@ type Fase = "preparo" | "conectando" | "dentro" | "saiu" | "erro";
 export function SalaCliente({
   meetingId,
   convite,
+  convidado,
   nome,
   host,
   titulo,
@@ -23,6 +24,9 @@ export function SalaCliente({
 }: {
   meetingId: string;
   convite: string | null;
+  /// Token do LINK da reunião. Quem chega por ele diz o próprio nome e entra
+  /// como convidado — o token é da sala, não da pessoa.
+  convidado?: string | null;
   nome: string;
   host: boolean;
   titulo: string;
@@ -54,7 +58,13 @@ export function SalaCliente({
         const resposta = await fetch("/api/livekit/token", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify(convite ? { convite } : { meetingId }),
+          body: JSON.stringify(
+            convite
+              ? { convite }
+              : convidado
+                ? { convidado, nome: preferencias.nome }
+                : { meetingId },
+          ),
         });
         const dados = await resposta.json();
         if (!resposta.ok) throw new Error(dados.erro ?? "Não foi possível entrar.");
@@ -70,7 +80,7 @@ export function SalaCliente({
         setFase("erro");
       }
     },
-    [convite, meetingId],
+    [convite, convidado, meetingId],
   );
 
   if (situacao !== "aberta") {
@@ -94,6 +104,7 @@ export function SalaCliente({
         )}
         <Preparo
           nome={nome}
+          pedirNome={Boolean(convidado)}
           aoEntrar={(p) => void entrar(p)}
           aoCancelar={voltarPara ? () => router.push(voltarPara) : undefined}
         />

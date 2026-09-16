@@ -299,6 +299,42 @@ async function main() {
   );
   confere(aberturas.rows[0]?.openCount >= 1, "o acesso do convite foi contado");
 
+  // ── 8b. O LINK da reunião: a terceira porta ───────────────────────────────
+  etapa(8.5 as unknown as number, "O link da reunião — quem não tem conta nem convite");
+  const guest = randomBytes(32).toString("hex");
+  await db.query(`update "${SCHEMA}"."Meeting" set "guestToken"=$1 where id=$2`, [guest, agoraId]);
+
+  const paginaLink = await fetch(`${BASE}/entrar/${guest}`);
+  confere(paginaLink.status === 200, "a página do link abre", `HTTP ${paginaLink.status}`);
+
+  const linkInventado = await fetch(`${BASE}/entrar/${"0".repeat(64)}`);
+  confere(linkInventado.status === 404, "link inventado dá 404", `HTTP ${linkInventado.status}`);
+
+  const tokConvidado = await fetch(`${BASE}/api/livekit/token`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ convidado: guest, nome: "Pessoa Convidada" }),
+  });
+  const corpoConv = await tokConvidado.json();
+  if (confere(tokConvidado.ok, "token emitido pelo link", `HTTP ${tokConvidado.status}`)) {
+    const c = JSON.parse(Buffer.from(String(corpoConv.token).split(".")[1], "base64url").toString());
+    confere(c.video?.roomJoin === true, "o convidado entra");
+    confere(c.video?.roomAdmin !== true, "o convidado NÃO é host");
+    confere(String(c.sub).startsWith("c_"), "identidade de convidado", c.sub);
+    confere(c.name === "Pessoa Convidada", "usa o nome que a pessoa digitou", c.name);
+  }
+
+  // Duas pessoas pelo mesmo link têm de virar dois participantes: identidade
+  // repetida faz o LiveKit derrubar quem entrou antes.
+  const segundo = await fetch(`${BASE}/api/livekit/token`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ convidado: guest, nome: "Outra Pessoa" }),
+  }).then((r) => r.json());
+  const id1 = JSON.parse(Buffer.from(String(corpoConv.token).split(".")[1], "base64url").toString()).sub;
+  const id2 = JSON.parse(Buffer.from(String(segundo.token).split(".")[1], "base64url").toString()).sub;
+  confere(id1 !== id2, "duas pessoas pelo mesmo link viram dois participantes");
+
   // ── 9. O webhook do LiveKit vira evento cru ───────────────────────────────
   etapa(9, "O webhook do LiveKit");
   const sala = `reuniao-${agoraId}`;

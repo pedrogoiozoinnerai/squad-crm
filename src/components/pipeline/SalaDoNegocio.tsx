@@ -13,11 +13,13 @@ import { LinkDaSala } from "@/components/sala/LinkDaSala";
 export function SalaDoNegocio({
   reuniaoId,
   convite,
+  link,
   comecaEm,
   terminaEm,
 }: {
   reuniaoId: string;
   convite: string | null;
+  link?: string | null;
   comecaEm: Date;
   terminaEm: Date;
 }) {
@@ -29,7 +31,7 @@ export function SalaDoNegocio({
 
   return (
     <div className="mt-3 border-t border-line pt-3">
-      <LinkDaSala meetingId={reuniaoId} convite={convite} compacto />
+      <LinkDaSala meetingId={reuniaoId} convite={convite} link={link} compacto />
     </div>
   );
 }

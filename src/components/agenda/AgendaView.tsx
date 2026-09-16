@@ -17,6 +17,7 @@ type Meeting = {
   status: "SCHEDULED" | "DONE" | "NO_SHOW" | "CANCELED";
   lead: { name: string; company: string | null } | null;
   attendees: { inviteToken: string }[];
+  guestToken: string | null;
   presences: { identity: string; seconds: number }[];
 };
 
@@ -77,9 +78,17 @@ export function AgendaView({
             <Link href={`${basePath}?d=${offset + 1}`} aria-label="Próximo dia" className="btn-ghost px-2.5">
               <ChevronRight className="size-4" />
             </Link>
-            {/* Já no dia que está na tela: quem está olhando quinta-feira quer
-                marcar na quinta, não em hoje. */}
+            {/* Dois caminhos, e "agora" primeiro: é o que tem pressa. Quem
+                vai marcar para semana que vem tem tempo de procurar. */}
             <NovaReuniao
+              rotulo="Reunião agora"
+              variante="agora"
+              padrao={{ agora: true, duracaoMin: 30 }}
+              owners={owners}
+            />
+            <NovaReuniao
+              rotulo="Agendar"
+              variante="discreta"
               padrao={{ inicioEm: proximaHoraCheia(day, now) }}
               owners={owners}
             />
@@ -154,6 +163,7 @@ export function AgendaView({
                           <LinkDaSala
                             meetingId={meeting.id}
                             convite={meeting.attendees[0]?.inviteToken ?? null}
+                            link={meeting.guestToken}
                             compacto
                           />
                         </div>

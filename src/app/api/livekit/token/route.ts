@@ -1,7 +1,14 @@
+import { randomBytes } from "node:crypto";
 import type { NextRequest } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
-import { identidadeDoLead, identidadeDoUsuario, salaDaReuniao, tokenDeAcesso } from "@/lib/livekit";
+import {
+  identidadeDeConvidado,
+  identidadeDoLead,
+  identidadeDoUsuario,
+  salaDaReuniao,
+  tokenDeAcesso,
+} from "@/lib/livekit";
 import { chavesDoLiveKit, criarSala } from "@/lib/livekit-servidor";
 import { prisma } from "@/lib/prisma";
 import { janelaDaSala, situacaoDaSala } from "@/lib/sala";
@@ -24,7 +31,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ erro: "As reuniões por vídeo ainda não foram configuradas." }, { status: 503 });
   }
 
-  let corpo: { meetingId?: string; convite?: string };
+  let corpo: { meetingId?: string; convite?: string; convidado?: string; nome?: string };
   try {
     corpo = await request.json();
   } catch {
@@ -33,7 +40,9 @@ export async function POST(request: NextRequest) {
 
   const quem = corpo.convite
     ? await pelaConvite(corpo.convite)
-    : await pelaSessao(corpo.meetingId);
+    : corpo.convidado
+      ? await peloLink(corpo.convidado, corpo.nome)
+      : await pelaSessao(corpo.meetingId);
 
   if ("erro" in quem) return Response.json({ erro: quem.erro }, { status: quem.status });
 
@@ -134,6 +143,42 @@ async function pelaSessao(meetingId?: string): Promise<Autorizado | { erro: stri
   }
 
   return { reuniao, identidade: identidadeDoUsuario(user.id), nome: user.name, host: true };
+}
+
+/**
+ * O convidado: entra pelo LINK da reunião, e nunca é host.
+ *
+ * A terceira porta. As outras duas exigem ou conta no CRM ou estar inscrito
+ * como lead — e nenhuma das duas serve para "me manda o link": call interna,
+ * convidado fora do funil, conversa marcada na hora.
+ *
+ * Quem entra por aqui é medido em `Presence` como qualquer um e não vira
+ * inscrito de ninguém. O nome é o que a pessoa digitar: não temos como saber
+ * quem é, e inventar "Convidado 1" some com a informação que ela mesma daria.
+ */
+async function peloLink(
+  token: string,
+  nomeDigitado?: string,
+): Promise<Autorizado | { erro: string; status: number }> {
+  const reuniao = await prisma.meeting.findUnique({
+    where: { guestToken: token },
+    select: { id: true, title: true, startsAt: true, endsAt: true, status: true },
+  });
+
+  // Mesma resposta de um convite inválido: quem sonda não descobre quais
+  // links existem testando.
+  if (!reuniao) return { erro: "Link inválido ou expirado.", status: 404 };
+
+  const nome = (nomeDigitado ?? "").trim().slice(0, 60) || "Convidado";
+
+  return {
+    reuniao,
+    // Sufixo aleatório por ENTRADA: o mesmo link aberto por duas pessoas dá
+    // duas identidades. Repetida, o LiveKit derrubaria a primeira.
+    identidade: identidadeDeConvidado(randomBytes(6).toString("hex")),
+    nome,
+    host: false,
+  };
 }
 
 /** O lead: entra pelo token do convite, e nunca é host. */

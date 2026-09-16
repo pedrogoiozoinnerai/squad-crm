@@ -2,7 +2,7 @@ import "server-only";
 
 import { addDays } from "date-fns";
 
-import { weekStart } from "@/lib/dates";
+import { diaCivil, instanteLocal, weekStart } from "@/lib/dates";
 
 import { ownerScope, type SessionUser } from "@/lib/auth";
 import { DB_SCHEMA, prisma } from "@/lib/prisma";
@@ -544,10 +544,12 @@ export async function getDealsParaExportar(user: SessionUser, filters: FiltroDea
 
 /** Agenda pessoal do dia: reuniões + tarefas com prazo. */
 export async function getAgenda(user: SessionUser, day: Date) {
-  const start = new Date(day);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 1);
+  // O dia daqui, não o do servidor. `setHours(0,0,0,0)` zerava no relógio do
+  // runtime — na Vercel isso é UTC, e a "agenda de hoje" começava às 21:00 de
+  // ontem: as reuniões da noite apareciam no dia errado.
+  const { ano, mes, dia } = diaCivil(day);
+  const start = instanteLocal(new Date(Date.UTC(ano, mes - 1, dia)), "00:00");
+  const end = instanteLocal(new Date(Date.UTC(ano, mes - 1, dia + 1)), "00:00");
 
   const [meetings, tasks] = await Promise.all([
     prisma.meeting.findMany({

@@ -50,3 +50,17 @@ export function linkDoConvite(token: string) {
   const base = env("NEXT_PUBLIC_APP_URL", "http://localhost:3000")!.replace(/\/+$/, "");
   return `${base}/convite/${token}`;
 }
+
+/**
+ * O link da reunião — o que se manda para quem não tem conta nem convite.
+ *
+ * Diferente de `linkDoConvite`: aquele é de UMA pessoa inscrita e identifica
+ * quem entrou; este é da sala, vale para qualquer um que o receba, e quem
+ * entra por ele aparece como convidado. São coisas diferentes e por isso têm
+ * endereços diferentes — mandar o convite de um lead para outra pessoa faria
+ * a presença dela contar como a dele.
+ */
+export function linkDaReuniao(guestToken: string) {
+  const base = env("NEXT_PUBLIC_APP_URL", "http://localhost:3000")!.replace(/\/+$/, "");
+  return `${base}/entrar/${guestToken}`;
+}

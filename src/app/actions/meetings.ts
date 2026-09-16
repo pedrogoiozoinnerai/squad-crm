@@ -12,8 +12,10 @@ import {
   revalidateBoth,
   type FormState,
 } from "@/lib/guard";
-import { garantirConvite } from "@/lib/convites";
+import { garantirConvite, linkDaReuniao, linkDoConvite } from "@/lib/convites";
 import { prisma } from "@/lib/prisma";
+import { novoTokenDeConvite } from "@/lib/codes";
+import { situacaoDaSala } from "@/lib/sala";
 import { duracaoValida, fimDaReuniao, lotacaoValida, tipoDeReuniao } from "@/lib/reuniao";
 
 /**
@@ -28,6 +30,25 @@ export type EstadoDaReuniao = {
   error?: string;
   ok?: boolean;
   aviso?: string;
+  /// Os links, prontos na resposta — não numa tela seguinte.
+  ///
+  /// Marcar uma reunião e não sair dali com o link é o mesmo que não ter
+  /// marcado: o passo seguinte é sempre mandar o endereço para alguém, e
+  /// obrigar a procurar a reunião na agenda para copiá-lo é um caminho que
+  /// ninguém percorre na hora — percorre depois, quando lembra.
+  criada?: {
+    id: string;
+    titulo: string;
+    comecaEm: string;
+    /// A sala, para quem tem conta no CRM.
+    sala: string;
+    /// O link que se manda para qualquer um.
+    link: string;
+    /// O convite pessoal do lead, quando a reunião tem um.
+    convite: string | null;
+    /// Já dá para entrar agora?
+    aberta: boolean;
+  };
 } | null;
 
 export async function scheduleMeeting(
@@ -36,7 +57,11 @@ export async function scheduleMeeting(
 ): Promise<EstadoDaReuniao> {
   const user = await currentUser();
 
-  const startsAt = dataHora(formData.get("startsAt"));
+  // "Agora" não é uma data que o formulário manda: é a ausência dela. Quem
+  // clica em começar agora não deveria ter de digitar a hora que o relógio já
+  // sabe — e digitar leva meio minuto, que é quando a reunião já começou.
+  const agora = formData.get("quando") === "agora";
+  const startsAt = agora ? new Date() : dataHora(formData.get("startsAt"));
   if (!startsAt) return { error: "Escolha data e horário." };
 
   const duracao = duracaoValida(formData.get("duration"));
@@ -110,12 +135,16 @@ export async function scheduleMeeting(
       leadId: ctx.leadId,
       dealId: negocioId,
       location: text(formData.get("location")),
+      // O link nasce COM a reunião. Gerar sob demanda significaria que ele não
+      // existe até alguém lembrar dele — e é sempre na hora da call que se
+      // lembra.
+      guestToken: novoTokenDeConvite(),
     },
   });
 
   // O convite nasce com a reunião: gerar só quando alguém clica em "copiar"
   // significa que o link não existe até alguém lembrar dele.
-  if (ctx.leadId) await garantirConvite(reuniao.id, ctx.leadId);
+  const convite = ctx.leadId ? await garantirConvite(reuniao.id, ctx.leadId) : null;
 
   await logActivity({
     kind: "MEETING_SCHEDULED",
@@ -127,7 +156,19 @@ export async function scheduleMeeting(
 
   revalidateBoth(revalidatePath, "calendar", "agenda", "leads", "sessoes", "pipeline", "deals");
 
-  return { ok: true, aviso: await avisoDeConflito(ownerId, reuniao.id, startsAt, endsAt, dono.name, user.id) };
+  return {
+    ok: true,
+    aviso: await avisoDeConflito(ownerId, reuniao.id, startsAt, endsAt, dono.name, user.id),
+    criada: {
+      id: reuniao.id,
+      titulo: reuniao.title,
+      comecaEm: startsAt.toISOString(),
+      sala: `/sala/${reuniao.id}`,
+      link: linkDaReuniao(reuniao.guestToken!),
+      convite: convite ? linkDoConvite(convite) : null,
+      aberta: situacaoDaSala({ ...reuniao, startsAt, endsAt }, new Date()) === "aberta",
+    },
+  };
 }
 
 /**
