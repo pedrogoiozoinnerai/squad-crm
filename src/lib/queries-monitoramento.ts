@@ -56,24 +56,68 @@ export async function reunioesSemDados(agora: Date, dias = 7) {
  */
 export async function saudeDaAgenda(agora: Date) {
   const ate = horizonteDaAgenda(agora);
+  const amanha = new Date(agora.getTime() + 24 * 60 * 60 * 1000);
 
-  const [sessoes, series] = await Promise.all([
-    prisma.meeting.count({
-      where: {
-        type: "GROUP",
-        status: "SCHEDULED",
-        capacity: { not: null },
-        startsAt: { gte: agora, lte: ate },
+  const janela = {
+    type: "GROUP" as const,
+    status: "SCHEDULED" as const,
+    capacity: { not: null },
+  };
+
+  const [doHorizonte, series, do24h] = await Promise.all([
+    prisma.meeting.findMany({
+      where: { ...janela, startsAt: { gte: agora, lte: ate } },
+      select: {
+        capacity: true,
+        _count: { select: { attendees: { where: { status: { in: ["INSCRITO", "CONFIRMADO"] } } } } },
       },
+      take: 1000,
     }),
     prisma.sessionTemplate.count({ where: { active: true } }),
+    // As próximas 24 horas separadas: é o número que decide se o anúncio de
+    // AMANHÃ tem onde cair. O total do mês pode estar folgado e o dia
+    // seguinte, lotado — e é o dia seguinte que o lead vê.
+    prisma.meeting.findMany({
+      where: { ...janela, startsAt: { gte: agora, lte: amanha } },
+      select: {
+        capacity: true,
+        _count: { select: { attendees: { where: { status: { in: ["INSCRITO", "CONFIRMADO"] } } } } },
+      },
+      take: 200,
+    }),
   ]);
+
+  const soma = (linhas: typeof doHorizonte) =>
+    linhas.reduce(
+      (t, m) => {
+        const lotacao = m.capacity ?? 0;
+        return {
+          lotacao: t.lotacao + lotacao,
+          inscritos: t.inscritos + m._count.attendees,
+          vagas: t.vagas + Math.max(0, lotacao - m._count.attendees),
+        };
+      },
+      { lotacao: 0, inscritos: 0, vagas: 0 },
+    );
+
+  const total = soma(doHorizonte);
+  const proximas24h = soma(do24h);
 
   return {
     ate,
     dias: diasDeAgenda(agora),
     acabando: agendaAcabando(agora),
-    sessoes,
+    sessoes: doHorizonte.length,
     series,
+    // O que realmente acaba antes dos dias: a VAGA. Uma agenda com 20 dias e
+    // zero vaga é uma agenda vazia para quem está no fim do funil.
+    vagas: total.vagas,
+    inscritos: total.inscritos,
+    ocupacao: total.lotacao > 0 ? Math.round((total.inscritos / total.lotacao) * 100) : 0,
+    vagas24h: proximas24h.vagas,
+    ocupacao24h:
+      proximas24h.lotacao > 0
+        ? Math.round((proximas24h.inscritos / proximas24h.lotacao) * 100)
+        : 0,
   };
 }

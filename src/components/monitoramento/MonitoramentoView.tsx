@@ -30,7 +30,18 @@ type Agenda = {
   acabando: boolean;
   sessoes: number;
   series: number;
+  vagas: number;
+  inscritos: number;
+  ocupacao: number;
+  vagas24h: number;
+  ocupacao24h: number;
 };
+
+/// Acima disto a agenda está enchendo e alguém precisa abrir mais sessão.
+///
+/// 80% e não 100% de propósito: quando chega a 100 o lead já viu "sem
+/// horários", e o aviso serviu para registrar o prejuízo em vez de evitá-lo.
+const OCUPACAO_DE_ALERTA = 80;
 
 export function MonitoramentoView({
   configurado,
@@ -66,46 +77,10 @@ export function MonitoramentoView({
 
       <Aviso estado={estado} horasSemEvento={horasSemEvento} semDados={semDados.length} />
 
-      {/* A agenda do funil acaba no último dia do mês, por decisão. A
-          consequência — encolher até quase nada no fim do mês — tem que ser
-          visível para o time ANTES de o lead encontrar uma lista vazia. */}
-      <section
-        className={`mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl border px-4 py-3 text-sm ${
-          agenda.acabando
-            ? "border-amber-200 bg-amber-50 text-amber-900"
-            : "border-line bg-surface text-muted"
-        }`}
-      >
-        <span className="flex items-center gap-2 font-medium">
-          <CalendarRange className="size-4 shrink-0" />
-          Agenda do funil
-        </span>
-        <span>
-          aberta até{" "}
-          <strong className="font-semibold">
-            {diaMes(agenda.ate)}
-          </strong>{" "}
-          — {agenda.dias === 0 ? "acaba hoje" : `${agenda.dias} ${agenda.dias === 1 ? "dia" : "dias"}`}
-        </span>
-        <span className="tabular-nums">
-          {agenda.sessoes} {agenda.sessoes === 1 ? "sessão" : "sessões"} com vaga
-        </span>
-        <span>
-          {agenda.series} {agenda.series === 1 ? "série ativa" : "séries ativas"}
-        </span>
-        {agenda.acabando && (
-          <span className="w-full text-xs">
-            A agenda vai até o fim do mês e para. O cron de sessões enche o mês seguinte na
-            virada — se este número chegar a zero e ficar, é sinal de que ele não rodou.
-          </span>
-        )}
-        {agenda.series === 0 && (
-          <span className="w-full text-xs">
-            Nenhuma série ativa: nada vai preencher a agenda. Crie uma em Configurações →
-            Sessões recorrentes.
-          </span>
-        )}
-      </section>
+      {/* A agenda é o que o lead vê no fim do funil. Dias E vagas: uma
+          agenda com vinte dias e zero vaga é uma agenda vazia para quem
+          está agendando agora. */}
+      <AvisoDaAgenda agenda={agenda} />
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Cartao rotulo="Salas ativas agora" valor={saude.salasAtivas} dica="abertas e sem encerramento" />
@@ -260,5 +235,84 @@ function Cartao({
       </p>
       <p className="mt-0.5 text-xs text-muted">{dica}</p>
     </div>
+  );
+}
+
+
+/**
+ * O estado da agenda que o funil oferece.
+ *
+ * Duas coisas acabam, e por caminhos diferentes: os DIAS, porque o horizonte
+ * para no fim do mês, e as VAGAS, porque as sessões enchem. A segunda é a que
+ * chega primeiro quando há tráfego, e era a que esta tela não mostrava.
+ */
+function AvisoDaAgenda({ agenda }: { agenda: Agenda }) {
+  const semSerie = agenda.series === 0;
+  const semVaga = agenda.vagas === 0;
+  const enchendo = agenda.ocupacao24h >= OCUPACAO_DE_ALERTA || agenda.ocupacao >= OCUPACAO_DE_ALERTA;
+
+  const grave = semSerie || semVaga;
+  const atencao = !grave && (enchendo || agenda.acabando);
+
+  return (
+    <section
+      className={`mb-6 rounded-2xl border px-4 py-3 text-sm ${
+        grave
+          ? "border-red-200 bg-red-50 text-red-900"
+          : atencao
+            ? "border-amber-200 bg-amber-50 text-amber-900"
+            : "border-line bg-surface text-muted"
+      }`}
+    >
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <span className="flex items-center gap-2 font-medium">
+          <CalendarRange className="size-4 shrink-0" />
+          Agenda do funil
+        </span>
+        <span>
+          aberta até <strong className="font-semibold">{diaMes(agenda.ate)}</strong> —{" "}
+          {agenda.dias === 0 ? "acaba hoje" : `${agenda.dias} ${agenda.dias === 1 ? "dia" : "dias"}`}
+        </span>
+        <span className="tabular-nums">
+          <strong className="font-semibold">{agenda.vagas}</strong>{" "}
+          {agenda.vagas === 1 ? "vaga" : "vagas"} em {agenda.sessoes}{" "}
+          {agenda.sessoes === 1 ? "sessão" : "sessões"}
+        </span>
+        <span className="tabular-nums">{agenda.ocupacao}% ocupada</span>
+        <span className="tabular-nums">
+          próximas 24h: {agenda.vagas24h} {agenda.vagas24h === 1 ? "vaga" : "vagas"} ·{" "}
+          {agenda.ocupacao24h}%
+        </span>
+      </div>
+
+      {semSerie && (
+        <p className="mt-2 text-xs">
+          <strong>Nenhuma série ativa.</strong> Nada vai preencher a agenda, e todo lead que
+          chegar ao fim do funil vê &ldquo;sem horários abertos&rdquo;. Crie uma em
+          Configurações → Sessões recorrentes.
+        </p>
+      )}
+
+      {!semSerie && semVaga && (
+        <p className="mt-2 text-xs">
+          <strong>Zero vaga.</strong> O funil está recusando todo mundo agora. Aumente a
+          lotação da série ou crie uma série paralela no mesmo horário.
+        </p>
+      )}
+
+      {!grave && enchendo && (
+        <p className="mt-2 text-xs">
+          A agenda está enchendo ({Math.max(agenda.ocupacao, agenda.ocupacao24h)}%). Abra mais
+          sessão antes de bater em zero — quando bater, o lead já viu a lista vazia.
+        </p>
+      )}
+
+      {!grave && !enchendo && agenda.acabando && (
+        <p className="mt-2 text-xs">
+          A agenda vai até o fim do mês e para. O cron de sessões enche o mês seguinte na
+          virada — se este número chegar a zero e ficar, é sinal de que ele não rodou.
+        </p>
+      )}
+    </section>
   );
 }
