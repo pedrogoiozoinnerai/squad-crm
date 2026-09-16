@@ -1,6 +1,5 @@
 import "dotenv/config";
 
-import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { Client } from "pg";
 import bcrypt from "bcryptjs";
@@ -27,13 +26,16 @@ const CUSTO = 10; // o mesmo de `hashPassword` em src/lib/auth.ts
 /**
  * Perguntar, com ou sem terminal.
  *
- * Duas implementações porque são dois mundos. Num terminal de verdade a
- * pergunta é interativa e o eco da senha é desligado. Vindo de um pipe — que é
- * como o teste roda — o `readline` lê o bloco inteiro de uma vez e fecha no
- * fim do `stdin`: a segunda pergunta então falha com "readline was closed".
- * Por isso, sem terminal, lemos tudo antes e servimos linha a linha.
+ * Num terminal, TUDO passa pelo mesmo leitor em modo cru — inclusive a
+ * pergunta do e-mail, que não é segredo nenhum. Não é preciosismo: enquanto o
+ * `readline` existe ele fica escutando o `stdin` e ecoando cada tecla, e o
+ * `close()` dele restaura o modo do terminal num tick posterior, desfazendo o
+ * `setRawMode` de quem vier depois. Foi assim que a PRIMEIRA senha apareceu na
+ * tela e a segunda não. Com um leitor só, não há ninguém para disputar o TTY.
+ *
+ * Fora de um terminal (entrada por pipe, que é como o teste automatizado roda)
+ * não há modo cru: lê tudo de uma vez e serve linha a linha.
  */
-let interativo: ReturnType<typeof createInterface> | null = null;
 let linhas: string[] | null = null;
 
 async function lerTudo(): Promise<string[]> {
@@ -42,30 +44,64 @@ async function lerTudo(): Promise<string[]> {
   return Buffer.concat(pedacos).toString("utf8").split("\n");
 }
 
+/**
+ * Lê uma linha do TTY em modo cru.
+ *
+ * `segredo` troca o eco por asteriscos. Asterisco e não silêncio total: sem
+ * nenhum retorno a pessoa acha que o teclado morreu e digita a senha de novo.
+ */
+function lerDoTerminal(pergunta: string, segredo: boolean): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    stdout.write(pergunta);
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding("utf8");
+
+    let buffer = "";
+    const redesenhar = () => {
+      const visivel = segredo ? "*".repeat(buffer.length) : buffer;
+      // `\u001b[2K` limpa a linha: sem isso, apagar deixa restos do que já
+      // tinha sido desenhado.
+      stdout.write("\r\u001b[2K" + pergunta + visivel);
+    };
+
+    const terminar = (erro?: Error) => {
+      stdin.setRawMode(false);
+      stdin.pause();
+      stdin.removeListener("data", aoDigitar);
+      stdout.write("\n");
+      if (erro) reject(erro);
+      else resolve(buffer);
+    };
+
+    const aoDigitar = (tecla: string) => {
+      for (const ch of tecla) {
+        if (ch === "\r" || ch === "\n" || ch === "\u0004") {
+          // Redesenha antes de sair: colado de uma vez, o texto chega no mesmo
+          // pedaço que o Enter, e sem isto a linha ficaria em branco.
+          redesenhar();
+          return terminar();
+        }
+        // Ctrl+C precisa continuar saindo: em modo cru o sinal não chega
+        // sozinho, e ficar preso num prompt sem saída é pior que o eco.
+        if (ch === "\u0003") return terminar(new Error("Cancelado."));
+        if (ch === "\u007f" || ch === "\b") buffer = buffer.slice(0, -1);
+        else if (ch >= " ") buffer += ch;
+      }
+      redesenhar();
+    };
+
+    stdin.on("data", aoDigitar);
+  });
+}
+
 async function perguntar(pergunta: string, segredo = false): Promise<string> {
   if (!stdin.isTTY) {
     linhas ??= await lerTudo();
-    stdout.write(pergunta + (segredo ? "\n" : "\n"));
+    stdout.write(pergunta + "\n");
     return (linhas.shift() ?? "").trim();
   }
-
-  interativo ??= createInterface({ input: stdin, output: stdout });
-
-  if (!segredo) return (await interativo.question(pergunta)).trim();
-
-  stdout.write(pergunta);
-  const visivel = (interativo as unknown as { _writeToOutput: unknown })._writeToOutput;
-  (interativo as unknown as { _writeToOutput: (c: string) => void })._writeToOutput = (chunk) => {
-    // Deixa passar Enter e as interrupções; engole os caracteres da senha.
-    if ("\r\n\u0004\u0003".includes(String(chunk))) stdout.write(String(chunk));
-  };
-  try {
-    const resposta = await interativo.question("");
-    stdout.write("\n");
-    return resposta.trim();
-  } finally {
-    (interativo as unknown as { _writeToOutput: unknown })._writeToOutput = visivel;
-  }
+  return (await lerDoTerminal(pergunta, segredo)).trim();
 }
 
 async function main() {
@@ -117,7 +153,6 @@ async function main() {
     console.log(`  Entre em ${schema.endsWith("_dev") ? "http://localhost:3000" : process.env.NEXT_PUBLIC_APP_URL ?? "produção"}\n`);
   } finally {
     await c.end();
-    interativo?.close();
   }
 }
 
