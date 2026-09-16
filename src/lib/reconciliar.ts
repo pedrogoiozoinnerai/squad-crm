@@ -1,7 +1,13 @@
 import "server-only";
 
 import { lerIdentidade, salaDaReuniao } from "@/lib/livekit";
-import { consolidar, veredicto } from "@/lib/presenca";
+import {
+  atingiuPresenca,
+  consolidar,
+  veredicto,
+  type PresencaConsolidada,
+  type RegraDePresenca,
+} from "@/lib/presenca";
 import { prisma } from "@/lib/prisma";
 
 /// Teto por execução. Uma reconciliação que tenta processar meses de uma vez
@@ -20,6 +26,7 @@ export type RelatorioDeReconciliacao = {
   semDados: number;
   presencas: number;
   negociosAtualizados: number;
+  assentosAtualizados: number;
 };
 
 /**
@@ -74,6 +81,7 @@ export async function reconciliarPresencas(
     semDados: 0,
     presencas: 0,
     negociosAtualizados: 0,
+    assentosAtualizados: 0,
   };
 
   for (const reuniao of reunioes) {
@@ -123,6 +131,20 @@ export async function reconciliarPresencas(
       relatorio.semDados += 1;
       continue;
     }
+
+    // A presença medida chega ao ROSTER.
+    //
+    // Sem isto, `MeetingAttendee.attended` e `totalSeconds` ficavam no zero do
+    // `@default` para sempre — e a tela de Sessões, cujo texto diz "presença
+    // aqui não é checkbox: a sala mede o tempo real de cada inscrito",
+    // mostrava 0% para todo mundo. O schema já chamava estas colunas de
+    // DERIVADAS; faltava quem as derivasse.
+    relatorio.assentosAtualizados += await projetarNoRoster(
+      reuniao.id,
+      consolidadas,
+      duracaoSegundos,
+      regra,
+    );
 
     const status = resultado.situacao === "participou" ? "DONE" : "NO_SHOW";
     if (reuniao.status !== status) {
@@ -231,6 +253,86 @@ export async function saudeDoLiveKit(agora = new Date()): Promise<Omit<SaudeDoLi
     semDados: terminadas.filter((m) => !comDados.has(m.id)).length,
     salasAtivas: Math.max(0, iniciadas - encerradas),
   };
+}
+
+/**
+ * Leva o tempo medido para a linha do inscrito.
+ *
+ * Duas regras que parecem detalhe e não são:
+ *
+ * NUNCA cria linha. Quem entrou na sala sem estar no roster — um convidado
+ * que o lead trouxe, alguém com o link repassado — aparece em `Presence`, que
+ * é a verdade crua, e não vira inscrito. Criar aqui inflaria a lotação e a
+ * taxa de presença com gente que ninguém inscreveu.
+ *
+ * Quem estava no roster e NÃO apareceu é zerado, não deixado como estava. A
+ * reunião teve dados; o silêncio dele é informação, não ausência dela. Sem
+ * isso, um valor de uma execução antiga sobreviveria a uma correção dos
+ * eventos — e o painel mostraria presença de quem faltou.
+ *
+ * Só roda quando houve evento de sala: com `sem_dados` a função nem é chamada.
+ */
+async function projetarNoRoster(
+  meetingId: string,
+  consolidadas: PresencaConsolidada[],
+  duracaoSegundos: number,
+  regra: RegraDePresenca,
+) {
+  const assentos = await prisma.meetingAttendee.findMany({
+    where: { meetingId },
+    select: { id: true, leadId: true },
+  });
+  if (assentos.length === 0) return 0;
+
+  // Um lead pode entrar de dois aparelhos: o tempo é a soma, e a primeira
+  // entrada e a última saída delimitam a permanência.
+  const porLead = new Map<string, PresencaConsolidada[]>();
+  for (const p of consolidadas) {
+    const quem = lerIdentidade(p.identity);
+    if (quem.tipo !== "lead") continue;
+    const lista = porLead.get(quem.id) ?? [];
+    lista.push(p);
+    porLead.set(quem.id, lista);
+  }
+
+  let atualizados = 0;
+
+  for (const assento of assentos) {
+    const dele = porLead.get(assento.leadId) ?? [];
+    const segundos = dele.reduce((soma, p) => soma + p.seconds, 0);
+    const entradas = dele.reduce((soma, p) => soma + p.joinCount, 0);
+
+    const primeira = dele.length
+      ? new Date(Math.min(...dele.map((p) => p.joinedAt.getTime())))
+      : null;
+    // Só há última saída se TODAS fecharam: uma em aberto significa que a
+    // pessoa ainda estava lá quando os dados terminaram.
+    const saidas = dele.map((p) => p.leftAt);
+    const ultima =
+      dele.length && saidas.every((s): s is Date => s !== null)
+        ? new Date(Math.max(...saidas.map((s) => s.getTime())))
+        : null;
+
+    const esteve = atingiuPresenca(segundos, duracaoSegundos, regra);
+
+    const r = await prisma.meetingAttendee.updateMany({
+      where: { id: assento.id },
+      data: {
+        joinedAt: primeira,
+        leftAt: ultima,
+        joinCount: entradas,
+        totalSeconds: segundos,
+        attended: esteve,
+        // A régua que produziu ESTE veredicto. Mudar o mínimo de 5 para 8 não
+        // pode reescrever a história em silêncio — é o mesmo princípio de
+        // `AiPrompt` guardar a versão que gerou cada análise.
+        regraMinutos: regra.presencaMinutos,
+      },
+    });
+    atualizados += r.count;
+  }
+
+  return atualizados;
 }
 
 /** O nome da sala de uma reunião. Reexportado para as telas não importarem duas coisas. */

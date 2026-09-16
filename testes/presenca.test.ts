@@ -175,3 +175,51 @@ describe("uma fonte só para a regra de presença", () => {
     }
   });
 });
+
+describe("quantas vezes entrou", () => {
+  const em = (min: number) => new Date(Date.UTC(2026, 8, 15, 14, min, 0));
+  const ev = (type: string, min: number, identity: string | null = "l_1") => ({
+    type,
+    at: em(min),
+    identity,
+    name: "Ana",
+  });
+
+  it("uma entrada e uma saída contam uma", () => {
+    const [p] = consolidar([ev("participant_joined", 0), ev("participant_left", 10)], null);
+    assert.equal(p.joinCount, 1);
+    assert.equal(p.seconds, 600);
+  });
+
+  it("queda no meio conta duas, e o tempo é a soma", () => {
+    // É o número que explica um tempo baixo: quinze minutos em duas entradas
+    // é conexão ruim, não desinteresse.
+    const [p] = consolidar(
+      [
+        ev("participant_joined", 0),
+        ev("participant_left", 5),
+        ev("participant_joined", 7),
+        ev("participant_left", 17),
+      ],
+      null,
+    );
+    assert.equal(p.joinCount, 2);
+    assert.equal(p.seconds, 900, "5 min + 10 min");
+  });
+
+  it("entrada repetida sem saída não infla o tempo, mas conta a entrada", () => {
+    const [p] = consolidar(
+      [ev("participant_joined", 0), ev("participant_joined", 3), ev("participant_left", 10)],
+      null,
+    );
+    assert.equal(p.joinCount, 2, "o LiveKit disse que entrou duas vezes");
+    assert.equal(p.seconds, 600, "mas o intervalo medido é um só");
+  });
+
+  it("quem nunca saiu fecha no fim da sala", () => {
+    const [p] = consolidar([ev("participant_joined", 0)], em(20));
+    assert.equal(p.joinCount, 1);
+    assert.equal(p.seconds, 1200);
+    assert.equal(p.leftAt?.getTime(), em(20).getTime());
+  });
+});

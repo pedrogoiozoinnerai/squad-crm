@@ -17,9 +17,16 @@ export const dynamic = "force-dynamic";
 
 /// Quanto tempo antes do início a sessão para de aceitar inscrição.
 ///
-/// Zero minutos deixaria alguém agendar para daqui a trinta segundos e chegar
-/// depois do começo — e a sessão em grupo não espera.
-const ANTECEDENCIA_MIN = 15;
+/// Uma hora: o lead que termina o funil de manhã consegue entrar numa sessão
+/// ainda hoje, e é isso que se quer — marcar para daqui a três dias é perder a
+/// pessoa no auge do interesse.
+///
+/// Não menos que isso porque a hora que sobra é o que o time usa: a sala abre
+/// 30 minutos antes (`ABRE_ANTES_MIN`), a confirmação precisa chegar ao
+/// WhatsApp e o closer precisa ver o nome na agenda antes de entrar. Quinze
+/// minutos deixavam alguém se inscrever para uma sala que abriria em quinze —
+/// ninguém do lado de cá ficava sabendo a tempo.
+const ANTECEDENCIA_MIN = 60;
 
 /// Teto de linhas. Não é o corte esperado: fica logo acima do que uma série
 /// materializa num mês (650), para uma configuração errada não virar um JSON

@@ -24,6 +24,10 @@ export type PresencaConsolidada = {
   joinedAt: Date;
   leftAt: Date | null;
   seconds: number;
+  /// Quantas vezes entrou. Duas entradas com quinze minutos somados contam a
+  /// mesma coisa que uma — mas dizem coisas diferentes sobre a call, e é o
+  /// número que explica um tempo baixo por queda de conexão.
+  joinCount: number;
 };
 
 /**
@@ -39,7 +43,14 @@ export function consolidar(eventos: EventoBruto[], fimDaSala: Date | null): Pres
 
   const porIdentidade = new Map<
     string,
-    { name: string | null; joinedAt: Date | null; leftAt: Date | null; seconds: number; aberto: Date | null }
+    {
+      name: string | null;
+      joinedAt: Date | null;
+      leftAt: Date | null;
+      seconds: number;
+      aberto: Date | null;
+      entradas: number;
+    }
   >();
 
   for (const evento of ordenados) {
@@ -52,10 +63,12 @@ export function consolidar(eventos: EventoBruto[], fimDaSala: Date | null): Pres
       leftAt: null,
       seconds: 0,
       aberto: null,
+      entradas: 0,
     };
     if (evento.name) atual.name = evento.name;
 
     if (evento.type === "participant_joined") {
+      atual.entradas += 1;
       if (!atual.joinedAt) atual.joinedAt = evento.at;
       // Entrada repetida sem a saída correspondente é saída perdida. Manter a
       // abertura antiga dá o mesmo total que fechar e reabrir no mesmo
@@ -89,7 +102,14 @@ export function consolidar(eventos: EventoBruto[], fimDaSala: Date | null): Pres
       }
     }
 
-    consolidadas.push({ identity, name: dados.name, joinedAt: dados.joinedAt, leftAt, seconds });
+    consolidadas.push({
+      identity,
+      name: dados.name,
+      joinedAt: dados.joinedAt,
+      leftAt,
+      seconds,
+      joinCount: dados.entradas,
+    });
   }
 
   return consolidadas.sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime());
