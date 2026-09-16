@@ -47,6 +47,20 @@ export async function reconciliarPresencas(
       : {
           endsAt: { gte: desde, lte: agora },
           status: { not: "CANCELED" },
+          // Sessão sem inscrito, sem lead e sem um único evento de sala não
+          // tem o que reconciliar: o veredicto seria "sem dados", que não
+          // escreve nada. Antes da agenda de 13 horários por dia isso eram
+          // quatro linhas por semana; agora seriam ~78, cada uma com um
+          // `findMany` e uma transação, dentro de uma função de 60 segundos.
+          //
+          // `roomEvents` fica na condição de propósito: quem entrou numa sala
+          // sem estar no roster É informação, e sumir com ela aqui apagaria
+          // justamente o caso que a camada de presença existe para mostrar.
+          OR: [
+            { attendees: { some: {} } },
+            { leadId: { not: null } },
+            { roomEvents: { some: {} } },
+          ],
         },
     select: { id: true, startsAt: true, endsAt: true, status: true, dealId: true },
     orderBy: { endsAt: "desc" },
@@ -192,7 +206,14 @@ export async function saudeDoLiveKit(agora = new Date()): Promise<Omit<SaudeDoLi
     prisma.roomEvent.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
     prisma.roomEvent.count({ where: { createdAt: { gte: ontem } } }),
     prisma.meeting.findMany({
-      where: { endsAt: { gte: semanaPassada, lte: agora }, status: { not: "CANCELED" } },
+      // Mesmo recorte de `reunioesSemDados`: sessão sem ninguém inscrito não é
+      // falha de coleta, e contá-la aqui inflaria "sem dados" em ~78 por
+      // semana desde que a agenda do funil abre 13 horários por dia.
+      where: {
+        endsAt: { gte: semanaPassada, lte: agora },
+        status: { not: "CANCELED" },
+        OR: [{ attendees: { some: {} } }, { leadId: { not: null } }],
+      },
       select: { id: true },
     }),
     prisma.roomEvent.groupBy({

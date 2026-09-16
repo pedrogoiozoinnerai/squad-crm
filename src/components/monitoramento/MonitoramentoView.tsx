@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, CircleDashed, Radio } from "lucide-react";
+import { AlertTriangle, CalendarRange, CheckCircle2, CircleDashed, Radio } from "lucide-react";
 
 import { PageHeader } from "@/components/shell/PageHeader";
 import { diaMes, hhmm, rotuloDeDias, diasEntre } from "@/lib/dates";
@@ -24,15 +24,25 @@ type Reuniao = {
 /// ponte caiu. Três horas: mais curto dispararia toda madrugada sem reunião.
 const HORAS_ATE_SUSPEITAR = 3;
 
+type Agenda = {
+  ate: Date;
+  dias: number;
+  acabando: boolean;
+  sessoes: number;
+  series: number;
+};
+
 export function MonitoramentoView({
   configurado,
   saude,
   semDados,
+  agenda,
   agora,
 }: {
   configurado: boolean;
   saude: Saude;
   semDados: Reuniao[];
+  agenda: Agenda;
   agora: Date;
 }) {
   const horasSemEvento = saude.ultimoEvento
@@ -55,6 +65,47 @@ export function MonitoramentoView({
       />
 
       <Aviso estado={estado} horasSemEvento={horasSemEvento} semDados={semDados.length} />
+
+      {/* A agenda do funil acaba no último dia do mês, por decisão. A
+          consequência — encolher até quase nada no fim do mês — tem que ser
+          visível para o time ANTES de o lead encontrar uma lista vazia. */}
+      <section
+        className={`mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl border px-4 py-3 text-sm ${
+          agenda.acabando
+            ? "border-amber-200 bg-amber-50 text-amber-900"
+            : "border-line bg-surface text-muted"
+        }`}
+      >
+        <span className="flex items-center gap-2 font-medium">
+          <CalendarRange className="size-4 shrink-0" />
+          Agenda do funil
+        </span>
+        <span>
+          aberta até{" "}
+          <strong className="font-semibold">
+            {diaMes(agenda.ate)}
+          </strong>{" "}
+          — {agenda.dias === 0 ? "acaba hoje" : `${agenda.dias} ${agenda.dias === 1 ? "dia" : "dias"}`}
+        </span>
+        <span className="tabular-nums">
+          {agenda.sessoes} {agenda.sessoes === 1 ? "sessão" : "sessões"} com vaga
+        </span>
+        <span>
+          {agenda.series} {agenda.series === 1 ? "série ativa" : "séries ativas"}
+        </span>
+        {agenda.acabando && (
+          <span className="w-full text-xs">
+            A agenda vai até o fim do mês e para. O cron de sessões enche o mês seguinte na
+            virada — se este número chegar a zero e ficar, é sinal de que ele não rodou.
+          </span>
+        )}
+        {agenda.series === 0 && (
+          <span className="w-full text-xs">
+            Nenhuma série ativa: nada vai preencher a agenda. Crie uma em Configurações →
+            Sessões recorrentes.
+          </span>
+        )}
+      </section>
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Cartao rotulo="Salas ativas agora" valor={saude.salasAtivas} dica="abertas e sem encerramento" />

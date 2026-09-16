@@ -762,6 +762,10 @@ export async function getSessions(user: SessionUser, from: Date, to: Date) {
       },
     },
     orderBy: { startsAt: "asc" },
+    // Uma semana da agenda nova são ~78 sessões, cada uma com até 20 inscritos.
+    // Sem teto, uma configuração errada vira uma consulta sem fim numa tela que
+    // alguém abre todo dia.
+    take: 200,
   });
 
   return sessoes.map((s) => {

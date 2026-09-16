@@ -4,7 +4,7 @@ import { env } from "@/lib/env";
 import { materializarSessoes } from "@/lib/sessoes";
 
 /**
- * Enche a agenda a partir das séries recorrentes, uma vez por dia.
+ * Enche a agenda a partir das séries recorrentes, de hora em hora.
  *
  * A grade nasce vazia e ficaria assim para sempre: até aqui, `SessionTemplate`
  * era uma regra que ninguém executava — a tela de sessões mostrava nada porque
@@ -13,6 +13,12 @@ import { materializarSessoes } from "@/lib/sessoes";
  * Idempotente pelo `@@unique([templateId, startsAt])`, então rodar de novo não
  * duplica. É o que permite chamar isto também na hora em que alguém salva um
  * template, sem esperar a madrugada.
+ *
+ * DE HORA EM HORA, e não uma vez por dia, por causa da virada do mês: o
+ * horizonte é o último dia do mês corrente, então à meia-noite do dia 1º a
+ * agenda pula de quase nada para um mês inteiro. Num cron das 04:40, o funil
+ * mostraria lista vazia entre 00:00 e 04:40 do primeiro dia de todo mês. Sem
+ * nada a criar, esta rota é uma consulta por série e escreve zero linhas.
  */
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
