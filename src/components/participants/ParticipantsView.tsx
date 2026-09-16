@@ -4,7 +4,7 @@ import { Percent, Search, Sparkles, UserCheck, Users } from "lucide-react";
 import { tempoNaSala } from "@/components/sessions/SessionsView";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
-import { hhmm } from "@/lib/dates";
+import { TZ, hhmm } from "@/lib/dates";
 
 type Row = {
   id: string;
@@ -241,7 +241,7 @@ export function ParticipantsView({
                 )}
                 <td className="px-4 py-3">
                   <span className="block">
-                    {linha.meeting.startsAt.toLocaleDateString("pt-BR", {
+                    {linha.meeting.startsAt.toLocaleDateString("pt-BR", { timeZone: TZ,
                       day: "2-digit",
                       month: "2-digit",
                       year: "2-digit",

@@ -4,9 +4,9 @@ import { useActionState, useEffect, useState } from "react";
 import { ArrowRightLeft, CalendarPlus, ListPlus, Loader2, StickyNote, XCircle } from "lucide-react";
 
 import { convertLead, markLeadLost } from "@/app/actions/leads";
-import { scheduleMeeting } from "@/app/actions/meetings";
 import { addNote } from "@/app/actions/notes";
 import { createTask } from "@/app/actions/tasks";
+import { FormularioDeReuniao } from "@/components/reunioes/FormularioDeReuniao";
 import { Field } from "@/components/ui/Field";
 import { FormFeedback } from "@/components/ui/FormFeedback";
 import type { FormState } from "@/lib/guard";
@@ -15,10 +15,12 @@ type Panel = "task" | "meeting" | "convert" | "note" | null;
 
 export function LeadActions({
   leadId,
+  leadName,
   hasOpenDeal,
   isClosed,
 }: {
   leadId: string;
+  leadName: string;
   hasOpenDeal: boolean;
   isClosed: boolean;
 }) {
@@ -50,7 +52,9 @@ export function LeadActions({
       </div>
 
       {panel === "task" && <TaskPanel leadId={leadId} onDone={() => setPanel(null)} />}
-      {panel === "meeting" && <MeetingPanel leadId={leadId} onDone={() => setPanel(null)} />}
+      {panel === "meeting" && (
+        <MeetingPanel leadId={leadId} leadName={leadName} onDone={() => setPanel(null)} />
+      )}
       {panel === "note" && <NotePanel leadId={leadId} onDone={() => setPanel(null)} />}
       {panel === "convert" && <ConvertPanel leadId={leadId} onDone={() => setPanel(null)} />}
     </section>
@@ -143,36 +147,21 @@ function TaskPanel({ leadId, onDone }: { leadId: string; onDone: () => void }) {
   );
 }
 
-function MeetingPanel({ leadId, onDone }: { leadId: string; onDone: () => void }) {
-  const [state, action, pending] = useActionState<FormState, FormData>(scheduleMeeting, null);
-  useCloseOnSuccess(state?.ok, onDone);
-
+function MeetingPanel({
+  leadId,
+  leadName,
+  onDone,
+}: {
+  leadId: string;
+  leadName: string;
+  onDone: () => void;
+}) {
+  // O mesmo formulário das outras quatro telas. Havia uma segunda definição
+  // aqui, com a própria lista de durações e sem lotação — então uma reunião em
+  // grupo criada por esta gaveta nascia invisível para o funil.
   return (
     <Panel>
-      <form action={action} className="flex flex-col gap-3">
-        <input type="hidden" name="leadId" value={leadId} />
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Início">
-            <input name="startsAt" type="datetime-local" required className="field" />
-          </Field>
-          <Field label="Duração">
-            <select name="duration" defaultValue="30" className="field">
-              <option value="30">30 min</option>
-              <option value="45">45 min</option>
-              <option value="60">1 hora</option>
-              <option value="90">1h30</option>
-            </select>
-          </Field>
-          <Field label="Formato">
-            <select name="type" defaultValue="ONE_ON_ONE" className="field">
-              <option value="ONE_ON_ONE">Individual</option>
-              <option value="GROUP">Em grupo</option>
-            </select>
-          </Field>
-        </div>
-        <FormFeedback state={state} />
-        <Submit pending={pending} label="Agendar" />
-      </form>
+      <FormularioDeReuniao padrao={{ leadId, leadNome: leadName }} aoConcluir={onDone} />
     </Panel>
   );
 }

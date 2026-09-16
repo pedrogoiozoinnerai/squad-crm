@@ -3,6 +3,7 @@ import { AlertTriangle } from "lucide-react";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { requireUser } from "@/lib/auth";
 import { getErrosRecentes } from "@/lib/queries";
+import { TZ } from "@/lib/dates";
 
 /**
  * Os erros que o servidor registrou.
@@ -45,7 +46,7 @@ export default async function ErrosPage() {
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <p className="text-sm font-semibold">{erro.message}</p>
                 <span className="font-mono text-xs text-muted">
-                  {erro.createdAt.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                  {erro.createdAt.toLocaleString("pt-BR", { timeZone: TZ, dateStyle: "short", timeStyle: "short" })}
                 </span>
               </div>
 

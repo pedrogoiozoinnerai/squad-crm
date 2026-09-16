@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
 import { getDealsParaExportar } from "@/lib/queries";
+import { TZ } from "@/lib/dates";
 
 /** Aspas duplas escapadas e campo entre aspas — evita quebrar o CSV. */
 function cell(value: unknown) {
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
   ];
 
   const STATUS: Record<string, string> = { OPEN: "Em aberto", WON: "Ganho", LOST: "Perdido" };
-  const day = (date: Date | null) => (date ? date.toLocaleDateString("pt-BR") : "");
+  const day = (date: Date | null) => (date ? date.toLocaleDateString("pt-BR", { timeZone: TZ }) : "");
 
   const rows = deals.map((deal) =>
     [

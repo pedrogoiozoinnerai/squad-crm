@@ -10,6 +10,8 @@ import {
   XCircle,
 } from "lucide-react";
 
+import { TZ } from "@/lib/dates";
+
 type Kind =
   | "LEAD_CREATED" | "LEAD_UPDATED" | "DEAL_CREATED" | "DEAL_UPDATED" | "STAGE_CHANGED"
   | "DEAL_WON" | "DEAL_LOST" | "TASK_CREATED" | "TASK_DONE"
@@ -64,7 +66,7 @@ export function Timeline({ items }: { items: TimelineItem[] }) {
                 <p className="mt-0.5 text-xs text-muted">{item.detail}</p>
               )}
               <p className="mt-1 text-[11px] text-muted">
-                {item.createdAt.toLocaleString("pt-BR", {
+                {item.createdAt.toLocaleString("pt-BR", { timeZone: TZ,
                   day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
                 })}
                 {item.author && ` · ${item.author.name}`}

@@ -5,7 +5,8 @@ import { setMeetingStatus } from "@/app/actions/meetings";
 import { LinkDaSala } from "@/components/sala/LinkDaSala";
 import { toggleTask } from "@/app/actions/tasks";
 import { PageHeader } from "@/components/shell/PageHeader";
-import { hhmm } from "@/lib/dates";
+import { NovaReuniao } from "@/components/reunioes/NovaReuniao";
+import { TZ, chaveDoDia, hhmm, horaLocal, paraCampoLocal } from "@/lib/dates";
 
 type Meeting = {
   id: string;
@@ -42,6 +43,7 @@ export function AgendaView({
   offset,
   basePath,
   now,
+  owners,
 }: {
   meetings: Meeting[];
   tasks: Task[];
@@ -49,12 +51,13 @@ export function AgendaView({
   offset: number;
   basePath: string;
   now: Date;
+  owners?: { id: string; name: string }[];
 }) {
   const doneTasks = tasks.filter((task) => task.status === "DONE").length;
   const total = meetings.length + tasks.length;
   const progress = total === 0 ? 0 : Math.round(((doneTasks + meetings.filter((m) => m.status === "DONE").length) / total) * 100);
 
-  const label = day.toLocaleDateString("pt-BR", {
+  const label = day.toLocaleDateString("pt-BR", { timeZone: TZ,
     weekday: "long", day: "2-digit", month: "long",
   });
 
@@ -74,6 +77,12 @@ export function AgendaView({
             <Link href={`${basePath}?d=${offset + 1}`} aria-label="Próximo dia" className="btn-ghost px-2.5">
               <ChevronRight className="size-4" />
             </Link>
+            {/* Já no dia que está na tela: quem está olhando quinta-feira quer
+                marcar na quinta, não em hoje. */}
+            <NovaReuniao
+              padrao={{ inicioEm: proximaHoraCheia(day, now) }}
+              owners={owners}
+            />
           </div>
         }
       />
@@ -236,6 +245,19 @@ export function AgendaView({
       </div>
     </>
   );
+}
+
+/**
+ * O campo de início já preenchido, na próxima hora cheia.
+ *
+ * No dia de hoje, a próxima hora que ainda não passou; em qualquer outro dia,
+ * nove da manhã. Um campo vazio obriga a digitar data e hora inteiras toda
+ * vez, e um campo em "agora" propõe uma reunião que começa neste minuto.
+ */
+function proximaHoraCheia(dia: Date, agora: Date) {
+  const hoje = chaveDoDia(dia) === chaveDoDia(agora);
+  const hora = hoje ? Math.min(horaLocal(agora) + 1, 23) : 9;
+  return `${chaveDoDia(dia)}T${String(hora).padStart(2, "0")}:00`;
 }
 
 /**

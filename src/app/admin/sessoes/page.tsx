@@ -4,7 +4,7 @@ import { SessionDrawer } from "@/components/sessions/SessionDrawer";
 import { parseWeekOffset, SessionsView } from "@/components/sessions/SessionsView";
 import { requireUser } from "@/lib/auth";
 import { weekStart } from "@/lib/dates";
-import { getSessions } from "@/lib/queries";
+import { getOwners, getSessions } from "@/lib/queries";
 import { configuracao } from "@/lib/reconciliar";
 
 const BASE = "/admin/sessoes";
@@ -19,9 +19,10 @@ export default async function SessoesPage(props: PageProps<"/admin/sessoes">) {
   // `now` nasce aqui e desce como prop: componente puro não lê o relógio.
   const now = new Date();
   const start = weekStart(now, offset);
-  const [sessions, regra] = await Promise.all([
+  const [sessions, regra, owners] = await Promise.all([
     getSessions(user, start, addDays(start, 7)),
     configuracao(),
+    user.role === "ADMIN" ? getOwners() : Promise.resolve(undefined),
   ]);
 
   // Fechar o drawer volta para a mesma semana que o usuário estava vendo.
@@ -29,7 +30,7 @@ export default async function SessoesPage(props: PageProps<"/admin/sessoes">) {
 
   return (
     <>
-      <SessionsView space="admin" sessions={sessions} start={start} offset={offset} now={now} minutosMinimos={regra.presencaMinutos} />
+      <SessionsView space="admin" sessions={sessions} start={start} offset={offset} now={now} minutosMinimos={regra.presencaMinutos} owners={owners} />
       {sessionId && (
         <SessionDrawer sessionId={sessionId} user={user} now={now} closeHref={closeHref} minutosMinimos={regra.presencaMinutos} />
       )}

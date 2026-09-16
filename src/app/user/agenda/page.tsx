@@ -2,7 +2,7 @@ import { addDays } from "date-fns";
 
 import { AgendaView } from "@/components/agenda/AgendaView";
 import { requireUser } from "@/lib/auth";
-import { getAgenda } from "@/lib/queries";
+import { getAgenda, getOwners } from "@/lib/queries";
 
 const BASE = "/user/agenda";
 
@@ -15,6 +15,8 @@ export default async function AgendaPage(props: PageProps<"/user/agenda">) {
   const day = addDays(now, offset);
 
   const { meetings, tasks } = await getAgenda(user, day);
+  // Só o admin escolhe por quem marcar; o vendedor marca para si.
+  const owners = user.role === "ADMIN" ? await getOwners() : undefined;
 
   return (
     <AgendaView
@@ -24,6 +26,7 @@ export default async function AgendaPage(props: PageProps<"/user/agenda">) {
       offset={offset}
       basePath={BASE}
       now={now}
+      owners={owners}
     />
   );
 }

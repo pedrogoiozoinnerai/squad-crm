@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 import { PageHeader } from "@/components/shell/PageHeader";
-import { brl, hhmm } from "@/lib/dates";
+import { TZ, brl, hhmm } from "@/lib/dates";
 
 export type TeamRow = {
   id: string;
@@ -157,7 +157,7 @@ export function TeamView({
   // por atraso põe o pior caso em primeiro. Nos dois casos o troféu mentiria.
   const destacaTopo = ordem !== "atrasadas" && recorte === "todos";
 
-  const dia = now.toLocaleDateString("pt-BR", {
+  const dia = now.toLocaleDateString("pt-BR", { timeZone: TZ,
     weekday: "long",
     day: "2-digit",
     month: "long",

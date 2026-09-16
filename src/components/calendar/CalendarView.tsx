@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Video } from "lucide-react";
 
+import { NovaReuniaoNaCelula } from "@/components/reunioes/NovaReuniaoNaCelula";
 import { PageHeader } from "@/components/shell/PageHeader";
-import { diaCivil, hhmm, horaLocal, isSameDay, TZ, WEEK_DAYS, weekDays } from "@/lib/dates";
+import { chaveDoDia, diaCivil, hhmm, horaLocal, isSameDay, TZ, WEEK_DAYS, weekDays } from "@/lib/dates";
 import type { Space } from "@/lib/nav";
 
 type Meeting = {
@@ -25,18 +26,30 @@ const STATUS_STYLE: Record<Meeting["status"], string> = {
   CANCELED: "border-line bg-surface-2 text-muted line-through",
 };
 
+/** "seg, 06/10" — o que o botão de marcar anuncia para leitor de tela. */
+function dia(d: Date) {
+  return d.toLocaleDateString("pt-BR", {
+    timeZone: TZ,
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+  });
+}
+
 export function CalendarView({
   space,
   meetings,
   start,
   offset,
   showOwner,
+  owners,
 }: {
   space: Space;
   meetings: Meeting[];
   start: Date;
   offset: number;
   showOwner: boolean;
+  owners?: { id: string; name: string }[];
 }) {
   const days = weekDays(start);
   const today = new Date();
@@ -120,12 +133,22 @@ export function CalendarView({
                 return (
                   <div
                     key={`${day.toISOString()}-${hour}`}
-                    className={`space-y-1 border-r border-line p-1.5 last:border-r-0 ${isToday ? "bg-waz-95/40" : ""}`}
+                    className={`group/celula relative space-y-1 border-r border-line p-1.5 last:border-r-0 ${isToday ? "bg-waz-95/40" : ""}`}
                   >
+                    {/* Marcar clicando na grade: o dia e a hora já vêm da
+                        célula, que é a informação que o formulário pediria
+                        primeiro. Só aparece no hover para não competir com as
+                        reuniões que estão ali. */}
+                    <NovaReuniaoNaCelula
+                      inicioEm={`${chaveDoDia(day)}T${String(hour).padStart(2, "0")}:00`}
+                      rotuloDoHorario={`${dia(day)} às ${String(hour).padStart(2, "0")}:00`}
+                      owners={owners}
+                    />
+
                     {slot.map((meeting) => (
                       <article
                         key={meeting.id}
-                        className={`rounded-lg border px-2 py-1.5 text-left transition ${STATUS_STYLE[meeting.status]}`}
+                        className={`relative z-10 rounded-lg border px-2 py-1.5 text-left transition ${STATUS_STYLE[meeting.status]}`}
                       >
                         <p className="flex items-center gap-1 text-[11px] font-semibold">
                           {meeting.type === "GROUP" && <Video className="size-3 shrink-0" />}

@@ -4,6 +4,7 @@ import { toggleTask } from "@/app/actions/tasks";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { StatBar } from "@/components/ui/Stat";
 import { linkWhatsapp, renderizarMensagem } from "@/lib/mensagem";
+import { TZ } from "@/lib/dates";
 
 type Task = {
   id: string;
@@ -39,7 +40,7 @@ function dueLabel(dueAt: Date | null, now: number) {
   if (!dueAt) return { text: "—", overdue: false };
 
   const diffDays = Math.round((dueAt.getTime() - now) / 86_400_000);
-  const date = dueAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  const date = dueAt.toLocaleDateString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit" });
 
   if (diffDays < 0) return { text: `${date} · atrasada`, overdue: true };
   if (diffDays === 0) return { text: `${date} · hoje`, overdue: true };

@@ -14,10 +14,12 @@ import {
 import { deleteTask, toggleTask } from "@/app/actions/tasks";
 import { addNote } from "@/app/actions/notes";
 import { createTask } from "@/app/actions/tasks";
+import { FormularioDeReuniao } from "@/components/reunioes/FormularioDeReuniao";
 import { Field } from "@/components/ui/Field";
 import { FormFeedback } from "@/components/ui/FormFeedback";
 import type { FormState } from "@/lib/guard";
 import { linkWhatsapp } from "@/lib/mensagem";
+import { TZ } from "@/lib/dates";
 
 export type PanelTask = {
   id: string;
@@ -50,10 +52,11 @@ export type PanelCase = {
   exact: boolean;
 };
 
-type Tab = "task" | "note" | "activities" | "chat" | "cases";
+type Tab = "task" | "meeting" | "note" | "activities" | "chat" | "cases";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "task", label: "Nova Tarefa" },
+  { key: "meeting", label: "Nova Reunião" },
   { key: "note", label: "Anotação" },
   { key: "activities", label: "Atividades" },
   { key: "chat", label: "WhatsApp" },
@@ -110,6 +113,15 @@ export function DealPanels({
 
       <div className="min-h-0 flex-1 overflow-y-auto pt-4">
         {tab === "task" && <TaskForm dealId={dealId} leadId={leadId} onDone={() => setTab("activities")} />}
+        {/* O formulário fica AQUI e não no `DealSidePanel`: aquele é ele
+            próprio um <form>, e <form> aninhado é HTML inválido — o React não
+            renderiza. Esta coluna já hospeda tarefa e anotação do mesmo jeito. */}
+        {tab === "meeting" && (
+          <FormularioDeReuniao
+            padrao={{ dealId, leadId, leadNome: leadName }}
+            aoConcluir={() => setTab("activities")}
+          />
+        )}
         {tab === "note" && <NoteForm dealId={dealId} leadId={leadId} onDone={() => setTab("activities")} />}
         {tab === "activities" && <Activities tasks={tasks} activities={activities} />}
         {tab === "chat" && <ChatEmpty leadName={leadName} leadPhone={leadPhone} />}
@@ -237,7 +249,7 @@ function Activities({ tasks, activities }: { tasks: PanelTask[]; activities: Pan
             <article key={activity.id} className="flex gap-3">
               <div className="w-[54px] shrink-0 pt-0.5 text-right">
                 <p className="font-mono text-xs font-semibold">
-                  {activity.createdAt.toLocaleTimeString("pt-BR", {
+                  {activity.createdAt.toLocaleTimeString("pt-BR", { timeZone: TZ,
                     hour: "2-digit",
                     minute: "2-digit",
                   })}
@@ -269,7 +281,7 @@ function TaskRow({ task }: { task: PanelTask }) {
     <article className={`flex gap-3 ${done ? "opacity-55" : ""}`}>
       <div className="w-[54px] shrink-0 pt-0.5 text-right">
         <p className="font-mono text-xs font-semibold">
-          {task.createdAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+          {task.createdAt.toLocaleTimeString("pt-BR", { timeZone: TZ, hour: "2-digit", minute: "2-digit" })}
         </p>
         <p className="text-[10px] tracking-wider text-muted uppercase">
           {relativeDay(task.createdAt)}
@@ -286,7 +298,7 @@ function TaskRow({ task }: { task: PanelTask }) {
             {task.dueAt && (
               <p className="mt-0.5 text-xs text-muted">
                 vence{" "}
-                {task.dueAt.toLocaleString("pt-BR", {
+                {task.dueAt.toLocaleString("pt-BR", { timeZone: TZ,
                   day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
                 })}
               </p>
@@ -326,7 +338,7 @@ function relativeDay(date: Date) {
     date.getFullYear() === today.getFullYear();
 
   if (sameDay) return "Hoje";
-  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  return date.toLocaleDateString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit" });
 }
 
 function ChatEmpty({ leadName, leadPhone }: { leadName: string; leadPhone: string | null }) {

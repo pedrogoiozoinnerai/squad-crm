@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Download, Search } from "lucide-react";
 
 import { PageHeader } from "@/components/shell/PageHeader";
-import { brl } from "@/lib/dates";
+import { TZ, brl } from "@/lib/dates";
 
 type Row = {
   id: string;
@@ -156,12 +156,12 @@ export function DealsView({
                 <td className="px-4 py-3 text-right font-medium">{brl(deal.valueCents)}</td>
                 <td className="px-4 py-3 text-muted">
                   {deal.expectedAt
-                    ? deal.expectedAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" })
+                    ? deal.expectedAt.toLocaleDateString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "2-digit" })
                     : "—"}
                 </td>
                 {showOwner && <td className="px-4 py-3 text-muted">{deal.owner.name}</td>}
                 <td className="px-4 py-3 text-muted">
-                  {deal.createdAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" })}
+                  {deal.createdAt.toLocaleDateString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "2-digit" })}
                 </td>
               </tr>
             ))}

@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Sparkles, Timer, UserCheck, Users } from "lucide-react";
 
+import { NovaReuniao } from "@/components/reunioes/NovaReuniao";
 import { PageHeader } from "@/components/shell/PageHeader";
-import { hhmm, isSameDay, weekDays } from "@/lib/dates";
+import { TZ, chaveDoDia, hhmm, isSameDay, weekDays } from "@/lib/dates";
 import type { Space } from "@/lib/nav";
 
 /** Meta de presença do time — vira a cor da barra. */
@@ -56,6 +57,7 @@ export function SessionsView({
   offset,
   now,
   minutosMinimos,
+  owners,
 }: {
   space: Space;
   sessions: SessionRow[];
@@ -66,11 +68,12 @@ export function SessionsView({
   /// aqui: ela é editável no painel, e três cópias divergentes foi o que
   /// tínhamos antes.
   minutosMinimos: number;
+  owners?: { id: string; name: string }[];
 }) {
   const base = `/${space}/sessoes`;
   const days = weekDays(start);
 
-  const label = `${days[0].toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} – ${days[6].toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}`;
+  const label = `${days[0].toLocaleDateString("pt-BR", { timeZone: TZ, day: "2-digit", month: "short" })} – ${days[6].toLocaleDateString("pt-BR", { timeZone: TZ, day: "2-digit", month: "short", year: "numeric" })}`;
 
   // Sessão que ainda não aconteceu não tem tempo de sala medido: entraria com
   // 0% e derrubaria a média da semana inteira. Só o que já rodou vira taxa —
@@ -112,6 +115,20 @@ export function SessionsView({
             >
               <ChevronRight className="size-4" />
             </Link>
+            {/* Sessão avulsa: a série cobre o recorrente, mas uma turma extra
+                não deveria exigir criar uma regra recorrente para ela. Já
+                nasce em GRUPO e com lotação — sem lotação a sessão não
+                apareceria no funil. */}
+            <NovaReuniao
+              rotulo="Nova sessão"
+              padrao={{
+                inicioEm: `${chaveDoDia(days[0])}T10:00`,
+                tipo: "GROUP",
+                capacidade: 20,
+                duracaoMin: 45,
+              }}
+              owners={owners}
+            />
           </div>
         }
       />
@@ -235,7 +252,7 @@ export function SessionsView({
                         <ChevronRight className="size-3.5 opacity-0 transition group-hover:opacity-100" />
                       </span>
                       <span className="block text-xs text-muted">
-                        {inicio.toLocaleDateString("pt-BR", {
+                        {inicio.toLocaleDateString("pt-BR", { timeZone: TZ,
                           weekday: "short",
                           day: "2-digit",
                           month: "short",

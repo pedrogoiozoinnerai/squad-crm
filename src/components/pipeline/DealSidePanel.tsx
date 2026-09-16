@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import { Calendar, Copy, DollarSign, GraduationCap, Globe, Loader2, MousePointerClick } from "lucide-react";
 
 import { saveDeal } from "@/app/actions/deals";
-import { centsToInput } from "@/lib/dates";
+import { centsToInput, chaveDoDia, diaMes, hhmm, TZ } from "@/lib/dates";
 import { Copiavel } from "@/components/ui/Copiavel";
 import { FormFeedback } from "@/components/ui/FormFeedback";
 import type { FormState } from "@/lib/guard";
@@ -51,10 +51,15 @@ const MENTORSHIP = {
   CONCLUIDA: { text: "Concluída", tone: "bg-waz-90 text-waz-20" },
 } as const;
 
+/**
+ * O valor de um `<input type="date">`.
+ *
+ * `getTimezoneOffset()` é o do relógio de QUEM RENDERIZA — e isto renderiza no
+ * servidor, que na Vercel é UTC. Uma previsão marcada para o dia 6 voltava ao
+ * campo como dia 5 e, salva de novo, andava um dia para trás a cada edição.
+ */
 function toDateInput(date: Date | null) {
-  if (!date) return "";
-  const offset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 10);
+  return date ? chaveDoDia(date) : "";
 }
 
 function Label({ children }: { children: React.ReactNode }) {
@@ -97,14 +102,22 @@ export function DealSidePanel({
                 ao lado já diz que não há nenhuma, e "— sem reunião agendada"
                 lê como campo que deveria ter valor e não tem. */}
             {nextMeetingAt && (
-              <span className="text-xl font-semibold">
-                {nextMeetingAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
-              </span>
+              <span className="text-xl font-semibold">{diaMes(nextMeetingAt)}</span>
             )}
             <span className="text-sm text-muted">
-              {nextMeetingAt
-                ? `${nextMeetingAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · ${nextMeetingAt.toLocaleDateString("pt-BR", { weekday: "long" })}`
-                : "sem reunião agendada"}
+              {nextMeetingAt ? (
+                `${hhmm(nextMeetingAt)} · ${nextMeetingAt.toLocaleDateString("pt-BR", { timeZone: TZ, weekday: "long" })}`
+              ) : (
+                // Diz onde marcar. O formulário não cabe aqui dentro: este
+                // painel é ele próprio um <form>, e <form> aninhado é HTML
+                // inválido — ele fica na aba ao lado, com tarefa e anotação.
+                <>
+                  sem reunião agendada —{" "}
+                  <span className="font-medium text-foreground">
+                    marque em &ldquo;Nova Reunião&rdquo;
+                  </span>
+                </>
+              )}
             </span>
           </p>
           <span className="font-mono text-xs text-muted">{deal.code}</span>
@@ -185,7 +198,7 @@ export function DealSidePanel({
 
         <p className="mt-2 rounded-lg bg-surface-2/60 px-3 py-2 text-xs text-muted">
           Lead cadastrado em{" "}
-          {deal.createdAt.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+          {deal.createdAt.toLocaleString("pt-BR", { timeZone: TZ, dateStyle: "short", timeStyle: "short" })}
         </p>
 
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -308,7 +321,7 @@ export function DealSidePanel({
         </div>
         <p className="mt-2 text-xs text-muted italic">
           {deal.lead.lastLinkClick
-            ? `Último acesso em ${deal.lead.lastLinkClick.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}.`
+            ? `Último acesso em ${deal.lead.lastLinkClick.toLocaleString("pt-BR", { timeZone: TZ, dateStyle: "short", timeStyle: "short" })}.`
             : "Nenhum acesso registrado ainda."}
         </p>
       </Card>

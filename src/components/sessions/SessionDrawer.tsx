@@ -4,7 +4,7 @@ import { tempoNaSala } from "@/components/sessions/SessionsView";
 import { Drawer } from "@/components/ui/Drawer";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import type { SessionUser } from "@/lib/auth";
-import { hhmm } from "@/lib/dates";
+import { TZ, hhmm } from "@/lib/dates";
 import { getSessionDetail } from "@/lib/queries";
 
 const STATUS = {
@@ -64,7 +64,7 @@ export async function SessionDrawer({
       subtitle={
         <span className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
           <span className="text-base text-foreground">
-            {inicio.toLocaleDateString("pt-BR", {
+            {inicio.toLocaleDateString("pt-BR", { timeZone: TZ,
               weekday: "long",
               day: "2-digit",
               month: "long",

@@ -91,6 +91,7 @@ export async function LeadDrawer({
         <>
           <LeadActions
             leadId={lead.id}
+            leadName={lead.name}
             hasOpenDeal={lead.deals.some((deal) => deal.status === "OPEN")}
             isClosed={lead.status === "LOST" || lead.status === "CONVERTED"}
           />
