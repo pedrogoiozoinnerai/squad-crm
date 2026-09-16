@@ -3,6 +3,7 @@ import "server-only";
 import { nextDealCode } from "@/lib/codes";
 import { garantirConvite } from "@/lib/convites";
 import { prisma } from "@/lib/prisma";
+import { inicioDaLeitura, POR_PAGINA, proximaMarca } from "@/lib/marca-dagua";
 import { readFunnelLeads, type FunnelLead } from "@/lib/type-funnel";
 
 /**
@@ -19,6 +20,10 @@ import { readFunnelLeads, type FunnelLead } from "@/lib/type-funnel";
  */
 export type ResultadoSync = {
   lidos: number;
+  /// Sobrou página? O cron chama de novo em vez de esperar dez minutos.
+  temMais: boolean;
+  /// Até onde a marca d'água avançou nesta passagem.
+  marcaAte: string | null;
   leadsCriados: number;
   negociosCriados: number;
   reunioesCriadas: number;
@@ -29,6 +34,8 @@ export type ResultadoSync = {
 
 const vazio = (): ResultadoSync => ({
   lidos: 0,
+  temMais: false,
+  marcaAte: null,
   leadsCriados: 0,
   negociosCriados: 0,
   reunioesCriadas: 0,
@@ -73,8 +80,13 @@ const MEIA_HORA = 30 * 60_000;
 
 export async function sincronizarFunil(agora = new Date()): Promise<ResultadoSync> {
   const r = vazio();
-  const linhas = await readFunnelLeads();
+
+  const config = await prisma.config.upsert({ where: { id: "unica" }, update: {}, create: {} });
+  const desde = inicioDaLeitura(config.funilSincronizadoAte, agora);
+
+  const linhas = await readFunnelLeads(desde, POR_PAGINA);
   r.lidos = linhas.length;
+  r.temMais = linhas.length === POR_PAGINA;
   if (!linhas.length) return r;
 
   const [vendedores, semDono, primeiraEtapa] = await Promise.all([
@@ -96,6 +108,21 @@ export async function sincronizarFunil(agora = new Date()): Promise<ResultadoSyn
   for (const linha of linhas) {
     await sincronizarUm(linha, { r, agora, primeiraEtapaId: primeiraEtapa.id, proximoDono });
   }
+
+  // A marca só avança DEPOIS de a página inteira ser reconciliada. Avançar por
+  // lead deixaria uma falha no meio marcando como visto o que não foi
+  // processado — e aí o lead some de vez, que é justamente o defeito que esta
+  // marca existe para consertar.
+  const ultima = proximaMarca(linhas.map((l) => l.updatedAt));
+
+  if (ultima) {
+    await prisma.config.update({
+      where: { id: "unica" },
+      data: { funilSincronizadoAte: ultima },
+    });
+    r.marcaAte = ultima.toISOString();
+  }
+
   return r;
 }
 

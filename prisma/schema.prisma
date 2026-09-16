@@ -794,6 +794,18 @@ model Config {
   /// critérios valem juntos — precisa passar nos dois.
   presencaMinutos    Int @default(5)
   presencaPercentual Int @default(0)
+
+  /// Até onde o funil do Type já foi espelhado.
+  ///
+  /// Antes a leitura era "as 500 mais recentes", relidas inteiras a cada dez
+  /// minutos. Dois defeitos nisso: reprocessava 72 mil linhas por dia para
+  /// ~1.000 leads novos, e — o grave — numa rajada de mais de 500 leads em dez
+  /// minutos os excedentes saíam da janela e NUNCA voltavam. Sem erro, sem
+  /// log, sem fila: o lead simplesmente não existia no CRM.
+  ///
+  /// A marca é sobre `updatedAt`, não `createdAt`: o espelho também precisa
+  /// pegar quem já existia e MUDOU — remarcou, cancelou, agendou depois.
+  funilSincronizadoAte DateTime?
 }
 
 // ── MeetSquad: o roster da reunião ───────────────────────────────────────────

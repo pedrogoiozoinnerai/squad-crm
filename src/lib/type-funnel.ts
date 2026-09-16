@@ -1,6 +1,7 @@
 import "server-only";
 
 import { env, identificador } from "@/lib/env";
+import { POR_PAGINA } from "@/lib/marca-dagua";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -40,6 +41,8 @@ export type FunnelLead = {
   utmMedium: string | null;
   utmCampaign: string | null;
   createdAt: string | null;
+  /// Última alteração no funil. É por ela que a marca d'água avança.
+  updatedAt: string | null;
 };
 
 /**
@@ -82,7 +85,23 @@ const RESPONDEU_TUDO = `
   AND ("email" IS NOT NULL OR "phoneE164" IS NOT NULL)
 `;
 
-export async function readFunnelLeads(): Promise<FunnelLead[]> {
+/**
+ * Os leads que mudaram desde a marca d'água.
+ *
+ * Por `updatedAt` e não `createdAt`: o espelho não é só sobre lead novo —
+ * precisa pegar quem já existia e remarcou, cancelou ou agendou depois. O
+ * Prisma do funil sobe `updatedAt` em toda escrita, então uma coisa cobre as
+ * duas.
+ *
+ * Ordem CRESCENTE, ao contrário do que era. Com `DESC LIMIT 500` a página era
+ * "os mais recentes", e numa rajada maior que 500 os excedentes saíam da
+ * janela para sempre. Crescente com marca d'água, a fila drena: o que não
+ * coube nesta página vem na próxima.
+ */
+export async function readFunnelLeads(
+  desde: Date,
+  limite: number = POR_PAGINA,
+): Promise<FunnelLead[]> {
   const schema = funnelSchema();
 
   // Identificadores vão entre aspas: sem elas o Postgres rebaixa para minúsculo
@@ -108,12 +127,16 @@ export async function readFunnelLeads(): Promise<FunnelLead[]> {
             "utmSource",
             "utmMedium",
             "utmCampaign",
-            "createdAt"
+            "createdAt",
+            "updatedAt"
        FROM "${schema}"."Lead"
-      WHERE ("fullName" IS NOT NULL AND status::text = 'COMPLETED')
-         OR (${RESPONDEU_TUDO})
-      ORDER BY "createdAt" DESC
-      LIMIT 500`,
+      WHERE "updatedAt" >= $1
+        AND (("fullName" IS NOT NULL AND status::text = 'COMPLETED')
+             OR (${RESPONDEU_TUDO}))
+      ORDER BY "updatedAt" ASC
+      LIMIT $2`,
+    desde,
+    limite,
   );
 
   return rows.map((r) => ({
@@ -135,5 +158,6 @@ export async function readFunnelLeads(): Promise<FunnelLead[]> {
     utmMedium: r.utmMedium === null ? null : String(r.utmMedium),
     utmCampaign: r.utmCampaign === null ? null : String(r.utmCampaign),
     createdAt: iso(r.createdAt),
+    updatedAt: iso(r.updatedAt),
   }));
 }

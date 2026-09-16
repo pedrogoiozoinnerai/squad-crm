@@ -27,12 +27,47 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "CRON_SECRET não configurado" }, { status: 503 });
   }
 
+  // Drena a fila enquanto couber no tempo da função, em vez de processar uma
+  // página e esperar dez minutos pela seguinte. Numa rajada de campanha — 2.000
+  // leads numa hora — esperar dez minutos por página levaria quase duas horas
+  // para o CRM enxergar o último, e a essa altura o lead esfriou.
+  //
+  // O teto de páginas e o de tempo existem juntos: o primeiro protege de um
+  // laço que nunca termina, o segundo de estourar os 60 segundos no meio de
+  // uma página e perder o trabalho dela.
+  const LIMITE_MS = 45_000;
+  const MAX_PAGINAS = 10;
+  const comecou = Date.now();
+
   try {
-    const r = await sincronizarFunil();
-    if (r.leadsCriados || r.reunioesCanceladas || r.reunioesRemarcadas) {
-      console.log("[cron/type]", JSON.stringify(r));
+    let r = await sincronizarFunil();
+    let paginas = 1;
+
+    while (r.temMais && paginas < MAX_PAGINAS && Date.now() - comecou < LIMITE_MS) {
+      const proxima = await sincronizarFunil();
+      paginas += 1;
+      r = {
+        ...proxima,
+        lidos: r.lidos + proxima.lidos,
+        leadsCriados: r.leadsCriados + proxima.leadsCriados,
+        negociosCriados: r.negociosCriados + proxima.negociosCriados,
+        reunioesCriadas: r.reunioesCriadas + proxima.reunioesCriadas,
+        reunioesCanceladas: r.reunioesCanceladas + proxima.reunioesCanceladas,
+        reunioesRemarcadas: r.reunioesRemarcadas + proxima.reunioesRemarcadas,
+        tarefasCriadas: r.tarefasCriadas + proxima.tarefasCriadas,
+      };
     }
-    return NextResponse.json({ ok: true, ...r });
+
+    const resultado = { ...r, paginas, segundos: Math.round((Date.now() - comecou) / 1000) };
+
+    // `temMais` verdadeiro ao sair significa que a rajada não coube nesta
+    // execução: não é erro, é fila andando — mas precisa ficar no log, porque
+    // se persistir por horas é sinal de que o volume passou do que o cron
+    // aguenta e a frequência tem de subir.
+    if (resultado.leadsCriados || resultado.reunioesCanceladas || resultado.reunioesRemarcadas || resultado.temMais) {
+      console.log("[cron/type]", JSON.stringify(resultado));
+    }
+    return NextResponse.json({ ok: true, ...resultado });
   } catch (erro) {
     console.error("[cron/type] falhou:", erro);
     return NextResponse.json(
