@@ -3,40 +3,42 @@
  *
  * A migração trouxe 8.386 contatos com **zero** UTM. A causa não foi sutil:
  * `PROPS_CONTATO` nunca pediu essas propriedades à API, então elas nunca
- * chegaram. O que veio junto dessa descoberta, porém, muda o conserto.
+ * chegaram.
  *
- * Esta conta tem TRÊS famílias de atribuição, e a mais óbvia é a errada:
+ * **Esta conta tem duas famílias de UTM, e qual delas vale depende de QUEM se
+ * mede.** É a armadilha central deste arquivo, e eu caí nela:
  *
- * | família | preenchimento |
- * |---|---|
- * | `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content` | **0%** |
- * | `utm__first_source`, `utm__first_medium`, … (dois sublinhados) | 7% a 16% |
- * | `hs_analytics_source*` (nativa do HubSpot) | 100% |
+ * | família | portal inteiro | base do Squad |
+ * |---|---|---|
+ * | `utm_source`, `utm_medium`, `utm_campaign`… | 0% | **45%** |
+ * | `utm__first_source`, `utm__first_medium`… | 16% | 1% |
+ * | `hs_analytics_source` (nativa) | 100% | 100%, sempre `OFFLINE` |
  *
- * As propriedades de nome limpo existem e estão vazias — alguém as criou e
- * nunca ligou um formulário nelas. Quem mapeasse por nome, sem medir, traria
- * cinco colunas nulas e concluiria que o HubSpot não tem atribuição.
+ * A primeira medição foi nos mil primeiros contatos do portal — que, conferido
+ * depois, não têm UM contato em comum com os que a migração trouxe. O portal
+ * tem 738 mil contatos de várias operações; a base do Squad são 9 mil, e nela
+ * quem está preenchido é a família de nome limpo, com campanha de verdade
+ * (`meta`, `ads`, `LEADS_SQUAD-DIAGNOSTICO-3`).
  *
- * **E há um segundo fundo falso.** Amostrando os primeiros mil contatos do
- * portal, 16% têm `utm__first_medium`. Ao preencher os 8.386 que a migração
- * trouxe, o número deu 0,8%. Fui conferir achando que a leitura em lote
- * perdia propriedade — não perde: das 163 pessoas com UTM naquela amostra,
- * ZERO está entre as que importamos. O portal tem muito mais contato do que os
- * oito pipelines do Squad, e os que têm campanha rastreada são de outra
- * operação (as URLs são `platform.innerai.com`). A base do Squad é mesmo quase
- * toda `offline` — lista, importação, cadastro manual. Não é dado que falta:
- * é o que aconteceu.
+ * Amostra tirada da população errada leva a uma conclusão confiante e errada.
+ * Por isso a precedência abaixo aceita as duas famílias em vez de escolher uma:
+ * mesmo que a proporção mude, a leitura continua certa.
  *
- * Puro de propósito: a precedência abaixo é uma decisão de produto, e decisão
- * de produto enterrada num laço de importação é decisão que ninguém revisa.
+ * Puro de propósito: a precedência é decisão de produto, e decisão de produto
+ * enterrada num laço de importação é decisão que ninguém revisa.
  */
 
 /// As propriedades que a importação precisa PEDIR à API.
 ///
-/// As de nome limpo (`utm_source` e irmãs) ficam de fora de propósito: estão
-/// vazias nos 1.000 contatos amostrados, e pedir coluna vazia é gastar limite
-/// de API para trazer `null`.
+/// As DUAS famílias, e não a que parecia certa: pedir dez campos a mais custa
+/// nada na mesma chamada, e foi escolher uma família sozinha que produziu uma
+/// coluna cheia de `offline` onde havia `meta`.
 export const PROPS_ATRIBUICAO = [
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
   "utm__first_source",
   "utm__first_medium",
   "utm__first_campaign",
@@ -44,7 +46,6 @@ export const PROPS_ATRIBUICAO = [
   "utm__first_keyword",
   "hs_analytics_source",
   "hs_analytics_source_data_1",
-  "hs_analytics_source_data_2",
   "hs_analytics_first_url",
   "hs_analytics_first_referrer",
 ] as const;
@@ -82,18 +83,22 @@ function texto(v: unknown): string | null {
 }
 
 /**
- * A fonte nativa do HubSpot, no mesmo vocabulário das UTMs.
+ * A fonte nativa do HubSpot — que NÃO entra mais em `utmSource`.
  *
- * `hs_analytics_source` é um enum em maiúsculas — `PAID_SEARCH`,
- * `ORGANIC_SEARCH`, `OFFLINE`, `DIRECT_TRAFFIC`. Minúsculo, ele senta ao lado
- * de `google` e `meta` sem que a tela precise saber que vieram de lugares
- * diferentes.
+ * `hs_analytics_source` é um enum (`PAID_SEARCH`, `OFFLINE`, `DIRECT_TRAFFIC`)
+ * e está 100% preenchido, sempre `OFFLINE` nesta base. Eu o usei como reserva
+ * de `utmSource` para a coluna não ficar quase vazia, e o tiro saiu pela
+ * culatra duas vezes:
  *
- * `OFFLINE` não é ruído: quer dizer "este contato não veio de tráfego" —
- * importação, lista, cadastro manual. É a resposta certa para 84% desta base, e
- * muito mais útil que `null`, que a tela só sabe mostrar como "sem origem".
+ * 1. misturou dois vocabulários na mesma coluna — `meta` e `offline` não são a
+ *    mesma espécie de valor;
+ * 2. e, como o preenchimento não sobrescreve o que já existe, o `offline` que
+ *    escrevi passou a BLOQUEAR o `meta` verdadeiro que faltava importar.
+ *
+ * Fica exposta para quem quiser a informação noutro lugar, mas `utmSource`
+ * volta a significar uma coisa só: a UTM que a pessoa trouxe.
  */
-function fonteNativa(v: unknown): string | null {
+export function fonteNativaDoHubspot(v: unknown): string | null {
   const s = texto(v);
   return s ? s.toLowerCase() : null;
 }
@@ -101,27 +106,29 @@ function fonteNativa(v: unknown): string | null {
 /**
  * Lê a atribuição de um contato do HubSpot.
  *
- * **A precedência de `utmSource`** é a única decisão de verdade aqui: a UTM de
- * primeiro toque vem na frente, e a fonte nativa cobre o resto. Assim a coluna
- * fica COMPLETA em vez de 16% preenchida — e o time consegue perguntar "quantos
- * leads vieram de tráfego pago?" sem que a resposta seja "não dá para saber".
+ * As cinco colunas saem das DUAS famílias, com a de nome limpo na frente —
+ * é ela que carrega a campanha de verdade na base do Squad (`meta`, `ads`,
+ * `LEADS_SQUAD-DIAGNOSTICO-3`). A de primeiro toque entra quando a primeira
+ * falta, e cobre os contatos da outra operação.
  *
- * As outras quatro NÃO têm equivalente nativo e ficam nulas quando a UTM falta.
- * Seria fácil enfiar `hs_analytics_source_data_1` em `utmCampaign` — ele está
- * 100% preenchido —, mas o significado dele MUDA conforme o enum: em
- * `PAID_SEARCH` é a campanha, em `OFFLINE` é `INTEGRATION`. Uma coluna
- * "campanha" onde a maioria das linhas diz `INTEGRATION` é pior que vazia,
- * porque parece dado.
+ * Nada de fonte nativa aqui: `utmSource` significa "a UTM que a pessoa
+ * trouxe", e ponto. Quem não veio de campanha fica nulo — que é a verdade, e
+ * não atrapalha ninguém.
+ *
+ * `hs_analytics_source_data_1` também não vira campanha, por mais tentador que
+ * seja estar 100% preenchido: o significado dele MUDA conforme o enum — em
+ * `PAID_SEARCH` é a campanha, em `OFFLINE` é `IMPORT`. Coluna "campanha" cheia
+ * de `IMPORT` é pior que vazia, porque parece dado.
  */
 export function lerAtribuicao(props: Record<string, unknown> | null | undefined): Atribuicao {
   if (!props) return VAZIA;
 
   return {
-    utmSource: texto(props.utm__first_source) ?? fonteNativa(props.hs_analytics_source),
-    utmMedium: texto(props.utm__first_medium),
-    utmCampaign: texto(props.utm__first_campaign),
-    utmTerm: texto(props.utm__first_keyword),
-    utmContent: texto(props.utm__first_content),
+    utmSource: texto(props.utm_source) ?? texto(props.utm__first_source),
+    utmMedium: texto(props.utm_medium) ?? texto(props.utm__first_medium),
+    utmCampaign: texto(props.utm_campaign) ?? texto(props.utm__first_campaign),
+    utmTerm: texto(props.utm_term) ?? texto(props.utm__first_keyword),
+    utmContent: texto(props.utm_content) ?? texto(props.utm__first_content),
   };
 }
 

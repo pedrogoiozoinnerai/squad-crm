@@ -8,6 +8,11 @@ import {
   lerAtribuicao,
   PROPS_ATRIBUICAO,
 } from "../src/lib/atribuicao-hubspot";
+import {
+  apenasOFaltanteDoContato,
+  lerContato,
+  PROPS_CONTATO_EXTRA,
+} from "../src/lib/contato-hubspot";
 import { env, envObrigatorio, identificador } from "../src/lib/env";
 import { associacoes, buscar, lote, owners } from "./hubspot-client";
 import { PIPELINES, destinoDe, type Destino } from "./hubspot-mapa";
@@ -63,6 +68,7 @@ const PROPS_CONTATO = [
   "jobtitle",
   "createdate",
   ...PROPS_ATRIBUICAO,
+  ...PROPS_CONTATO_EXTRA,
 ];
 const PROPS_NOTA = ["hs_note_body", "hs_timestamp", "hubspot_owner_id"];
 const PROPS_TAREFA = ["hs_task_subject", "hs_task_body", "hs_task_status", "hs_task_priority", "hs_task_type", "hs_timestamp", "hubspot_owner_id"];
@@ -254,6 +260,9 @@ async function main() {
     const ownerIdLead = (donoHs && donos.get(donoHs)) || naoAtribuido;
 
     const atribuicao = lerAtribuicao(contato);
+    // Cargo, empresa e telefone: a importação pedia só os nomes NATIVOS, e esta
+    // operação preenche outros — cargo estava em 3% no CRM contra 46% lá.
+    const camposDoContato = lerContato(contato);
 
     // No lead que já existe, só o que falta: reimportar não pode apagar uma
     // atribuição melhor vinda por outro caminho. O funil do Type grava a UTM
@@ -267,27 +276,27 @@ async function main() {
         utmCampaign: true,
         utmTerm: true,
         utmContent: true,
+        phone: true,
+        jobTitle: true,
+        company: true,
       },
     });
-    const completar = jaExiste ? apenasOFaltante(jaExiste, atribuicao) : {};
+    const completar = jaExiste
+      ? { ...apenasOFaltante(jaExiste, atribuicao), ...apenasOFaltanteDoContato(jaExiste, camposDoContato) }
+      : {};
 
     const lead = await prisma.lead.upsert({
       where: { hubspotContactId: chave },
       update: {
         name: nome,
         email: contato?.email ?? undefined,
-        phone: contato?.phone ?? contato?.mobilephone ?? undefined,
-        company: contato?.company ?? undefined,
-        jobTitle: contato?.jobtitle ?? undefined,
         ...completar,
       },
       create: {
         hubspotContactId: chave,
         name: nome,
         email: contato?.email ?? null,
-        phone: contato?.phone ?? contato?.mobilephone ?? null,
-        company: contato?.company ?? null,
-        jobTitle: contato?.jobtitle ?? null,
+        ...camposDoContato,
         status: "CONVERTED",
         // `source` continua dizendo de que SISTEMA o registro veio; a origem do
         // TRÁFEGO mora nas colunas `utm*`. São perguntas diferentes, e juntá-las

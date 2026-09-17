@@ -31,7 +31,8 @@
     "hubspot:atribuicao": "tsx scripts/hubspot-atribuicao.ts",
     "hubspot:utm": "tsx scripts/hubspot-utm-retroativo.ts",
     "hubspot:inventario": "tsx scripts/hubspot-inventario.ts",
-    "hubspot:completude": "tsx scripts/hubspot-completude.ts"
+    "hubspot:completude": "tsx scripts/hubspot-completude.ts",
+    "hubspot:falta": "tsx scripts/hubspot-o-que-falta.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
