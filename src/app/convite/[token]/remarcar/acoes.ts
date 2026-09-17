@@ -19,15 +19,20 @@ import { remarcar } from "@/lib/sessoes";
 export async function remarcarSessao(dadosDoFormulario: FormData) {
   const token = String(dadosDoFormulario.get("token") ?? "");
   const meetingId = String(dadosDoFormulario.get("meetingId") ?? "");
+  // O dia que estava aberto no calendário. Volta na URL para a pessoa
+  // reencontrar a tela de onde saiu quando a tentativa não dá certo.
+  const dia = String(dadosDoFormulario.get("dia") ?? "");
+  const volta = (motivo: string) =>
+    `/convite/${token}/remarcar?r=${motivo}${/^\d{4}-\d{2}-\d{2}$/.test(dia) ? `&dia=${dia}` : ""}`;
 
-  if (!token || !meetingId) redirect(`/convite/${token}/remarcar?r=invalido`);
+  if (!token || !meetingId) redirect(volta("invalido"));
 
   // Mesmo teto das outras portas do convite: este endereço aceita um token por
   // tentativa e, sem limite, vira o oráculo de quais convites existem.
-  if (await passouDoLimite("token")) redirect(`/convite/${token}/remarcar?r=espere`);
+  if (await passouDoLimite("token")) redirect(volta("espere"));
 
   const r = await remarcar(token, meetingId);
 
   if (r.tipo === "ok") redirect(`/convite/${token}?r=remarcado`);
-  redirect(`/convite/${token}/remarcar?r=${r.tipo}`);
+  redirect(volta(r.tipo));
 }

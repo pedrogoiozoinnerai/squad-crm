@@ -27,6 +27,8 @@ export type SessaoAlvo = {
   id: string;
   inicioEm: Date;
   vagas: number;
+  /// Quanto dura, para a tela dizer "60 minutos ao vivo" sem chutar.
+  duracaoMin?: number;
 };
 
 /**
