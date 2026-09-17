@@ -175,15 +175,20 @@ export async function inscrever(
 /**
  * Quanto tempo antes do início a sessão para de aceitar inscrição.
  *
- * Uma hora: o lead que termina o funil de manhã consegue entrar numa sessão
- * ainda hoje, e é isso que se quer — marcar para daqui a três dias é perder a
- * pessoa no auge do interesse.
+ * Cinco minutos. Era uma hora — e uma hora escondia justamente a sessão que a
+ * pessoa mais quer: às 09:53 o funil não oferecia a das 10:00, e o primeiro
+ * horário da tela era o das 11:00. A sala das 10:00 já estava aberta desde
+ * 09:30, com vinte vagas livres, e ninguém conseguia entrar nela.
  *
- * Não menos que isso porque a hora que sobra é o que o time usa: a sala abre
- * 30 minutos antes, a confirmação precisa chegar e o closer precisa ver o nome
- * na agenda antes de entrar.
+ * A hora existia para o time ver o nome na agenda antes de entrar. Esse motivo
+ * caiu: a reserva cria o lead no CRM no mesmo instante do clique — não espera o
+ * cron — e a sala abre 30 minutos antes do início. Quem reserva às 09:53 entra
+ * em seguida.
+ *
+ * Os cinco minutos que sobram servem a uma coisa só: não vender a vaga de uma
+ * sessão que começa enquanto a página carrega.
  */
-export const ANTECEDENCIA_MIN = 60;
+export const ANTECEDENCIA_MIN = 5;
 
 /// Teto de linhas. Fica logo acima do que uma série materializa num mês (650),
 /// para uma configuração errada não virar um JSON de megabytes.
