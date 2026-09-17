@@ -384,3 +384,29 @@ export function naSalaEm(
 export function minutoDaCall(instante: Date, inicio: Date): number {
   return Math.max(0, Math.round((instante.getTime() - inicio.getTime()) / 60_000));
 }
+
+/**
+ * Quais salas no ar já passaram da hora de fechar.
+ *
+ * Separada da chamada ao LiveKit porque é a única parte que dá para conferir
+ * sem rede — e é a parte que erra: fechar cedo demais derruba uma call que
+ * emendou, fechar de menos é o laço de reconexão de dez horas que já
+ * aconteceu.
+ *
+ * `fimPorReuniao` não ter a reunião significa que ela sumiu do banco. Essa sala
+ * fecha: sem horário e sem dono, nenhum outro caminho fecharia.
+ */
+export function salasVencidas(
+  salas: { nome: string; meetingId: string | null }[],
+  fimPorReuniao: Map<string, Date>,
+  agora: Date,
+): string[] {
+  return salas
+    .filter(({ meetingId }) => {
+      if (!meetingId) return true;
+      const fim = fimPorReuniao.get(meetingId);
+      if (!fim) return true;
+      return agora > tetoDaPresenca(fim);
+    })
+    .map(({ nome }) => nome);
+}
