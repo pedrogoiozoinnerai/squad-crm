@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  CITACAO_REMOVIDA,
   contarCriticos,
   lerBlocos,
   lerErros,
@@ -14,6 +15,8 @@ import {
   lerAnalise,
   montarPrompt,
   problemaNaRubrica,
+  redigirErros,
+  venceu,
   type ErroDaCall,
 } from "../src/lib/analise";
 
@@ -198,5 +201,50 @@ describe("os campos jsonb de volta do banco", () => {
     // trilho com buraco no meio, que mente sobre a call em vez de admitir que
     // não sabe.
     assert.deepEqual(lerBlocos([{ nome: "Abertura", status: "INVENTADO" }]), []);
+  });
+});
+
+describe("a retenção tira a fala e mantém o número", () => {
+  it("guardar para sempre é o padrão, e 0 significa isso", () => {
+    // Apagar material de vendas por omissão seria pior que qualquer atraso em
+    // decidir o prazo.
+    const antigo = new Date("2020-01-01T00:00:00Z");
+    assert.equal(venceu(antigo, 0, new Date("2026-09-17T00:00:00Z")), false);
+    assert.equal(venceu(antigo, -1, new Date("2026-09-17T00:00:00Z")), false);
+  });
+
+  it("com prazo, vence depois dele", () => {
+    const agora = new Date("2026-09-17T12:00:00Z");
+    assert.equal(venceu(new Date("2026-06-01T12:00:00Z"), 90, agora), true);
+    assert.equal(venceu(new Date("2026-09-01T12:00:00Z"), 90, agora), false);
+  });
+
+  it("no dia exato ainda não venceu", () => {
+    const agora = new Date("2026-09-17T12:00:00Z");
+    assert.equal(venceu(new Date("2026-06-19T12:00:00Z"), 90, agora), false);
+  });
+
+  it("a citação vira marcador, não vazio", () => {
+    // Vazio faria o erro SUMIR da tela — a regra é "sem citação não desenha" —
+    // e a call pareceria limpa. O apontamento fica, dizendo que a prova foi
+    // removida pelo prazo.
+    const [redigido] = redigirErros([
+      erro({ gravidade: "CRITICO", oQueAconteceu: "deu desconto", citacao: "dou dez por cento" }),
+    ]);
+    assert.equal(redigido.citacao, CITACAO_REMOVIDA);
+    assert.equal(errosVisiveis([redigido]).length, 1, "continua visível");
+  });
+
+  it("o que NÃO é fala de ninguém continua", () => {
+    const [redigido] = redigirErros([
+      erro({ oQueAconteceu: "deu desconto", citacao: "x", oQuePlaybookManda: "reancorar valor" }),
+    ]);
+    assert.equal(redigido.oQueAconteceu, "deu desconto");
+    assert.equal(redigido.oQuePlaybookManda, "reancorar valor", "o playbook é nosso");
+    assert.equal(redigido.gravidade, "MEDIO", "a gravidade é o número que sobrevive");
+  });
+
+  it("erro que já não tinha citação não ganha marcador", () => {
+    assert.equal(redigirErros([erro({ citacao: null })])[0].citacao, null);
   });
 });

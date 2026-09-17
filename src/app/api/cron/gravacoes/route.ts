@@ -6,6 +6,7 @@ import { deepgramConfigurado, pedirTranscricoes } from "@/lib/deepgram";
 import { env } from "@/lib/env";
 import { conciliarGravacoes } from "@/lib/gravacoes-servidor";
 import { livekitConfigurado } from "@/lib/livekit-servidor";
+import { varrerRetencao } from "@/lib/retencao";
 
 /**
  * A gravação, conferida contra o LiveKit.
@@ -64,21 +65,28 @@ export async function GET(request: NextRequest) {
       ? await pedirAnalises()
       : { semeados: 0, enviados: 0, colhidos: 0, falhas: 0 };
     a.colhidos = colhidos;
+
+    // A retenção por último, e sempre: ela não depende de chave de provedor
+    // nenhuma — depende dos prazos, que nascem em 0 e só apagam alguma coisa
+    // depois que alguém os define na tela de configurações.
+    const ret = await varrerRetencao();
     // `semGravacao` é o número que denuncia o webhook mal cadastrado: calls que
     // aconteceram, com gente dentro, e das quais o LiveKit não conhece egress
     // nenhum. Ele merece log mesmo quando nada mudou.
     if (
       r.criadas || r.atualizadas || r.semGravacao || r.falhas ||
       t.pedidos || t.falhas || t.esquecidos ||
-      a.enviados || a.colhidos || a.falhas
+      a.enviados || a.colhidos || a.falhas ||
+      ret.videosApagados || ret.transcricoesRedigidas || ret.falhas
     ) {
-      console.log("[cron/gravacoes]", JSON.stringify({ ...r, transcricao: t, analise: a }));
+      console.log("[cron/gravacoes]", JSON.stringify({ ...r, transcricao: t, analise: a, retencao: ret }));
     }
     return NextResponse.json({
       ok: true,
       ...r,
       transcricao: t,
       analise: a,
+      retencao: ret,
       ...(ignorado.length ? { ignorado } : {}),
     });
   } catch (erro) {

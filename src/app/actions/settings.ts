@@ -455,3 +455,45 @@ export async function salvarRegraDePresenca(
   revalidateBoth(revalidatePath, "sessoes", "participantes");
   return { ok: true };
 }
+
+/**
+ * Por quanto tempo a gravação e a transcrição ficam.
+ *
+ * São os dois números mais caros desta tela e os únicos que o código não podia
+ * escolher: guardar a conversa de um cliente é decisão de quem responde por
+ * privacidade. Por isso nascem em **0 — guardar para sempre** — em vez de um
+ * padrão “razoável” escolhido na surdina.
+ *
+ * Apagar é irreversível, então o formulário confere o que puder conferir: o
+ * vídeo nunca pode durar mais que a transcrição, porque a transcrição é o que
+ * sustenta o resumo e a auditoria depois que o arquivo de 550 MB já foi embora.
+ */
+export async function salvarRetencao(_prev: FormState, formData: FormData): Promise<FormState> {
+  await requireAdminAction();
+
+  const video = Number(formData.get("retencaoVideoDias"));
+  if (!Number.isInteger(video) || video < 0 || video > 3650) {
+    return { error: "O prazo do vídeo precisa ser um número de dias entre 0 e 3650." };
+  }
+
+  const transcricao = Number(formData.get("retencaoTranscricaoDias"));
+  if (!Number.isInteger(transcricao) || transcricao < 0 || transcricao > 3650) {
+    return { error: "O prazo da transcrição precisa ser um número de dias entre 0 e 3650." };
+  }
+
+  if (video > 0 && transcricao > 0 && video > transcricao) {
+    return {
+      error:
+        "O vídeo não pode durar mais que a transcrição: é ela que sustenta o resumo e a auditoria depois que o arquivo for apagado.",
+    };
+  }
+
+  await prisma.config.upsert({
+    where: { id: "unica" },
+    update: { retencaoVideoDias: video, retencaoTranscricaoDias: transcricao },
+    create: { retencaoVideoDias: video, retencaoTranscricaoDias: transcricao },
+  });
+
+  revalidatePath(CONFIG_PATH);
+  return { ok: true };
+}

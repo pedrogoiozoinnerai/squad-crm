@@ -238,3 +238,43 @@ export function montarPrompt(rubrica: string, transcricao: string): string {
     transcricao,
   ].join("\n\n---\n\n");
 }
+
+/// O que fica no lugar de uma citação apagada.
+///
+/// Um marcador, e não string vazia: vazio faria o erro sumir da tela (a regra é
+/// "sem citação não desenha") e a call pareceria limpa. O apontamento continua,
+/// dizendo que a prova foi removida pelo prazo — o que é a verdade.
+export const CITACAO_REMOVIDA = "[trecho removido pela retenção]";
+
+/**
+ * Tira as falas literais, mantendo os números.
+ *
+ * É o que permite a retenção apagar o CONTEÚDO da conversa de um cliente sem
+ * apagar o histórico de desempenho do time: a nota de fechamento de julho
+ * continua comparável com a de agosto, e ninguém consegue mais ler o que o
+ * cliente disse.
+ */
+export function redigirErros(erros: ErroDaCall[]): ErroDaCall[] {
+  return erros.map((e) => ({
+    ...e,
+    citacao: e.citacao ? CITACAO_REMOVIDA : null,
+    // O "o que aconteceu" é descrição nossa, não fala de ninguém — fica.
+    // `oQuePlaybookManda` é o nosso próprio playbook — fica também.
+  }));
+}
+
+export function redigirObjecoes(objecoes: Objecao[]): Objecao[] {
+  return objecoes.map((o) => ({ ...o, citacao: o.citacao ? CITACAO_REMOVIDA : null }));
+}
+
+/**
+ * Passou do prazo?
+ *
+ * `dias <= 0` significa **guardar para sempre**, e é o padrão. Não é descuido: o
+ * prazo de guarda é decisão de quem responde por privacidade, e apagar material
+ * de vendas por omissão seria pior que qualquer atraso em decidir.
+ */
+export function venceu(quando: Date, dias: number, agora: Date): boolean {
+  if (dias <= 0) return false;
+  return agora.getTime() - quando.getTime() > dias * 24 * 60 * 60_000;
+}

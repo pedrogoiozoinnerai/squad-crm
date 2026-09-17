@@ -6,6 +6,7 @@ import { StageList, type StageRow } from "@/components/settings/StageList";
 import { TaskTemplateList, type TemplateRow } from "@/components/settings/TaskTemplateList";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { RegraDePresenca } from "@/components/settings/RegraDePresenca";
+import { Retencao } from "@/components/settings/Retencao";
 import { Rubrica, type RubricaRow } from "@/components/settings/Rubrica";
 import { SerieList, type SerieRow } from "@/components/settings/SerieList";
 
@@ -55,7 +56,12 @@ export function SettingsView({
   cases: CaseRow[];
   series: SerieRow[];
   owners: { id: string; name: string }[];
-  regra: { presencaMinutos: number; presencaPercentual: number };
+  regra: {
+    presencaMinutos: number;
+    presencaPercentual: number;
+    retencaoVideoDias: number;
+    retencaoTranscricaoDias: number;
+  };
   rubricas: RubricaRow[];
   /// Se a chave da Anthropic existe. Decide se a tela promete auditoria ou
   /// explica por que ela ainda não roda.
@@ -66,7 +72,7 @@ export function SettingsView({
     { key: "motivos", label: "Motivos de perda", count: lossReasons.length },
     { key: "templates", label: "Templates de tarefa", count: templates.length },
     { key: "sessoes", label: "Sessões recorrentes", count: series.length },
-    { key: "reunioes", label: "Reuniões e presença", count: 1 },
+    { key: "reunioes", label: "Reuniões e presença", count: 2 },
     { key: "prompts", label: "Rubrica de auditoria", count: rubricas.length },
     { key: "automacoes", label: "Automações e cases", count: automations.length + cases.length },
   ];
@@ -109,10 +115,16 @@ export function SettingsView({
       {secao === "templates" && <TaskTemplateList templates={templates} />}
       {secao === "sessoes" && <SerieList series={series} owners={owners} />}
       {secao === "reunioes" && (
-        <RegraDePresenca
-          presencaMinutos={regra.presencaMinutos}
-          presencaPercentual={regra.presencaPercentual}
-        />
+        <div className="flex flex-col gap-5">
+          <RegraDePresenca
+            presencaMinutos={regra.presencaMinutos}
+            presencaPercentual={regra.presencaPercentual}
+          />
+          <Retencao
+            retencaoVideoDias={regra.retencaoVideoDias}
+            retencaoTranscricaoDias={regra.retencaoTranscricaoDias}
+          />
+        </div>
       )}
       {secao === "prompts" && <Rubrica versoes={rubricas} analisePronta={analisePronta} />}
       {secao === "automacoes" && <ReadOnlySection automations={automations} cases={cases} />}
