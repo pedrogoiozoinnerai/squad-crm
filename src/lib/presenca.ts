@@ -11,6 +11,8 @@
  * eles têm 1.028 participações para reprocessar à mão.
  */
 
+import { ehGravador } from "@/lib/identidades";
+
 export type EventoBruto = {
   type: string;
   at: Date;
@@ -55,6 +57,10 @@ export function consolidar(eventos: EventoBruto[], fimDaSala: Date | null): Pres
 
   for (const evento of ordenados) {
     if (!evento.identity) continue;
+    // A gravação entra na sala como participante: o LiveKit sobe um navegador
+    // sem tela e ele dá `join` como qualquer um. Contá-lo inflaria a presença
+    // — e numa sessão de dois inscritos ele sozinho dobraria a taxa.
+    if (ehGravador(evento.identity)) continue;
     if (evento.type !== "participant_joined" && evento.type !== "participant_left") continue;
 
     const atual = porIdentidade.get(evento.identity) ?? {

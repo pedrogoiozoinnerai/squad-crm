@@ -86,6 +86,30 @@ describe("consolidação de presença", () => {
   });
 });
 
+describe("o gravador não é gente", () => {
+  it("fica de fora da presença", () => {
+    // A gravação entra na sala como participante: o LiveKit sobe um navegador
+    // sem tela e ele dá `join` como qualquer um. Contá-lo inflaria a presença
+    // — e numa sessão de dois inscritos ele sozinho dobraria a taxa.
+    const presencas = consolidar(
+      [
+        entrou("EG_4kPz9", 0, "Egress"),
+        entrou("l_1", 2),
+        saiu("l_1", 40),
+        saiu("EG_4kPz9", 41),
+      ],
+      null,
+    );
+    assert.deepEqual(presencas.map((p) => p.identity), ["l_1"]);
+  });
+
+  it("e ele sozinho não faz a sala parecer cheia", () => {
+    // O caso feio: ninguém apareceu, mas a gravação subiu. Sem o filtro, a
+    // reunião teria "1 presente" e o closer só descobriria abrindo.
+    assert.deepEqual(consolidar([entrou("EG_x", 0), saiu("EG_x", 60)], null), []);
+  });
+});
+
 describe("regra de presença", () => {
   const regra = { presencaMinutos: 5, presencaPercentual: 50 };
 

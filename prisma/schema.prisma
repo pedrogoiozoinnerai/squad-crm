@@ -53,6 +53,8 @@ model User {
   activities        Activity[]
   sessionTemplates  SessionTemplate[]
   whatsappInstances WhatsappInstance[]
+  gravacoesAbertas  RecordingAccess[]
+  prompts           AiPrompt[]
 
   @@index([role])
 }
@@ -564,6 +566,9 @@ model Meeting {
   presences  Presence[]
   attendees  MeetingAttendee[]
   mensagens  RoomMessage[]
+  gravacoes  Recording[]
+  notes      Note[]
+  activities Activity[]
 
   @@unique([templateId, startsAt])
   @@index([type, status, startsAt])
@@ -592,9 +597,18 @@ model Note {
   dealId String?
   deal   Deal?   @relation(fields: [dealId], references: [id], onDelete: Cascade)
 
+  /// A anotação sobre a SESSÃO, e não sobre uma pessoa.
+  ///
+  /// Faltava onde cair: uma sessão coletiva tem vinte leads, e "a objeção de
+  /// preço apareceu três vezes hoje" não é anotação de nenhum deles. Sem esta
+  /// coluna, o que o closer aprende na call não tinha lugar nenhum.
+  meetingId String?
+  meeting   Meeting? @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
   @@index([leadId])
   @@index([dealId])
   @@index([authorId])
+  @@index([meetingId, createdAt])
 }
 
 enum ActivityKind {
@@ -629,9 +643,14 @@ model Activity {
   dealId String?
   deal   Deal?   @relation(fields: [dealId], references: [id], onDelete: Cascade)
 
+  /// A qual sessão o fato pertence, quando pertence a uma.
+  meetingId String?
+  meeting   Meeting? @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
   @@index([leadId, createdAt])
   @@index([authorId])
   @@index([dealId, createdAt])
+  @@index([meetingId, createdAt])
 }
 
 // ────────────────────────── Cases de sucesso ──────────────────────────
@@ -856,6 +875,19 @@ model Config {
   /// A marca é sobre `updatedAt`, não `createdAt`: o espelho também precisa
   /// pegar quem já existia e MUDOU — remarcou, cancelou, agendou depois.
   funilSincronizadoAte DateTime?
+
+  /// Por quanto tempo o vídeo fica.
+  ///
+  /// São os números mais caros do schema e os únicos que ninguém pode escolher
+  /// por conta: guardar a conversa de um cliente é decisão de quem responde
+  /// por privacidade, não de quem escreve a migração. Os padrões abaixo são
+  /// PROPOSTA — 0 desliga a retenção e guarda para sempre, que é o que vale
+  /// enquanto o prazo não for decidido.
+  ///
+  /// A transcrição sobrevive ao vídeo de propósito: ela é o que sustenta o
+  /// resumo e a auditoria depois que o arquivo de 550 MB já foi embora.
+  retencaoVideoDias       Int @default(0)
+  retencaoTranscricaoDias Int @default(0)
 }
 
 // ── MeetSquad: o roster da reunião ───────────────────────────────────────────
@@ -925,4 +957,248 @@ model MeetingAttendee {
   @@unique([meetingId, leadId])
   @@index([leadId])
   @@index([meetingId, status])
+}
+
+// ── Gravação, transcrição e análise da call ──────────────────────────────────
+//
+// O que decide coluna × jsonb aqui: **coluna** quando o valor é filtrado,
+// ordenado, somado ou aparece numa lista; **jsonb** quando só é desenhado no
+// detalhe de UMA call. Um `veredicto` em jsonb transformaria "quem está de
+// freestyle esta semana?" numa varredura de tabela.
+
+/// Em que ponto a gravação está.
+///
+/// Os nomes são nossos, não os do LiveKit (`EGRESS_STARTING`, `EGRESS_ACTIVE`,
+/// …): o egress é um detalhe de fornecedor, e esta coluna é lida pela tela.
+/// O de-para vive em `lib/gravacao`, com o **avanço monotônico** — o LiveKit
+/// não garante ordem de entrega, e um `egress_started` que chega depois do
+/// `egress_ended` faria uma gravação pronta voltar a "gravando".
+enum RecordingStatus {
+  PENDENTE
+  GRAVANDO
+  PROCESSANDO
+  COMPLETA
+  FALHOU
+  ABORTADA
+  /// Apagada pela retenção. A linha FICA: é ela que explica por que não há
+  /// vídeo, e sem ela "sumiu" e "nunca gravou" viram a mesma tela.
+  APAGADA
+}
+
+/// O arquivo de uma call.
+///
+/// Derivado dos eventos de egress do LiveKit, nunca escrito à mão. Até aqui o
+/// webhook recebia arquivo, tamanho e duração e JOGAVA FORA, achatando tudo num
+/// `RoomEvent` com o `egressId` no campo `name`.
+model Recording {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  meetingId String
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  /// Id do egress no LiveKit. Único: é a chave de reconciliação, e é por ela
+  /// que o evento reentregue encontra a linha em vez de criar uma segunda.
+  egressId String @unique
+
+  status RecordingStatus @default(PENDENTE)
+
+  /// Caminho do arquivo DENTRO do bucket. Nunca uma URL: a URL é assinada na
+  /// hora de assistir e vale minutos — guardá-la seria guardar uma chave.
+  caminho String?
+
+  /// `BigInt` porque `int4` estoura em 2,1 GB e uma mentoria de duas horas
+  /// passa disso. Nunca atravessa para o cliente como está: `Number()` na
+  /// camada de consulta, senão o `JSON.stringify` do Server Component quebra.
+  bytes BigInt?
+
+  /// A duração MEDIDA do arquivo — não a agendada. É ela que diz que a call de
+  /// 45 minutos durou 71.
+  duracaoSegundos Int?
+
+  iniciadaEm  DateTime?
+  terminadaEm DateTime?
+
+  /// O que o LiveKit disse quando falhou. Some da tela, fica no registro.
+  erro String?
+
+  /// O último `egressInfo` inteiro. Sem ele, "falhou" é beco sem saída — e a
+  /// forma desse JSON muda do lado deles sem avisar.
+  bruto Json?
+
+  /// Quando a retenção apagou o arquivo do bucket.
+  apagadaEm DateTime?
+
+  transcript Transcript?
+  acessos    RecordingAccess[]
+
+  @@index([meetingId])
+  @@index([status, createdAt])
+}
+
+/// Quem pediu para assistir, e quando.
+///
+/// A gravação é do TIME, não do dono da call: qualquer pessoa do comercial
+/// abre a call de qualquer outra. Isso é a decisão certa para vender e é
+/// exatamente o que faz este registro ser obrigatório — é a primeira coisa que
+/// se pergunta quando alguém quer saber quem ouviu a conversa de um cliente.
+model RecordingAccess {
+  id  String   @id @default(cuid())
+  em  DateTime @default(now())
+
+  recordingId String
+  recording   Recording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  ip String?
+
+  @@index([recordingId, em])
+  @@index([userId, em])
+}
+
+/// O que foi dito.
+model Transcript {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  recordingId String    @unique
+  recording   Recording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+
+  /// Id do pedido no provedor (`request_id` da Deepgram). Único: é por ele que
+  /// o retorno assíncrono reencontra o trabalho, e é o que impede um callback
+  /// repetido de gravar duas vezes.
+  externoId String? @unique
+
+  /// O texto corrido. **Coluna**, não jsonb: é ele que entra no prompt, e um
+  /// `->>'texto'` numa call de 60 mil caracteres é caro à toa.
+  texto String
+
+  /// Trechos com início, fim e falante. Só desenhado no detalhe de uma call.
+  segmentos Json?
+
+  /// De-para de falante para pessoa, quando dá. Numa sala de vinte não dá — e
+  /// prometer nome quando não se sabe é pior que não prometer.
+  falantes Json?
+
+  idioma  String?
+  modelo  String?
+
+  analise CallAnalysis?
+}
+
+/// O prompt de análise, versionado.
+///
+/// **Nunca `UPDATE`**: editar por cima apagaria a régua pela qual as calls
+/// antigas foram julgadas, e duas calls com a mesma nota passariam a ter sido
+/// medidas por textos diferentes sem que nada registrasse isso.
+///
+/// `corpo` é **só a rubrica**. O contrato de saída é anexado pelo código, a
+/// partir do Zod em `lib/analise` — o operador não alcança o formato. É o
+/// conserto, por construção, do erro do CRM de referência: lá o prompt de
+/// 13.605 caracteres pedia dezenas de campos e o schema de saída aceitava
+/// cinco, então a maior parte da análise era gerada e descartada.
+model AiPrompt {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  /// Por ora só `AUDITORIA`. String e não enum porque a próxima régua
+  /// (objeções, roleplay) não deveria exigir migração.
+  tipo   String
+  versao Int
+  ativo  Boolean @default(false)
+  corpo  String
+
+  autorId String?
+  autor   User?   @relation(fields: [autorId], references: [id], onDelete: SetNull)
+
+  analises CallAnalysis[]
+
+  @@unique([tipo, versao])
+  @@index([tipo, ativo])
+}
+
+/// A auditoria da call contra o playbook.
+model CallAnalysis {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  transcriptId String     @unique
+  transcript   Transcript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+
+  promptId String?
+  prompt   AiPrompt? @relation(fields: [promptId], references: [id], onDelete: SetNull)
+
+  modelo String?
+
+  // ── Colunas: o que uma LISTA pergunta ──────────────────────────────────
+  /// O que aconteceu na call. A primeira coisa que o closer lê.
+  resumo       String
+  /// Uma linha: "seguiu o playbook", "improvisou o fechamento".
+  veredicto    String?
+  aderenciaPct Int?
+  notaGeral    Int?
+  engajamento  Int?
+  blocosOk     Int?
+  blocosTotal  Int?
+  errosCriticos Int  @default(0)
+  proibidasCount Int @default(0)
+  /// Em que treinar. `String[]` porque a pergunta é "quem precisa treinar
+  /// fechamento?" — e isso é um `has`, não um `LIKE` em jsonb.
+  roleplayFoco String[]
+
+  // ── jsonb: o que só o DETALHE desenha ──────────────────────────────────
+  blocos        Json?
+  erros         Json?
+  vocabulario   Json?
+  objecoes      Json?
+  scorecard     Json?
+  insights      Json?
+  proximosPassos Json?
+
+  /// A resposta crua do modelo. Sem ela, "falhou na validação" é beco sem
+  /// saída: não dá para ver o que ele respondeu nem consertar o schema.
+  bruto Json?
+
+  /// Quando a retenção trocou as citações por marcador. Os números ficam.
+  redigidaEm DateTime?
+
+  @@index([createdAt])
+  @@index([veredicto])
+}
+
+/// Trabalho assíncrono, com arrendamento.
+///
+/// A fila é **semeada por derivação, não por empurrão**: o webhook não cria
+/// job nenhum. O cron pergunta ao banco "que gravação COMPLETA não tem
+/// transcrição?". É a forma de `reconciliarPresencas`, e pelo mesmo motivo —
+/// callback perdido, webhook que não chegou, deploy no meio da call: tudo se
+/// conserta na execução seguinte, sem ninguém reenfileirar à mão.
+model AiJob {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Chave de NEGÓCIO (`TRANSCREVER:<recordingId>`), não um id aleatório. É o
+  /// que faz dois crons sobrepostos criarem um trabalho, e não dois.
+  chave String @unique
+
+  etapa  String
+  estado String @default("PENDENTE")
+
+  /// Id do trabalho no provedor — `request_id` da Deepgram, id do lote da
+  /// Anthropic. É por ele que a execução seguinte descobre se já ficou pronto.
+  externoId String?
+
+  tentativas Int @default(0)
+  /// Arrendamento: até quando este trabalho é de quem o pegou. Uma execução
+  /// que morre no meio devolve o trabalho sozinha quando o prazo vence.
+  arrendadoAte     DateTime?
+  proximaTentativaEm DateTime?
+  erro             String?
+
+  @@index([estado, proximaTentativaEm])
+  @@index([etapa, estado])
 }

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { RoomEvent, Track, type Participant, type Room } from "livekit-client";
 
 import { FOCO_VAZIO, proximoFoco, quandoReavaliar, type EstadoDoFoco } from "@/lib/foco";
+import { ehGravador } from "@/lib/identidades";
 
 /**
  * Faz o React reagir à sala.
@@ -57,7 +58,9 @@ export function useSala(sala: Room | null) {
       clearTimeout(despertador);
 
       const eu = sala.localParticipant;
-      const presentes = [eu, ...sala.remoteParticipants.values()].map((p) => p.identity);
+      const presentes = [eu, ...sala.remoteParticipants.values()]
+        .map((p) => p.identity)
+        .filter((id) => !ehGravador(id));
       // Quem fala AGORA, tirando eu mesmo: ninguém quer se ver grande enquanto
       // fala, e o próprio rosto no quadro principal rouba a sessão do lead.
       const candidato =
@@ -67,9 +70,9 @@ export function useSala(sala: Room | null) {
       // intenção mais explícita que existe numa call, e antes ela ia parar na
       // fita lateral do tamanho de um selo.
       const compartilhando =
-        [eu, ...sala.remoteParticipants.values()].find((p) =>
-          p.getTrackPublication(Track.Source.ScreenShare),
-        )?.identity ?? null;
+        [eu, ...sala.remoteParticipants.values()]
+          .filter((p) => !ehGravador(p.identity))
+          .find((p) => p.getTrackPublication(Track.Source.ScreenShare))?.identity ?? null;
 
       const agora = Date.now();
       const proximo = proximoFoco(
@@ -115,7 +118,11 @@ export function useSala(sala: Room | null) {
   }
 
   const eu = sala.localParticipant;
-  const remotos = [...sala.remoteParticipants.values()];
+  // O gravador é um participante de verdade: o LiveKit sobe um navegador sem
+  // tela e ele entra na sala. Sem tirá-lo daqui ele vira um quadrado preto
+  // permanente no meio de trinta rostos, some do jeito errado na contagem
+  // ("31 na sala") e chega a ganhar o foco quando ninguém está falando.
+  const remotos = [...sala.remoteParticipants.values()].filter((p) => !ehGravador(p.identity));
   const todos = [eu, ...remotos];
 
   // O foco é uma identidade, não um objeto: o participante pode ter sido
