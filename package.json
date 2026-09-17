@@ -29,7 +29,9 @@
     "raio-x": "tsx scripts/raio-x.ts",
     "limpar:duplicadas": "tsx scripts/limpar-reunioes-duplicadas.ts",
     "hubspot:atribuicao": "tsx scripts/hubspot-atribuicao.ts",
-    "hubspot:utm": "tsx scripts/hubspot-utm-retroativo.ts"
+    "hubspot:utm": "tsx scripts/hubspot-utm-retroativo.ts",
+    "hubspot:inventario": "tsx scripts/hubspot-inventario.ts",
+    "hubspot:completude": "tsx scripts/hubspot-completude.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
