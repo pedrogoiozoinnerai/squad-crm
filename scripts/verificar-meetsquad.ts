@@ -139,7 +139,22 @@ async function main() {
       ) === hoje,
   );
   confere(disp.sessoes.length > 0, "há sessões abertas", `${disp.sessoes.length} no total`);
-  confere(doDia.length > 0, "há sessão AINDA HOJE", `${doDia.length} hoje`);
+
+  // "Ainda hoje" só é pergunta enquanto o dia dá para agendar. Rodando às 23h,
+  // zero sessão restante é o dia ter acabado, não a agenda estar vazia — e uma
+  // verificação que falha por causa da hora é uma que o time aprende a ignorar.
+  const horaLocal = Number(
+    new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      hour: "2-digit",
+      hour12: false,
+    }).format(agora),
+  );
+  if (horaLocal < 20) {
+    confere(doDia.length > 0, "há sessão AINDA HOJE", `${doDia.length} hoje`);
+  } else {
+    ok("há sessão ainda hoje", `não perguntado — ${horaLocal}h, o dia acabou`);
+  }
 
   const primeira = doDia[0] ?? disp.sessoes[0];
   if (!primeira) {
@@ -606,6 +621,58 @@ async function main() {
   );
   confere(denovoP.rows[0]?.seconds === segundos, "idempotente", `${denovoP.rows[0]?.seconds}s`);
 
+  // ── 11.5. A sala que ninguém fechou ───────────────────────────────────────
+  //
+  // O caso que aconteceu, reproduzido: uma reunião de 45 minutos cuja sala só
+  // foi encerrada dez horas depois. No banco de produção isso virou 322 e 366
+  // minutos de `Presence.seconds` — e `seconds` decide `attended`, que decide a
+  // taxa de presença e o `Deal.attendance`.
+  //
+  // O teto que impediria isso não existia: o `CreateRoom` do LiveKit não tem
+  // campo de duração máxima. Aqui a pergunta é a da régua — a permanência
+  // aberta é cortada em `endsAt + 30 min` e não no instante em que a sala caiu.
+  etapa(11.5 as unknown as number, "Sala esquecida aberta não fabrica presença");
+
+  const inicioLongo = new Date(Date.now() - 11 * 60 * 60_000);
+  const fimLongo = new Date(inicioLongo.getTime() + 45 * 60_000);
+  const salaCaiu = new Date(Date.now() - 10 * 60_000);
+  const longoId = randomBytes(12).toString("hex");
+
+  await db.query(
+    `insert into "${SCHEMA}"."Meeting" (id,"createdAt","updatedAt",title,"startsAt","endsAt",type,status,"ownerId","leadId")
+     values ($1,now(),now(),'VERIFICAÇÃO · sala esquecida aberta',$2,$3,'GROUP','SCHEDULED',$4,$5)`,
+    [longoId, comoOPrismaGrava(inicioLongo), comoOPrismaGrava(fimLongo), dono, criados.leadId],
+  );
+
+  const salaLonga = `reuniao-${longoId}`;
+  const eventosLongos = [
+    { event: "room_started", id: `v-${randomBytes(6).toString("hex")}`, createdAt: seg(inicioLongo), room: { name: salaLonga, sid: "RM_vl" } },
+    // Entra no começo e NUNCA sai: é o que o cliente reconectando em laço
+    // deixa no banco — entradas sem a saída correspondente.
+    { event: "participant_joined", id: `v-${randomBytes(6).toString("hex")}`, createdAt: seg(inicioLongo), room: { name: salaLonga, sid: "RM_vl" }, participant: { identity: `l_${criados.leadId}`, name: "Verificação MeetSquad" } },
+    // E a sala só cai dez horas depois do fim marcado.
+    { event: "room_finished", id: `v-${randomBytes(6).toString("hex")}`, createdAt: seg(salaCaiu), room: { name: salaLonga, sid: "RM_vl" } },
+  ];
+  let longosEntregues = 0;
+  for (const e of eventosLongos) if ((await entregarEvento(e)) === 200) longosEntregues++;
+  confere(longosEntregues === eventosLongos.length, "os eventos da sala longa foram aceitos");
+
+  await fetch(`${BASE}/api/cron/presenca`, {
+    headers: { authorization: `Bearer ${process.env.CRON_SECRET}` },
+  });
+
+  const presencaLonga = await db.query(
+    `select seconds from "${SCHEMA}"."Presence" where "meetingId"=$1`,
+    [longoId],
+  );
+  const segundosLongos = presencaLonga.rows[0]?.seconds ?? 0;
+  // 45 min de janela + 30 min de folga = 4500 s. Sem o teto seriam ~39.000.
+  confere(
+    segundosLongos >= 4480 && segundosLongos <= 4520,
+    "a permanência para em endsAt + 30 min, não quando a sala caiu",
+    `${Math.round(segundosLongos / 60)} min numa janela de 45 — a sala ficou ${Math.round((salaCaiu.getTime() - inicioLongo.getTime()) / 60_000)} min aberta`,
+  );
+
   // ── 12. A sala do CRM (visão do closer) ───────────────────────────────────
   etapa(12, "A sala pela visão do closer");
   const salaPag = await fetch(`${BASE}/sala/${agoraId}`);
@@ -638,7 +705,8 @@ async function main() {
   // ── limpeza ───────────────────────────────────────────────────────────────
   console.log("\n— limpando o que foi criado —");
   await db.query(`delete from "${SCHEMA}"."Recording" where "egressId"=$1`, [egressId]);
-  await db.query(`delete from "${SCHEMA}"."RoomEvent" where room=$1`, [sala]);
+  await db.query(`delete from "${SCHEMA}"."RoomEvent" where room = any($1)`, [[sala, salaLonga]]);
+  await db.query(`delete from "${SCHEMA}"."Meeting" where id=$1`, [longoId]);
   await db.query(`delete from "${SCHEMA}"."Meeting" where id=$1`, [agoraId]);
   await db.query(`delete from "${SCHEMA}"."MeetingAttendee" where "leadId"=$1`, [criados.leadId]);
   await db.query(`delete from "${SCHEMA}"."Deal" where id=$1`, [criados.dealId]);
