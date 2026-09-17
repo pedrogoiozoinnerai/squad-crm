@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, ArrowRight, Camera, CameraOff, Mic, MicOff } from "lucide-react";
+import { AlertCircle, ArrowRight, Camera, CameraOff, Circle, Mic, MicOff } from "lucide-react";
 
 import { desligar, lerFalha, type FalhaDeMidia } from "@/components/sala/dispositivos";
 
@@ -24,6 +24,7 @@ export function Preparo({
   aoEntrar,
   aoCancelar,
   pedirNome,
+  gravada,
 }: {
   nome: string;
   aoEntrar: (preferencias: Preferencias) => void;
@@ -32,6 +33,9 @@ export function Preparo({
   /// pessoa. Inventar "Convidado 1" jogaria fora a única informação que ela
   /// mesma daria — e quem está do outro lado precisa saber quem entrou.
   pedirNome?: boolean;
+  /// Se a call vai ser gravada. Aparece aqui, e não só lá dentro, porque este
+  /// é o último momento em que a pessoa ainda pode decidir não entrar.
+  gravada?: boolean;
 }) {
   const [nomeDigitado, setNomeDigitado] = useState("");
   const comoMeChamo = pedirNome ? nomeDigitado.trim() : nome;
@@ -189,6 +193,20 @@ export function Preparo({
             rotulo={microfone ? "Microfone ligado" : "Microfone desligado"}
           />
         </div>
+
+        {/* O aviso fica ANTES do botão de entrar, e não dentro da sala: este
+            é o último momento em que a pessoa ainda pode decidir não entrar.
+            Antes disto, `gravando` estava cravado em `false` lá dentro e
+            ninguém — nem o lead, nem o closer — era avisado de nada. */}
+        {gravada && (
+          <p className="mt-6 flex items-start gap-2 rounded-xl bg-surface-2 px-3.5 py-3 text-xs leading-relaxed text-muted">
+            <Circle className="mt-0.5 size-3 shrink-0 fill-red-600 text-red-600" />
+            <span>
+              <strong className="text-foreground">Esta reunião será gravada</strong> — áudio e
+              vídeo. A gravação fica disponível para a equipe comercial.
+            </span>
+          </p>
+        )}
 
         <div className="mt-7 flex flex-col-reverse gap-2 sm:flex-row">
           {aoCancelar && (

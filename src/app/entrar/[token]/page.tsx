@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { SalaCliente } from "@/components/sala/SalaCliente";
 import { prisma } from "@/lib/prisma";
 import { situacaoDaSala } from "@/lib/sala";
+import { armazenamentoConfigurado } from "@/lib/armazenamento";
 
 /**
  * A sala pelo LINK da reunião.
@@ -36,6 +37,7 @@ export default async function EntrarPage(props: PageProps<"/entrar/[token]">) {
       host={false}
       titulo={reuniao.title}
       situacao={situacaoDaSala(reuniao, new Date())}
+      gravada={armazenamentoConfigurado()}
       voltarPara={null}
     />
   );

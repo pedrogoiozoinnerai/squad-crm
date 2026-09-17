@@ -163,6 +163,7 @@ export async function pedirAnalises(): Promise<RelatorioDeAnalise> {
  */
 export async function colherAnalises(): Promise<number> {
   if (!anthropicConfigurado()) return 0;
+  const relatorio = { falhas: 0 };
 
   const rubrica = await rubricaAtiva();
   let colhidos = 0;
@@ -170,7 +171,15 @@ export async function colherAnalises(): Promise<number> {
   for (const trabalho of await esperandoProvedor("ANALISAR", POR_EXECUCAO)) {
     try {
       const estado = await chamar(`/v1/messages/batches/${trabalho.externoId}`);
-      if (!estado.ok) continue;
+      if (!estado.ok) {
+        // Antes era um `continue` seco: chave revogada, e todo job ficava em
+        // AGUARDANDO para sempre, sem log e sem contar tentativa. O
+        // `soltarEsquecidos` que salvaria só é alcançável pelo caminho da
+        // Deepgram, então ninguém nunca soube.
+        await falhar(trabalho.id, trabalho.tentativas, `anthropic ${estado.status} ao consultar o lote`);
+        relatorio.falhas += 1;
+        continue;
+      }
 
       const lote = (await estado.json()) as {
         processing_status?: string;
@@ -184,7 +193,11 @@ export async function colherAnalises(): Promise<number> {
         headers: { "x-api-key": chaveDaAnthropic()!, "anthropic-version": VERSAO_API },
         signal: AbortSignal.timeout(30_000),
       });
-      if (!resultados.ok) continue;
+      if (!resultados.ok) {
+        await falhar(trabalho.id, trabalho.tentativas, `anthropic ${resultados.status} ao baixar o resultado`);
+        relatorio.falhas += 1;
+        continue;
+      }
 
       // JSONL: uma linha por pedido. Com um pedido por lote, é uma linha só —
       // mas ler como JSONL é o que faz isto continuar funcionando se um dia o

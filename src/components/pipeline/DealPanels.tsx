@@ -19,7 +19,7 @@ import { Field } from "@/components/ui/Field";
 import { FormFeedback } from "@/components/ui/FormFeedback";
 import type { FormState } from "@/lib/guard";
 import { linkWhatsapp } from "@/lib/mensagem";
-import { TZ } from "@/lib/dates";
+import { isSameDay, TZ} from "@/lib/dates";
 
 export type PanelTask = {
   id: string;
@@ -79,6 +79,7 @@ export function DealPanels({
   tasks,
   activities,
   cases,
+  agora,
 }: {
   dealId: string;
   leadId: string;
@@ -88,6 +89,10 @@ export function DealPanels({
   tasks: PanelTask[];
   activities: PanelActivity[];
   cases: PanelCase[];
+  /// O relógio vem de fora. Componente que chama `new Date()` no corpo produz
+  /// um instante no servidor e outro na hidratação — foi o que fazia "Hoje"
+  /// piscar entre 21h e meia-noite.
+  agora: Date;
 }) {
   const [tab, setTab] = useState<Tab>("activities");
 
@@ -123,7 +128,7 @@ export function DealPanels({
           />
         )}
         {tab === "note" && <NoteForm dealId={dealId} leadId={leadId} onDone={() => setTab("activities")} />}
-        {tab === "activities" && <Activities tasks={tasks} activities={activities} />}
+        {tab === "activities" && <Activities tasks={tasks} activities={activities} agora={agora} />}
         {tab === "chat" && <ChatEmpty leadName={leadName} leadPhone={leadPhone} />}
         {tab === "cases" && <Cases cases={cases} segment={leadSegment} />}
       </div>
@@ -199,7 +204,15 @@ function NoteForm({ dealId, leadId, onDone }: { dealId: string; leadId: string; 
 
 type Filter = "all" | "tasks" | "history";
 
-function Activities({ tasks, activities }: { tasks: PanelTask[]; activities: PanelActivity[] }) {
+function Activities({
+  tasks,
+  activities,
+  agora,
+}: {
+  tasks: PanelTask[];
+  activities: PanelActivity[];
+  agora: Date;
+}) {
   const [filter, setFilter] = useState<Filter>("all");
 
   const showTasks = filter === "all" || filter === "tasks";
@@ -242,7 +255,7 @@ function Activities({ tasks, activities }: { tasks: PanelTask[]; activities: Pan
 
       <div className="flex flex-col gap-3">
         {showTasks &&
-          tasks.map((task) => <TaskRow key={task.id} task={task} />)}
+          tasks.map((task) => <TaskRow key={task.id} task={task} agora={agora} />)}
 
         {showHistory &&
           activities.map((activity) => (
@@ -255,7 +268,7 @@ function Activities({ tasks, activities }: { tasks: PanelTask[]; activities: Pan
                   })}
                 </p>
                 <p className="text-[10px] tracking-wider text-muted uppercase">
-                  {relativeDay(activity.createdAt)}
+                  {relativeDay(activity.createdAt, agora)}
                 </p>
               </div>
               <div className="min-w-0 flex-1 border-l border-line pb-3 pl-4">
@@ -274,7 +287,7 @@ function Activities({ tasks, activities }: { tasks: PanelTask[]; activities: Pan
   );
 }
 
-function TaskRow({ task }: { task: PanelTask }) {
+function TaskRow({ task, agora }: { task: PanelTask; agora: Date }) {
   const done = task.status === "DONE";
 
   return (
@@ -284,7 +297,7 @@ function TaskRow({ task }: { task: PanelTask }) {
           {task.createdAt.toLocaleTimeString("pt-BR", { timeZone: TZ, hour: "2-digit", minute: "2-digit" })}
         </p>
         <p className="text-[10px] tracking-wider text-muted uppercase">
-          {relativeDay(task.createdAt)}
+          {relativeDay(task.createdAt, agora)}
         </p>
       </div>
 
@@ -330,14 +343,13 @@ function TaskRow({ task }: { task: PanelTask }) {
   );
 }
 
-function relativeDay(date: Date) {
-  const today = new Date();
-  const sameDay =
-    date.getDate() === today.getDate() &&
-    date.getMonth() === today.getMonth() &&
-    date.getFullYear() === today.getFullYear();
-
-  if (sameDay) return "Hoje";
+function relativeDay(date: Date, agora: Date) {
+  // `isSameDay` compara pelo dia civil de São Paulo. Com `getDate()` a mesma
+  // função misturava dois fusos — o do servidor no primeiro render e o do
+  // navegador na hidratação —, e entre 21h e meia-noite o texto "Hoje" piscava
+  // com o React acusando mismatch. O `agora` vem por prop, como o resto do
+  // arquivo já faz: componente não lê o relógio.
+  if (isSameDay(date, agora)) return "Hoje";
   return date.toLocaleDateString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit" });
 }
 

@@ -3,6 +3,7 @@ import "server-only";
 import { nextDealCode } from "@/lib/codes";
 import { garantirConvite } from "@/lib/convites";
 import { decidirReuniao } from "@/lib/sync-reuniao";
+import { novoTokenDeConvite } from "@/lib/codes";
 import { prisma } from "@/lib/prisma";
 import { inicioDaLeitura, POR_PAGINA, proximaMarca } from "@/lib/marca-dagua";
 import { readFunnelLeads, type FunnelLead } from "@/lib/type-funnel";
@@ -279,6 +280,11 @@ async function sincronizarUm(
   if (decisao.acao === "criar" && agendadoEm) {
     const nova = await prisma.meeting.create({
       data: {
+        // O link de convidado nasce com a reunião, como já nasce em
+        // `sessoes.ts` e em `actions/meetings.ts`. Este caminho — o do funil —
+        // era o único que esquecia, e como é o que mais cria reunião, TODA
+        // reunião vinda do Type ficava sem link para o vendedor mandar.
+        guestToken: novoTokenDeConvite(),
         title: `Diagnóstico · ${lead.name}`,
         startsAt: agendadoEm,
         endsAt: new Date(agendadoEm.getTime() + MEIA_HORA),

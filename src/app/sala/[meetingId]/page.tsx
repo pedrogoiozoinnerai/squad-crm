@@ -4,6 +4,7 @@ import { SalaCliente } from "@/components/sala/SalaCliente";
 import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { situacaoDaSala } from "@/lib/sala";
+import { armazenamentoConfigurado } from "@/lib/armazenamento";
 
 /**
  * A sala — a mesma para o vendedor e para o lead.
@@ -36,6 +37,10 @@ export default async function SalaPage(props: PageProps<"/sala/[meetingId]">) {
 
   let nome: string | null = null;
   let host = false;
+  // O espaço segue o PAPEL, não o fato de ser host: um vendedor é host da
+  // própria reunião, e `/admin/agenda` o devolve para `/user/inicio` — ele saía
+  // da call e caía no dashboard.
+  let espaco: "admin" | "user" = "user";
 
   if (convite) {
     const assento = await prisma.meetingAttendee.findUnique({
@@ -52,6 +57,7 @@ export default async function SalaPage(props: PageProps<"/sala/[meetingId]">) {
     if (user && (user.role === "ADMIN" || user.id === reuniao.ownerId)) {
       nome = user.name;
       host = true;
+      espaco = user.role === "ADMIN" ? "admin" : "user";
     }
   }
 
@@ -65,7 +71,11 @@ export default async function SalaPage(props: PageProps<"/sala/[meetingId]">) {
       host={host}
       titulo={reuniao.title}
       situacao={situacaoDaSala(reuniao, new Date())}
-      voltarPara={host ? "/admin/agenda" : null}
+      gravada={armazenamentoConfigurado()}
+      // O espaço tem que seguir o PAPEL, não o fato de ser host: um vendedor
+      // é host da própria reunião, e `/admin/agenda` o expulsa de volta para
+      // `/user/inicio`. Ele saía da call e caía no dashboard.
+      voltarPara={host ? `/${espaco}/agenda` : null}
     />
   );
 }

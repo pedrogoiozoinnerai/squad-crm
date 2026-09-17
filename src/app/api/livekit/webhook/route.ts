@@ -98,7 +98,32 @@ export async function POST(request: NextRequest) {
  * `egress_ended` reentregue fora de ordem já tinha trazido.
  */
 async function guardarGravacao(egress: EventoDeEgress, meetingId: string, corpoCru: string) {
-  const atual = await prisma.recording.findUnique({
+  // Ler, derivar e escrever numa transação SERIALIZÁVEL.
+  //
+  // O avanço monotônico de `avancar()` só vale contra o que AQUELA leitura
+  // viu. Sem isolamento, `egress_ended` e um `egress_updated` reentregue
+  // chegam juntos, os dois leem PROCESSANDO, o `ended` grava COMPLETA com
+  // caminho e bytes, e o `updated` — que vem sem `fileResults` — grava
+  // GRAVANDO por cima. Era exatamente o cenário que o comentário acima diz
+  // estar resolvido.
+  //
+  // Falhando por conflito, quem chama registra e responde 200: o LiveKit
+  // reentrega, e a próxima passagem acerta.
+  await prisma.$transaction(
+    async (tx) => gravarDerivada(tx, egress, meetingId, corpoCru),
+    { isolationLevel: "Serializable" },
+  );
+}
+
+type Transacao = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
+async function gravarDerivada(
+  tx: Transacao,
+  egress: EventoDeEgress,
+  meetingId: string,
+  corpoCru: string,
+) {
+  const atual = await tx.recording.findUnique({
     where: { egressId: egress.egressId },
     select: {
       status: true,
@@ -134,7 +159,7 @@ async function guardarGravacao(egress: EventoDeEgress, meetingId: string, corpoC
     bruto: semSegredos(JSON.parse(corpoCru)) as object,
   };
 
-  await prisma.recording.upsert({
+  await tx.recording.upsert({
     where: { egressId: egress.egressId },
     create: { egressId: egress.egressId, meetingId, ...dados },
     update: dados,

@@ -99,8 +99,17 @@ export function SerieList({
         </button>
       </header>
 
+      {/* O `key` do formulário remonta ao trocar de série.
+          Sem ele, os `<select defaultValue>` de dono, duração e horizonte só
+          eram aplicados na primeira montagem: abrir "Editar" na série A e
+          depois na B mostrava os dados de A com o id de B — e Salvar gravava
+          A por cima de B. */}
       {(aberto || emEdicao) && (
-        <form action={acao} className="border-b border-line bg-surface-2/50 p-5">
+        <form
+          key={emEdicao?.id ?? "nova"}
+          action={acao}
+          className="border-b border-line bg-surface-2/50 p-5"
+        >
           {emEdicao && <input type="hidden" name="id" value={emEdicao.id} />}
 
           <div className="grid gap-4 sm:grid-cols-2">

@@ -48,15 +48,20 @@ export function CalendarView({
   start,
   offset,
   owners,
+  agora,
 }: {
   space: Space;
   meetings: Meeting[];
   start: Date;
   offset: number;
+  /// O relógio vem da página, como nas outras telas. O componente criava o
+  /// próprio `new Date()` enquanto a página já criava outro para o `weekStart`:
+  /// dois relógios na mesma renderização.
+  agora: Date;
   owners?: { id: string; name: string }[];
 }) {
   const days = weekDays(start);
-  const today = new Date();
+  const today = agora;
 
   const label = `${days[0].toLocaleDateString("pt-BR", { timeZone: TZ, day: "2-digit", month: "short" })} – ${days[6].toLocaleDateString("pt-BR", { timeZone: TZ, day: "2-digit", month: "short", year: "numeric" })}`;
 

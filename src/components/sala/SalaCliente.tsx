@@ -23,6 +23,7 @@ export function SalaCliente({
   titulo,
   situacao,
   voltarPara,
+  gravada,
 }: {
   meetingId: string;
   convite: string | null;
@@ -34,6 +35,10 @@ export function SalaCliente({
   titulo: string;
   situacao: SituacaoDaSala;
   voltarPara: string | null;
+  /// Se esta instalação grava as calls. Vem do servidor, e por isso já é
+  /// conhecida ANTES de entrar — que é o único momento em que a informação
+  /// ainda serve para alguém decidir.
+  gravada: boolean;
 }) {
   const router = useRouter();
   const [fase, setFase] = useState<Fase>("preparo");
@@ -134,6 +139,7 @@ export function SalaCliente({
           pedirNome={Boolean(convidado)}
           aoEntrar={(p) => void entrar(p)}
           aoCancelar={voltarPara ? () => router.push(voltarPara) : undefined}
+          gravada={gravada}
         />
       </>
     );
@@ -159,6 +165,7 @@ export function SalaCliente({
       host={host}
       meetingId={meetingId}
       credencial={credencial}
+      gravada={gravada}
       aoSair={() => {
         setSala(null);
         setFase("saiu");

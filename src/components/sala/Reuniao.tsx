@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { RoomEvent, Track, type Room } from "livekit-client";
-import { MessageSquare, Users, X } from "lucide-react";
+import { Circle, MessageSquare, Users, X } from "lucide-react";
 
 import { BarraDeControles } from "@/components/sala/BarraDeControles";
 import { Conversa } from "@/components/sala/Conversa";
@@ -22,6 +22,7 @@ export function Reuniao({
   host,
   meetingId,
   credencial,
+  gravada,
   aoSair,
 }: {
   sala: Room;
@@ -29,6 +30,10 @@ export function Reuniao({
   host: boolean;
   meetingId: string;
   credencial: Credencial;
+  /// Se esta sala está sendo gravada. Vinha cravado em `false`: `criarSala`
+  /// devolvia `gravando`, a rota de token descartava, e ninguém na call — nem
+  /// o lead, nem o closer — era avisado de que estava sendo gravado.
+  gravada: boolean;
   aoSair: () => void;
 }) {
   const { eu, todos, falando } = useSala(sala);
@@ -162,6 +167,13 @@ export function Reuniao({
         </Aba>
       </header>
 
+      {gravada && (
+        <p className="mx-3 mt-2 flex items-center gap-2 rounded-xl bg-surface-2 px-4 py-2 text-xs text-muted sm:mx-5">
+          <Circle className="size-3 shrink-0 fill-red-600 text-red-600" />
+          Esta reunião está sendo gravada.
+        </p>
+      )}
+
       {aviso && (
         <p role="alert" className="mx-3 mt-2 rounded-xl bg-amber-50 px-4 py-2 text-sm text-amber-900 sm:mx-5">
           {aviso}
@@ -248,7 +260,7 @@ export function Reuniao({
           compartilhando,
           maoLevantada,
           microfonesTravados: travados,
-          gravando: false,
+          gravando: gravada,
         }}
         acoes={{
           alternarMicrofone: () =>

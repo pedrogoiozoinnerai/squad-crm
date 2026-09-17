@@ -26,7 +26,7 @@ export default async function UsersPage() {
             type="email"
             required
             placeholder={`pessoa@${allowedDomain()}`}
-            className="input w-full"
+            className="field w-full"
           />
         </div>
         <button type="submit" className="btn-primary">
@@ -39,8 +39,8 @@ export default async function UsersPage() {
         </p>
       </form>
 
-      <div className="card overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="card overflow-x-auto">
+        <table className="w-full min-w-[820px] text-sm">
           <thead>
             <tr className="border-b border-line text-left text-xs font-semibold text-muted">
               <th className="px-4 py-3">Nome</th>

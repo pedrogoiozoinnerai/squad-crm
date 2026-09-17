@@ -89,8 +89,11 @@ export function TasksView({
         ]}
       />
 
-      <div className="card overflow-hidden">
-        <table className="w-full text-sm">
+      {/* `overflow-x-auto` e largura mínima, como as outras cinco tabelas do
+          projeto. Dentro de `overflow-hidden` puro, as oito colunas se
+          esmagavam e o que não encolhia era CORTADO, sem barra para alcançar. */}
+      <div className="card overflow-x-auto">
+        <table className="w-full min-w-[900px] text-sm">
           <thead>
             <tr className="border-b border-line text-left text-xs font-semibold text-muted">
               <th className="w-12 px-4 py-3" />

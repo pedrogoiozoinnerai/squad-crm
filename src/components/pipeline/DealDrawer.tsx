@@ -25,6 +25,10 @@ export async function DealDrawer({
   user: SessionUser;
   closeHref: string;
 }) {
+  // Um relógio só, criado no servidor, que desce como prop. Os painéis liam
+  // `new Date()` no corpo e comparavam com `getDate()`: o instante do servidor
+  // divergia do da hidratação e "Hoje" piscava entre 21h e meia-noite.
+  const agora = new Date();
   const deal = await getDealDetail(user, dealId);
 
   if (!deal) {
@@ -177,6 +181,9 @@ export async function DealDrawer({
           leadName={deal.lead.name}
           leadPhone={deal.lead.phone}
           leadSegment={deal.lead.segment}
+          // Um relógio só por renderização, criado no servidor: é o que evita
+          // o instante do servidor divergir do da hidratação.
+          agora={agora}
           tasks={deal.tasks}
           activities={deal.activities}
           cases={cases}

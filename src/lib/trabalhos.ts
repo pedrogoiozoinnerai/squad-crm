@@ -76,6 +76,12 @@ export async function arrendar(
   return prisma.$queryRawUnsafe<TrabalhoArrendado[]>(
     `UPDATE "${DB_SCHEMA}"."AiJob"
         SET estado = 'ARRENDADO',
+            -- A tentativa é contada AO PEGAR, não ao falhar. Se a função morre
+            -- no teto de 60 s da Vercel, nada chama falhar() -- e sem isto o
+            -- trabalho era repegado a cada 5 minutos para sempre, sem nunca
+            -- chegar a MAX_TENTATIVAS. O RETURNING devolve o valor já somado,
+            -- e é por isso que falhar() apenas o REGISTRA, sem somar de novo.
+            tentativas = tentativas + 1,
             "arrendadoAte" = now() + make_interval(secs => $2),
             "updatedAt" = now()
       WHERE id IN (
@@ -119,7 +125,10 @@ export async function concluir(id: string) {
  * INTERVALO no Postgres, pelo motivo do cabeçalho deste arquivo.
  */
 export async function falhar(id: string, tentativas: number, erro: string) {
-  const proximas = tentativas + 1;
+  // `arrendar` já somou a tentativa ao pegar o trabalho, e o `RETURNING`
+  // devolveu o valor novo. Somar de novo aqui gastaria duas tentativas por
+  // ciclo e cortaria o orçamento de repetição pela metade.
+  const proximas = tentativas;
   await prisma.$executeRawUnsafe(
     `UPDATE "${DB_SCHEMA}"."AiJob"
         SET estado = $2,
