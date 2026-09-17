@@ -5,6 +5,7 @@ import { Drawer } from "@/components/ui/Drawer";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import type { SessionUser } from "@/lib/auth";
 import { TZ, hhmm } from "@/lib/dates";
+import { ehQualificado, situacaoDaSessao, taxaDaSessao } from "@/lib/presenca";
 import { getSessionDetail } from "@/lib/queries";
 
 const STATUS = {
@@ -41,18 +42,19 @@ export async function SessionDrawer({
   }
 
   const inicio = session.startsAt;
-  const cancelada = session.status === "CANCELED";
-  const futura = !cancelada && inicio > now;
   // Enquanto a sala está aberta os números ainda mudam: quem entrou há 3 min
   // pode virar presente no minuto 5. Fechada a sala, aí sim viram a foto final.
-  const emAndamento = !cancelada && !futura && session.endsAt > now;
-  const medida = !cancelada && !futura && !emAndamento;
+  // A régua é a mesma da lista e da consulta, em `lib/presenca`.
+  const situacao = situacaoDaSessao(session, now);
+  const futura = situacao === "futura";
+  const emAndamento = situacao === "emAndamento";
+  const medida = situacao === "medida";
 
   const inscritos = session.attendees.length;
   const presentes = session.attendees.filter((p) => p.attended).length;
-  const taxa = inscritos ? Math.round((presentes / inscritos) * 100) : 0;
+  const taxa = taxaDaSessao(inscritos, presentes);
   const qualificados = session.attendees.filter(
-    (p) => p.attended && (p.lead.score === "A" || p.lead.score === "B"),
+    (p) => p.attended && ehQualificado(p.lead.score),
   ).length;
 
   const status = STATUS[session.status];

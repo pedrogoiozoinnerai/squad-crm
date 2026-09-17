@@ -177,3 +177,83 @@ export function veredicto(
     ? { situacao: "participou", segundos }
     : { situacao: "nao_compareceu" };
 }
+
+// ── A taxa que a tela mostra ─────────────────────────────────────────────────
+//
+// Estas quatro estavam copiadas TRÊS vezes cada — em `queries.ts`, em
+// `SessionsView` e em `SessionDrawer` —, e as cópias já tinham divergido: a
+// tela da semana divide os presentes pelos inscritos DAS SESSÕES REALIZADAS,
+// enquanto a consulta e o drawer dividem pelos inscritos DAQUELA sessão. Duas
+// métricas diferentes com o mesmo nome na mesma tela.
+//
+// Separar e batizar as duas é o ponto de extrair: elas continuam diferentes,
+// mas agora dizem qual são.
+
+/** A taxa de UMA sessão: quantos dos inscritos dela apareceram. */
+export function taxaDaSessao(inscritos: number, presentes: number): number {
+  return inscritos ? Math.round((presentes / inscritos) * 100) : 0;
+}
+
+/**
+ * Lead que vale a ligação.
+ *
+ * A régua A/B também estava em três lugares. Ela é de negócio, não de tela: o
+ * dia em que "qualificado" incluir C, a mudança é aqui.
+ */
+export function ehQualificado(score: string | null | undefined): boolean {
+  return score === "A" || score === "B";
+}
+
+export type SituacaoDaSessao = "cancelada" | "futura" | "emAndamento" | "medida";
+
+/**
+ * Em que ponto da vida a sessão está.
+ *
+ * Importa mais que a taxa: é ela que decide se o número é EXIBIDO ou se vira
+ * "—". Uma sessão que ainda não aconteceu tem 0% de presença, e mostrar esse
+ * zero faria a tela acusar o closer por uma call de amanhã.
+ */
+export function situacaoDaSessao(
+  sessao: { status: string; startsAt: Date; endsAt: Date },
+  agora: Date,
+): SituacaoDaSessao {
+  if (sessao.status === "CANCELED") return "cancelada";
+  if (sessao.startsAt > agora) return "futura";
+  if (sessao.endsAt > agora) return "emAndamento";
+  return "medida";
+}
+
+export type TotaisDoPeriodo = {
+  /// Quantas já terminaram — só elas entram na conta.
+  realizadas: number;
+  inscritosRealizados: number;
+  presentes: number;
+  qualificados: number;
+  /// A taxa do PERÍODO: presentes ÷ inscritos das sessões realizadas. Não é a
+  /// média das taxas — uma sessão de 1 inscrito pesaria igual a uma de 20.
+  taxa: number;
+};
+
+export function totaisDoPeriodo(
+  sessoes: readonly {
+    status: string;
+    startsAt: Date;
+    endsAt: Date;
+    inscritos: number;
+    presentes: number;
+    qualificados: number;
+  }[],
+  agora: Date,
+): TotaisDoPeriodo {
+  const realizadas = sessoes.filter((s) => situacaoDaSessao(s, agora) === "medida");
+  const inscritosRealizados = realizadas.reduce((soma, s) => soma + s.inscritos, 0);
+  const presentes = realizadas.reduce((soma, s) => soma + s.presentes, 0);
+
+  return {
+    realizadas: realizadas.length,
+    inscritosRealizados,
+    presentes,
+    qualificados: realizadas.reduce((soma, s) => soma + s.qualificados, 0),
+    taxa: taxaDaSessao(inscritosRealizados, presentes),
+  };
+}

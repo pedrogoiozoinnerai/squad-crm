@@ -5,6 +5,7 @@ import { addDays } from "date-fns";
 import { diaCivil, instanteLocal, weekStart } from "@/lib/dates";
 
 import { ownerScope, type SessionUser } from "@/lib/auth";
+import { ehQualificado, taxaDaSessao } from "@/lib/presenca";
 import { DB_SCHEMA, prisma } from "@/lib/prisma";
 
 /**
@@ -798,10 +799,11 @@ export async function getSessions(user: SessionUser, from: Date, to: Date) {
       ...s,
       inscritos,
       presentes,
-      taxaPresenca: inscritos ? Math.round((presentes / inscritos) * 100) : 0,
-      qualificados: s.attendees.filter(
-        (a) => a.attended && (a.lead.score === "A" || a.lead.score === "B"),
-      ).length,
+      // As réguas vêm de `lib/presenca`, onde já moram as outras. Estavam
+      // copiadas aqui, em `SessionsView` e em `SessionDrawer` — e as cópias já
+      // discordavam sobre o que era "a taxa".
+      taxaPresenca: taxaDaSessao(inscritos, presentes),
+      qualificados: s.attendees.filter((a) => a.attended && ehQualificado(a.lead.score)).length,
     };
   });
 }

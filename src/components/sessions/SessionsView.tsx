@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Sparkles, Timer, UserCheck, Users } from "lu
 import { NovaReuniao } from "@/components/reunioes/NovaReuniao";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { TZ, chaveDoDia, hhmm, isSameDay, weekDays } from "@/lib/dates";
+import { situacaoDaSessao, totaisDoPeriodo } from "@/lib/presenca";
 import type { Space } from "@/lib/nav";
 
 /** Meta de presença do time — vira a cor da barra. */
@@ -78,18 +79,9 @@ export function SessionsView({
   // Sessão que ainda não aconteceu não tem tempo de sala medido: entraria com
   // 0% e derrubaria a média da semana inteira. Só o que já rodou vira taxa —
   // e "rodou" é a sala fechada, não começada: durante a call o tempo de quem
-  // está lá dentro ainda está correndo.
-  const realizadas = sessions.filter(
-    (s) => s.status !== "CANCELED" && s.endsAt <= now,
-  );
-
+  // está lá dentro ainda está correndo. A regra mora em `lib/presenca`.
+  const totais = totaisDoPeriodo(sessions, now);
   const inscritos = sessions.reduce((soma, s) => soma + s.inscritos, 0);
-  const inscritosRealizados = realizadas.reduce((soma, s) => soma + s.inscritos, 0);
-  const presentes = realizadas.reduce((soma, s) => soma + s.presentes, 0);
-  const qualificados = realizadas.reduce((soma, s) => soma + s.qualificados, 0);
-  const taxaMedia = inscritosRealizados
-    ? Math.round((presentes / inscritosRealizados) * 100)
-    : 0;
 
   return (
     <>
@@ -138,7 +130,7 @@ export function SessionsView({
         <Metric
           label="Sessões na semana"
           value={String(sessions.length)}
-          hint={`${realizadas.length} ${realizadas.length === 1 ? "já realizada" : "já realizadas"}`}
+          hint={`${totais.realizadas} ${totais.realizadas === 1 ? "já realizada" : "já realizadas"}`}
           icon={Users}
         />
         <Metric
@@ -149,24 +141,24 @@ export function SessionsView({
         />
         <Metric
           label="Taxa média de presença"
-          value={inscritosRealizados ? `${taxaMedia}%` : "—"}
+          value={totais.inscritosRealizados ? `${totais.taxa}%` : "—"}
           hint={
-            inscritosRealizados
-              ? `${presentes} de ${inscritosRealizados} inscritos ficaram ${minutosMinimos} min ou mais na sala`
+            totais.inscritosRealizados
+              ? `${totais.presentes} de ${totais.inscritosRealizados} inscritos ficaram ${minutosMinimos} min ou mais na sala`
               : "Nenhuma sessão desta semana terminou ainda"
           }
           icon={Timer}
           tone={
-            inscritosRealizados === 0
+            totais.inscritosRealizados === 0
               ? undefined
-              : taxaMedia >= META_PRESENCA
+              : totais.taxa >= META_PRESENCA
                 ? "positivo"
                 : "negativo"
           }
         />
         <Metric
           label="Leads qualificados (A/B)"
-          value={String(qualificados)}
+          value={String(totais.qualificados)}
           hint="Entre quem esteve presente"
           icon={Sparkles}
         />
@@ -218,11 +210,13 @@ export function SessionsView({
 
             {sessions.map((session) => {
               const inicio = session.startsAt;
-              const cancelada = session.status === "CANCELED";
-              const futura = !cancelada && inicio > now;
-              const emAndamento = !cancelada && !futura && session.endsAt > now;
-              // Só com a sala fechada os números são a foto final.
-              const medida = !cancelada && !futura && !emAndamento;
+              // Só com a sala fechada os números são a foto final — e essa
+              // régua é a mesma do drawer e da consulta, em `lib/presenca`.
+              const situacao = situacaoDaSessao(session, now);
+              const cancelada = situacao === "cancelada";
+              const futura = situacao === "futura";
+              const emAndamento = situacao === "emAndamento";
+              const medida = situacao === "medida";
               const hoje = isSameDay(inicio, now);
 
               const params = new URLSearchParams({ sessao: session.id });
