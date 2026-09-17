@@ -143,3 +143,124 @@ describe("os totais do período", () => {
     assert.equal(totaisDoPeriodo(SEMANA, AGORA).qualificados, 8);
   });
 });
+
+// ── A página de UMA sessão ───────────────────────────────────────────────────
+
+import { minutoDaCall, naSalaEm, ordemDoRoster, saidaDoParticipante } from "../src/lib/presenca";
+
+const INICIO = em("2026-09-17T14:00:00Z");
+const FIM = em("2026-09-17T15:00:00Z");
+
+describe("quando a pessoa saiu", () => {
+  it("quem saiu no encerramento ficou até o fim", () => {
+    const s = saidaDoParticipante({ joinedAt: INICIO, leftAt: em("2026-09-17T14:58:00Z") }, INICIO, FIM);
+    assert.deepEqual(s, { tipo: "ficou_ate_o_fim" });
+  });
+
+  it("saiu aos 12 min é um lead DIFERENTE de quem ficou até o fim", () => {
+    // Os dois têm o mesmo chip de "Presente" hoje. Um viu a oferta, o outro
+    // saiu antes do diagnóstico — e o closer liga para os dois igual.
+    const s = saidaDoParticipante({ joinedAt: INICIO, leftAt: em("2026-09-17T14:12:00Z") }, INICIO, FIM);
+    assert.deepEqual(s, { tipo: "saiu_antes", minuto: 12 });
+  });
+
+  it("a folga do fim é generosa de propósito", () => {
+    // A sala é fechada minutos depois de esvaziar, e quem sai no encerramento
+    // sai segundos antes de quem apaga a luz. Sem folga, quase ninguém
+    // "ficaria até o fim" e o sinal viraria ruído.
+    const s = saidaDoParticipante({ joinedAt: INICIO, leftAt: em("2026-09-17T14:56:00Z") }, INICIO, FIM);
+    assert.equal(s.tipo, "ficou_ate_o_fim");
+  });
+
+  it("sem saída registrada, ainda está na sala — não 'saiu no minuto zero'", () => {
+    const s = saidaDoParticipante({ joinedAt: INICIO, leftAt: null }, INICIO, FIM);
+    assert.deepEqual(s, { tipo: "ainda_na_sala" });
+  });
+
+  it("quem nunca entrou não tem minuto de saída", () => {
+    assert.deepEqual(
+      saidaDoParticipante({ joinedAt: null, leftAt: null }, INICIO, FIM),
+      { tipo: "nunca_entrou" },
+    );
+  });
+
+  it("quem entrou e saiu antes de a call começar não dá minuto negativo", () => {
+    const s = saidaDoParticipante(
+      { joinedAt: em("2026-09-17T13:35:00Z"), leftAt: em("2026-09-17T13:40:00Z") },
+      INICIO,
+      FIM,
+    );
+    assert.deepEqual(s, { tipo: "saiu_antes", minuto: 0 });
+  });
+});
+
+describe("para quem ligar primeiro", () => {
+  const p = (nome: string, attended: boolean, totalSeconds: number, score: string | null) => ({
+    nome,
+    attended,
+    totalSeconds,
+    lead: { score },
+  });
+
+  it("qualificado presente vem antes de não qualificado presente", () => {
+    const ordenado = ordemDoRoster([
+      p("C que ficou muito", true, 3000, "C"),
+      p("A que ficou pouco", true, 400, "A"),
+    ]);
+    assert.deepEqual(ordenado.map((x) => x.nome), ["A que ficou pouco", "C que ficou muito"]);
+  });
+
+  it("dentro do mesmo grupo, quem ficou mais tempo vem antes", () => {
+    const ordenado = ordemDoRoster([
+      p("B curto", true, 600, "B"),
+      p("A longo", true, 3000, "A"),
+      p("A curto", true, 900, "A"),
+    ]);
+    assert.deepEqual(ordenado.map((x) => x.nome), ["A longo", "A curto", "B curto"]);
+  });
+
+  it("quem faltou vai para o fim mas NÃO some da lista", () => {
+    // Ausência é trabalho também. Sumir com ela da tela é fingir que a vaga
+    // nunca foi vendida.
+    const ordenado = ordemDoRoster([
+      p("faltou qualificado", false, 0, "A"),
+      p("veio sem score", true, 100, null),
+    ]);
+    assert.deepEqual(ordenado.map((x) => x.nome), ["veio sem score", "faltou qualificado"]);
+    assert.equal(ordenado.length, 2);
+  });
+
+  it("não altera a lista de origem", () => {
+    const original = [p("x", true, 1, "A"), p("y", true, 2, "A")];
+    ordemDoRoster(original);
+    assert.equal(original[0].nome, "x");
+  });
+});
+
+describe("quantas pessoas ouviram a oferta", () => {
+  const sala = [
+    { joinedAt: em("2026-09-17T14:00:00Z"), leftAt: em("2026-09-17T14:30:00Z") },
+    { joinedAt: em("2026-09-17T14:05:00Z"), leftAt: null },
+    { joinedAt: em("2026-09-17T14:50:00Z"), leftAt: em("2026-09-17T15:00:00Z") },
+  ];
+
+  it("conta quem estava lá naquele instante", () => {
+    // O mesmo link no mesmo minuto conta histórias opostas: catorze pessoas
+    // ouvindo, ou três que sobraram.
+    assert.equal(naSalaEm(sala, em("2026-09-17T14:10:00Z")), 2);
+    assert.equal(naSalaEm(sala, em("2026-09-17T14:40:00Z")), 1);
+    assert.equal(naSalaEm(sala, em("2026-09-17T14:55:00Z")), 2);
+  });
+
+  it("quem ainda não chegou não conta", () => {
+    assert.equal(naSalaEm(sala, em("2026-09-17T13:50:00Z")), 0);
+  });
+
+  it("a oferta mandada aos 41 min sabe dizer o minuto", () => {
+    assert.equal(minutoDaCall(em("2026-09-17T14:41:00Z"), INICIO), 41);
+  });
+
+  it("mensagem escrita antes de a call começar é minuto zero, não negativo", () => {
+    assert.equal(minutoDaCall(em("2026-09-17T13:45:00Z"), INICIO), 0);
+  });
+});

@@ -1,6 +1,7 @@
 import { config } from "dotenv";
 
 import { createHash, createHmac, randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { Client } from "pg";
 
 // A MESMA precedência do Next: `.env.local` vence `.env`. Sem isto o script
@@ -24,6 +25,20 @@ config({ path: ".env.local", override: true, quiet: true });
 
 const BASE = process.env.VERIFICAR_URL ?? "http://localhost:3000";
 const SCHEMA = process.env.DB_SCHEMA ?? "";
+
+/**
+ * A antecedência, lida da fonte.
+ *
+ * Por texto e não por `import`: este script é Node puro, e importar de
+ * `src/lib` traria `server-only` e o alias `@/` junto. O ponto é o mesmo de
+ * `testes/presenca.test.ts` com a régua de presença — uma cópia do número aqui
+ * envelhece calada e passa a acusar o código de um erro que ele não tem.
+ */
+const ANTECEDENCIA_MIN = Number(
+  readFileSync(new URL("../src/lib/sessoes.ts", import.meta.url), "utf8").match(
+    /export const ANTECEDENCIA_MIN = (\d+)/,
+  )?.[1] ?? 5,
+);
 
 if (!SCHEMA.endsWith("_dev")) {
   console.error(`✗ DB_SCHEMA é "${SCHEMA}". Este script só roda em _dev.`);
@@ -132,7 +147,15 @@ async function main() {
     return;
   }
   const emMinutos = Math.round((new Date(primeira.inicioEm).getTime() - agora.getTime()) / 60_000);
-  confere(emMinutos >= 60, "a primeira respeita a antecedência de 1h", `${emMinutos} min`);
+  // A régua sai do código, não de um número escrito aqui. Estava fixa em 60 e
+  // passou a acusar erro quando a antecedência virou 5 — e o número 5 é a
+  // correção, não o defeito: às 09:53 o funil escondia a sessão das 10:00 cuja
+  // sala já estava aberta desde 09:30, com vinte vagas livres.
+  confere(
+    emMinutos >= ANTECEDENCIA_MIN,
+    `a primeira respeita a antecedência de ${ANTECEDENCIA_MIN} min`,
+    `${emMinutos} min`,
+  );
   ok("sessão escolhida", `${new Date(primeira.inicioEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })} · ${primeira.vagas} vagas`);
 
   // ── 3. O funil reserva a vaga ─────────────────────────────────────────────
@@ -423,12 +446,17 @@ async function main() {
     { event: "room_started", id: `v-${randomBytes(6).toString("hex")}`, createdAt: seg(entrou), room: { name: sala, sid: "RM_v" } },
     { event: "participant_joined", id: `v-${randomBytes(6).toString("hex")}`, createdAt: seg(entrou), room: { name: sala, sid: "RM_v" }, participant: { identity: `l_${criados.leadId}`, name: "Verificação MeetSquad" } },
     { event: "participant_left", id: `v-${randomBytes(6).toString("hex")}`, createdAt: seg(saiu), room: { name: sala, sid: "RM_v" }, participant: { identity: `l_${criados.leadId}`, name: "Verificação MeetSquad" } },
+    // O gravador entra na sala como participante de verdade: o LiveKit sobe um
+    // navegador sem tela e ele dá `join` como qualquer um. Está aqui para a
+    // reconciliação de (10) ter que excluí-lo.
+    { event: "participant_joined", id: `v-${randomBytes(6).toString("hex")}`, createdAt: seg(entrou), room: { name: sala, sid: "RM_v" }, participant: { identity: "EG_verificacao", name: "Egress" } },
+    { event: "participant_left", id: `v-${randomBytes(6).toString("hex")}`, createdAt: seg(saiu), room: { name: sala, sid: "RM_v" }, participant: { identity: "EG_verificacao", name: "Egress" } },
     { event: "room_finished", id: `v-${randomBytes(6).toString("hex")}`, createdAt: seg(saiu), room: { name: sala, sid: "RM_v" } },
   ];
 
   let entregues = 0;
   for (const e of eventos) if ((await entregarEvento(e)) === 200) entregues++;
-  confere(entregues === 4, "os 4 eventos foram aceitos", `${entregues}/4`);
+  confere(entregues === eventos.length, `os ${eventos.length} eventos foram aceitos`, `${entregues}/${eventos.length}`);
 
   const repetido = await entregarEvento(eventos[1]);
   confere(repetido === 200, "reentrega do mesmo evento responde 200 (o LiveKit reentrega)");
@@ -443,9 +471,9 @@ async function main() {
     [meus],
   );
   confere(
-    crus.rows[0].n === 4,
+    crus.rows[0].n === eventos.length,
     "cada evento entrou uma vez só, mesmo reentregue",
-    `${crus.rows[0].n} de 4`,
+    `${crus.rows[0].n} de ${eventos.length}`,
   );
 
   const forjado = await fetch(`${BASE}/api/livekit/webhook`, {
@@ -454,6 +482,66 @@ async function main() {
     body: JSON.stringify(eventos[0]),
   });
   confere(forjado.status === 401, "webhook sem assinatura válida é recusado", `HTTP ${forjado.status}`);
+
+  // ── 9.5. O evento de gravação vira `Recording` ────────────────────────────
+  //
+  // Roda sem bucket, sem conta e sem gravação de verdade: o que se prova aqui é
+  // que o corpo assinado que o LiveKit manda deixa de ser achatado num
+  // `RoomEvent` e passa a virar uma linha com caminho, tamanho e duração.
+  etapa(9.5 as unknown as number, "A gravação: o egress deixa de ser jogado fora");
+  const egressId = `EG_${randomBytes(6).toString("hex")}`;
+  const nano = (d: Date) => String(d.getTime() * 1_000_000);
+
+  const egressPronto = {
+    event: "egress_ended",
+    id: `v-${randomBytes(6).toString("hex")}`,
+    createdAt: seg(saiu),
+    egressInfo: {
+      egressId,
+      roomName: sala,
+      status: "EGRESS_COMPLETE",
+      startedAt: nano(entrou),
+      endedAt: nano(saiu),
+      fileResults: [
+        { filename: `reunioes/2026/09/17/${agoraId}.mp4`, size: "26214400", duration: "900000000000" },
+      ],
+    },
+  };
+  confere((await entregarEvento(egressPronto)) === 200, "o `egress_ended` é aceito");
+
+  const linhaDaGravacao = await db.query(
+    `select status, caminho, bytes, "duracaoSegundos" from "${SCHEMA}"."Recording" where "egressId"=$1`,
+    [egressId],
+  );
+  confere(linhaDaGravacao.rowCount === 1, "uma gravação registrada");
+  confere(linhaDaGravacao.rows[0]?.status === "COMPLETA", "com o estado traduzido", linhaDaGravacao.rows[0]?.status);
+  confere(
+    linhaDaGravacao.rows[0]?.caminho === `reunioes/2026/09/17/${agoraId}.mp4`,
+    "com o caminho do arquivo — que antes era descartado",
+  );
+  confere(Number(linhaDaGravacao.rows[0]?.bytes) === 26_214_400, "com o tamanho em bytes");
+  confere(linhaDaGravacao.rows[0]?.duracaoSegundos === 900, "com a duração MEDIDA, em segundos");
+
+  // O caso que só acontece na vida real: o LiveKit reentrega o que não recebeu
+  // 200, e não promete ordem. Um `egress_started` chegando agora faria a
+  // gravação pronta voltar a dizer "gravando" na tela do closer.
+  const egressAtrasado = {
+    ...egressPronto,
+    event: "egress_started",
+    id: `v-${randomBytes(6).toString("hex")}`,
+    egressInfo: { ...egressPronto.egressInfo, status: "EGRESS_ACTIVE", endedAt: "0", fileResults: [] },
+  };
+  confere((await entregarEvento(egressAtrasado)) === 200, "um `egress_started` atrasado é aceito");
+
+  const depois = await db.query(
+    `select status, caminho, bytes from "${SCHEMA}"."Recording" where "egressId"=$1`,
+    [egressId],
+  );
+  confere(depois.rows[0]?.status === "COMPLETA", "e NÃO faz a gravação voltar a 'gravando'");
+  confere(
+    depois.rows[0]?.caminho === `reunioes/2026/09/17/${agoraId}.mp4`,
+    "nem apaga o caminho que o evento magro não traz",
+  );
 
   // ── 10. A reconciliação deriva presença e leva ao negócio ─────────────────
   etapa(10, "A reconciliação: evento cru vira presença, e presença vira negócio");
@@ -468,6 +556,12 @@ async function main() {
     [agoraId],
   );
   confere(presenca.rowCount === 1, "uma presença derivada");
+  // O gravador entrou e saiu junto com o lead. Sem o filtro ele seria a
+  // segunda linha — e numa sessão de dois inscritos dobraria a taxa sozinho.
+  confere(
+    !presenca.rows.some((l: { identity: string }) => l.identity.startsWith("EG_")),
+    "o gravador NÃO virou presença",
+  );
   const segundos = presenca.rows[0]?.seconds ?? 0;
   confere(segundos >= 880 && segundos <= 920, "o tempo bate com os eventos (~15 min)", `${segundos}s`);
   confere(presenca.rows[0]?.leadId === criados.leadId, "amarrada ao lead pelo prefixo da identidade");
@@ -522,8 +616,28 @@ async function main() {
   );
   ok("sem sessão do CRM e sem convite, a sala é 404", "id de reunião não é chave de entrada");
 
+  // ── 13. A página da sessão ────────────────────────────────────────────────
+  etapa(13, "A página da sessão responde");
+  for (const espaco of ["user", "admin"]) {
+    const pag = await fetch(`${BASE}/${espaco}/sessoes/${agoraId}`, { redirect: "manual" });
+    // Sem cookie de sessão a resposta é o redirecionamento do login. O que se
+    // prova aqui é que a rota EXISTE e não estoura — 404 ou 500 seriam falha.
+    confere(
+      pag.status !== 404 && pag.status < 500,
+      `/${espaco}/sessoes/[id] existe e não estoura`,
+      `HTTP ${pag.status}`,
+    );
+    const velhaUrl = await fetch(`${BASE}/${espaco}/sessoes?sessao=${agoraId}`, { redirect: "manual" });
+    confere(
+      velhaUrl.status !== 404 && velhaUrl.status < 500,
+      `o \`?sessao=\` antigo continua respondendo`,
+      `HTTP ${velhaUrl.status}`,
+    );
+  }
+
   // ── limpeza ───────────────────────────────────────────────────────────────
   console.log("\n— limpando o que foi criado —");
+  await db.query(`delete from "${SCHEMA}"."Recording" where "egressId"=$1`, [egressId]);
   await db.query(`delete from "${SCHEMA}"."RoomEvent" where room=$1`, [sala]);
   await db.query(`delete from "${SCHEMA}"."Meeting" where id=$1`, [agoraId]);
   await db.query(`delete from "${SCHEMA}"."MeetingAttendee" where "leadId"=$1`, [criados.leadId]);

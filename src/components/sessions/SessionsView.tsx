@@ -219,8 +219,6 @@ export function SessionsView({
               const medida = situacao === "medida";
               const hoje = isSameDay(inicio, now);
 
-              const params = new URLSearchParams({ sessao: session.id });
-              if (offset) params.set("w", String(offset));
 
               return (
                 <tr
@@ -228,7 +226,7 @@ export function SessionsView({
                   className="border-b border-line last:border-b-0 hover:bg-surface-2/50"
                 >
                   <td className="px-4 py-3">
-                    <Link href={`${base}?${params.toString()}`} className="group block">
+                    <Link href={`${base}/${session.id}`} className="group block">
                       <span className="flex items-center gap-1.5 font-medium group-hover:text-waz-20">
                         <span className={cancelada ? "line-through text-muted" : undefined}>
                           {session.template?.name ?? "Sessão coletiva"}

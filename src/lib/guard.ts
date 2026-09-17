@@ -34,9 +34,28 @@ export async function currentUser(): Promise<SessionUser> {
  */
 export async function assertOwnsContext(
   user: SessionUser,
-  ctx: { leadId?: string | null; dealId?: string | null },
-): Promise<{ ownerId: string; leadId: string | null; dealId: string | null }> {
+  ctx: { leadId?: string | null; dealId?: string | null; meetingId?: string | null },
+): Promise<{
+  ownerId: string;
+  leadId: string | null;
+  dealId: string | null;
+  meetingId: string | null;
+}> {
   let ownerId = user.id;
+
+  // A reunião entra aqui pelo mesmo motivo dos outros dois: a anotação de uma
+  // sessão não pertence a lead nenhum — uma coletiva tem vinte —, e sem passar
+  // por esta função ela nasceria sem dono conferido, alcançável por POST
+  // direto com o id de qualquer reunião do time.
+  if (ctx.meetingId) {
+    const reuniao = await prisma.meeting.findUnique({
+      where: { id: ctx.meetingId },
+      select: { ownerId: true },
+    });
+    if (!reuniao) throw new Error("Reunião não encontrada.");
+    assertOwns(user, reuniao.ownerId);
+    ownerId = reuniao.ownerId;
+  }
 
   if (ctx.dealId) {
     const deal = await prisma.deal.findUnique({
@@ -63,7 +82,12 @@ export async function assertOwnsContext(
     if (!ctx.dealId) ownerId = lead.ownerId ?? user.id;
   }
 
-  return { ownerId, leadId: ctx.leadId ?? null, dealId: ctx.dealId ?? null };
+  return {
+    ownerId,
+    leadId: ctx.leadId ?? null,
+    dealId: ctx.dealId ?? null,
+    meetingId: ctx.meetingId ?? null,
+  };
 }
 
 export async function logActivity(input: {
@@ -73,6 +97,7 @@ export async function logActivity(input: {
   authorId: string;
   leadId?: string | null;
   dealId?: string | null;
+  meetingId?: string | null;
 }) {
   await prisma.activity.create({
     data: {
@@ -82,6 +107,7 @@ export async function logActivity(input: {
       authorId: input.authorId,
       leadId: input.leadId ?? null,
       dealId: input.dealId ?? null,
+      meetingId: input.meetingId ?? null,
     },
   });
 }

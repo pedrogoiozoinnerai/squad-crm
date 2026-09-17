@@ -808,23 +808,98 @@ export async function getSessions(user: SessionUser, from: Date, to: Date) {
   });
 }
 
-export async function getSessionDetail(user: SessionUser, id: string) {
-  return prisma.meeting.findFirst({
-    where: { id, type: "GROUP", ...ownerScope(user) },
+export type AbaDaSessao = "gravacao" | "auditoria" | "sala" | "anotacoes";
+
+/**
+ * O detalhe de uma sessão, para a página.
+ *
+ * **Sem `ownerScope`, de propósito.** A gravação é do time comercial inteiro,
+ * não do dono da call: é a decisão que faz o closer novo ouvir a call do closer
+ * bom, e é o único jeito de a auditoria servir para treinar alguém. O lead
+ * continua sendo de quem é — `getLeadDetail` segue no escopo do dono, então
+ * abrir a ficha de alguém da sessão de outro vendedor não devolve nada.
+ *
+ * `aba` decide o que é sequer consultado. A transcrição de uma call de uma hora
+ * tem sessenta mil caracteres, e trazê-la para desenhar o cabeçalho seria pagar
+ * por ela em toda visita.
+ */
+export async function getSessionDetail(_user: SessionUser, id: string, aba?: AbaDaSessao) {
+  const sessao = await prisma.meeting.findFirst({
+    where: { id, type: "GROUP" },
     include: {
       owner: { select: { id: true, name: true } },
       template: { select: { name: true } },
       attendees: {
         include: {
           lead: {
-            select: { id: true, name: true, company: true, email: true, score: true, segment: true },
+            select: {
+              id: true, name: true, company: true, email: true, phone: true,
+              score: true, segment: true,
+            },
           },
         },
-        orderBy: [{ attended: "desc" }, { totalSeconds: "desc" }],
+      },
+      // A verdade crua da sala, e não só o roster: quem entrou pelo link avulso
+      // não é inscrito de ninguém e mesmo assim esteve na call. É daqui que sai
+      // quantas pessoas ouviram a oferta.
+      presences: {
+        select: { identity: true, name: true, joinedAt: true, leftAt: true, seconds: true },
+        orderBy: { joinedAt: "asc" },
+      },
+      gravacoes: {
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true, status: true, caminho: true, bytes: true, duracaoSegundos: true,
+          iniciadaEm: true, terminadaEm: true, erro: true, apagadaEm: true,
+          transcript: {
+            select: {
+              id: true, createdAt: true, idioma: true, modelo: true,
+              // O texto inteiro só quando a aba pede. Ver acima.
+              texto: aba === "auditoria" || aba === "gravacao",
+              segmentos: aba === "gravacao",
+              analise: {
+                select: {
+                  id: true, createdAt: true, modelo: true, resumo: true, veredicto: true,
+                  aderenciaPct: true, notaGeral: true, engajamento: true,
+                  blocosOk: true, blocosTotal: true, errosCriticos: true, proibidasCount: true,
+                  roleplayFoco: true, insights: true, proximosPassos: true, redigidaEm: true,
+                  blocos: aba === "auditoria",
+                  erros: aba === "auditoria",
+                  vocabulario: aba === "auditoria",
+                  objecoes: aba === "auditoria",
+                  scorecard: aba === "auditoria",
+                },
+              },
+            },
+          },
+        },
+      },
+      // A oferta aparece no resumo da call, sempre: é fato comercial, não log
+      // de chat. A conversa inteira só na aba `sala`.
+      mensagens: {
+        where: aba === "sala" ? {} : { tipo: "OFERTA" },
+        orderBy: { createdAt: "asc" },
+        take: aba === "sala" ? 500 : 20,
+      },
+      notes: {
+        include: { author: { select: { name: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 50,
       },
     },
   });
+  if (!sessao) return null;
+
+  // `bytes` é BIGINT no banco, e `bigint` não atravessa para um componente:
+  // o `JSON.stringify` do Server Component lança "Do not know how to
+  // serialize a BigInt" — em runtime, na página inteira, sem aviso de tipo.
+  return {
+    ...sessao,
+    gravacoes: sessao.gravacoes.map((g) => ({ ...g, bytes: g.bytes == null ? null : Number(g.bytes) })),
+  };
 }
+
+export type SessionDetail = NonNullable<Awaited<ReturnType<typeof getSessionDetail>>>;
 
 // ───────────────────────────── Participantes ─────────────────────────────
 

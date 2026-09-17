@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import {
@@ -190,11 +190,17 @@ describe("uma fonte só para a regra de presença", () => {
 
   it("nenhum componente declara a regra por conta própria", () => {
     // Uma constante nova na tela voltaria a divergir em silêncio.
-    for (const arquivo of ["SessionsView.tsx", "SessionDrawer.tsx"]) {
-      const fonte = readFileSync(
-        new URL(`../src/components/sessions/${arquivo}`, import.meta.url),
-        "utf8",
-      );
+    //
+    // Varre a pasta em vez de listar nomes: a lista fixa envelhece calada. Ela
+    // já tinha envelhecido — apontava para um `SessionDrawer.tsx` que virou
+    // página, e o teste quebrou por arquivo ausente em vez de por regra
+    // duplicada. Um componente novo entra coberto sem ninguém lembrar dele.
+    const pasta = new URL("../src/components/sessions/", import.meta.url);
+    const arquivos = readdirSync(pasta).filter((a) => a.endsWith(".tsx"));
+    assert.ok(arquivos.length > 0, "a pasta de componentes de sessão sumiu");
+
+    for (const arquivo of arquivos) {
+      const fonte = readFileSync(new URL(arquivo, pasta), "utf8");
       assert.doesNotMatch(fonte, /MINUTOS_MINIMOS/, `${arquivo} voltou a declarar a regra`);
     }
   });

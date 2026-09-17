@@ -263,3 +263,90 @@ export function totaisDoPeriodo(
     taxa: taxaDaSessao(inscritosRealizados, presentes),
   };
 }
+
+// ── O que a página de UMA sessão pergunta ────────────────────────────────────
+//
+// A lista semanal responde "quantos vieram". A página de uma sessão responde
+// outra coisa: **para quem eu ligo agora, e por quê**. Estas funções são a
+// diferença entre um relatório e uma lista de trabalho.
+
+/// Folga para considerar que alguém ficou até o fim.
+///
+/// Cinco minutos: a sala é fechada pelo LiveKit alguns minutos depois de
+/// esvaziar, e quem sai no encerramento sai segundos antes de quem apaga a luz.
+/// Sem a folga, praticamente ninguém "ficaria até o fim" — e o sinal que mais
+/// importa no roster viraria ruído.
+export const FOLGA_DO_FIM_MS = 5 * 60_000;
+
+export type Saida =
+  | { tipo: "nunca_entrou" }
+  | { tipo: "ainda_na_sala" }
+  | { tipo: "ficou_ate_o_fim" }
+  /// Saiu antes. `minuto` é quantos minutos de call ele viu antes de sair — é
+  /// esse número que diz se a pessoa desistiu na abertura ou na oferta.
+  | { tipo: "saiu_antes"; minuto: number };
+
+/**
+ * Quando a pessoa saiu, contado do começo da call.
+ *
+ * É o sinal mais barato que a tela não tinha. "Saiu aos 12 min" e "ficou até o
+ * fim" são dois leads completamente diferentes com o mesmo chip de *Presente*:
+ * um viu a oferta, o outro saiu antes do diagnóstico. Hoje o closer liga para
+ * os dois do mesmo jeito.
+ */
+export function saidaDoParticipante(
+  participante: { joinedAt: Date | null; leftAt: Date | null },
+  inicio: Date,
+  fim: Date,
+): Saida {
+  if (!participante.joinedAt) return { tipo: "nunca_entrou" };
+  if (!participante.leftAt) return { tipo: "ainda_na_sala" };
+  if (participante.leftAt.getTime() >= fim.getTime() - FOLGA_DO_FIM_MS) {
+    return { tipo: "ficou_ate_o_fim" };
+  }
+  return {
+    tipo: "saiu_antes",
+    minuto: Math.max(0, Math.round((participante.leftAt.getTime() - inicio.getTime()) / 60_000)),
+  };
+}
+
+/**
+ * A ordem do roster: para quem ligar primeiro.
+ *
+ * Qualificado antes de não qualificado, e dentro de cada grupo quem ficou mais
+ * tempo antes de quem ficou menos. NÃO é ordem alfabética nem por horário de
+ * entrada — é a ordem em que o closer deve gastar a próxima hora.
+ *
+ * Quem não apareceu vai para o fim, mas FICA na lista: ausência é trabalho
+ * também, e some-lo da tela é como fingir que a vaga nunca foi vendida.
+ */
+export function ordemDoRoster<T extends { attended: boolean; totalSeconds: number; lead: { score: string | null } }>(
+  participantes: readonly T[],
+): T[] {
+  const peso = (p: T) => (p.attended ? 0 : 2) + (ehQualificado(p.lead.score) ? 0 : 1);
+  return [...participantes].sort(
+    (a, b) => peso(a) - peso(b) || b.totalSeconds - a.totalSeconds,
+  );
+}
+
+/**
+ * Quantas pessoas estavam na sala num instante.
+ *
+ * Serve a uma pergunta comercial, não técnica: a oferta foi mandada no chat
+ * quando havia catorze pessoas ouvindo, ou quando já tinham sobrado três? O
+ * mesmo link no mesmo minuto conta histórias opostas — e hoje a tela não sabe
+ * dizer qual delas aconteceu.
+ */
+export function naSalaEm(
+  presencas: readonly { joinedAt: Date; leftAt: Date | null }[],
+  instante: Date,
+): number {
+  return presencas.filter(
+    (p) => p.joinedAt <= instante && (!p.leftAt || p.leftAt >= instante),
+  ).length;
+}
+
+/** Minutos de call até um instante. Negativo vira zero: chat antes de começar. */
+export function minutoDaCall(instante: Date, inicio: Date): number {
+  return Math.max(0, Math.round((instante.getTime() - inicio.getTime()) / 60_000));
+}

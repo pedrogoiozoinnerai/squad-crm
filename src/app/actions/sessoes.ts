@@ -4,7 +4,13 @@ import { revalidatePath } from "next/cache";
 
 import { TZ } from "@/lib/dates";
 import { dataDoDia, text } from "@/lib/forms";
-import { currentUser, revalidateBoth, type FormState } from "@/lib/guard";
+import {
+  assertOwnsContext,
+  currentUser,
+  logActivity,
+  revalidateBoth,
+  type FormState,
+} from "@/lib/guard";
 import { prisma } from "@/lib/prisma";
 import { materializarSessoes } from "@/lib/sessoes";
 import { diasDaSemana, horariosDaSerie } from "@/lib/slots";
@@ -116,4 +122,40 @@ export async function desativarSerie(formData: FormData) {
   await prisma.sessionTemplate.update({ where: { id }, data: { active: !serie.active } });
   revalidatePath("/admin/configuracoes");
   revalidateBoth(revalidatePath, "sessoes");
+}
+
+/**
+ * Anota alguma coisa sobre a SESSÃO.
+ *
+ * O que não é de nenhum lead em particular não tinha onde cair: uma coletiva
+ * tem vinte inscritos, e "a objeção de preço apareceu três vezes hoje" não é
+ * anotação de nenhum deles. O closer guardava isso na cabeça, ou no papel.
+ *
+ * Escrita é de quem conduziu, ou do admin — diferente da LEITURA da sessão, que
+ * é do time inteiro. `assertOwnsContext` é quem confere: Server Action é
+ * superfície pública, e o id da reunião vem no corpo do POST.
+ */
+export async function anotarSessao(_prev: FormState, formData: FormData): Promise<FormState> {
+  const user = await currentUser();
+
+  const conteudo = String(formData.get("content") ?? "").trim();
+  if (conteudo.length < 2) return { error: "Escreva a anotação." };
+
+  const meetingId = text(formData.get("meetingId"));
+  if (!meetingId) return { error: "Anotação sem sessão." };
+
+  await assertOwnsContext(user, { meetingId });
+
+  await prisma.note.create({ data: { content: conteudo, authorId: user.id, meetingId } });
+  await logActivity({
+    kind: "NOTE_ADDED",
+    title: "Anotação na sessão",
+    detail: conteudo.slice(0, 140),
+    authorId: user.id,
+    meetingId,
+  });
+
+  revalidatePath(`/admin/sessoes/${meetingId}`);
+  revalidatePath(`/user/sessoes/${meetingId}`);
+  return { ok: true };
 }

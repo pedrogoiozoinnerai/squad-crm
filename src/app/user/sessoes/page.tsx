@@ -1,6 +1,6 @@
 import { addDays } from "date-fns";
+import { redirect } from "next/navigation";
 
-import { SessionDrawer } from "@/components/sessions/SessionDrawer";
 import { parseWeekOffset, SessionsView } from "@/components/sessions/SessionsView";
 import { requireUser } from "@/lib/auth";
 import { weekStart } from "@/lib/dates";
@@ -13,8 +13,14 @@ export default async function SessoesPage(props: PageProps<"/user/sessoes">) {
   const user = await requireUser("user");
   const { w, sessao } = await props.searchParams;
 
-  const offset = parseWeekOffset(w);
+  // O detalhe da sessão virou página. `?sessao=` continua valendo porque ele
+  // está em links que já foram mandados — e porque manter as duas telas
+  // significaria decidir cada bloco duas vezes, que é exatamente como a taxa
+  // de presença acabou em três cópias divergentes.
   const sessionId = Array.isArray(sessao) ? sessao[0] : sessao;
+  if (sessionId) redirect(`${BASE}/${sessionId}`);
+
+  const offset = parseWeekOffset(w);
 
   // `now` nasce aqui e desce como prop: componente puro não lê o relógio.
   const now = new Date();
@@ -25,15 +31,15 @@ export default async function SessoesPage(props: PageProps<"/user/sessoes">) {
     user.role === "ADMIN" ? getOwners() : Promise.resolve(undefined),
   ]);
 
-  // Fechar o drawer volta para a mesma semana que o usuário estava vendo.
-  const closeHref = offset ? `${BASE}?w=${offset}` : BASE;
-
   return (
-    <>
-      <SessionsView space="user" sessions={sessions} start={start} offset={offset} now={now} minutosMinimos={regra.presencaMinutos} owners={owners} />
-      {sessionId && (
-        <SessionDrawer sessionId={sessionId} user={user} now={now} closeHref={closeHref} minutosMinimos={regra.presencaMinutos} />
-      )}
-    </>
+    <SessionsView
+      space="user"
+      sessions={sessions}
+      start={start}
+      offset={offset}
+      now={now}
+      minutosMinimos={regra.presencaMinutos}
+      owners={owners}
+    />
   );
 }
