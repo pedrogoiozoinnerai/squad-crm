@@ -2,6 +2,7 @@ import "server-only";
 
 import { nextDealCode } from "@/lib/codes";
 import { garantirConvite } from "@/lib/convites";
+import { decidirReuniao } from "@/lib/sync-reuniao";
 import { prisma } from "@/lib/prisma";
 import { inicioDaLeitura, POR_PAGINA, proximaMarca } from "@/lib/marca-dagua";
 import { readFunnelLeads, type FunnelLead } from "@/lib/type-funnel";
@@ -222,50 +223,67 @@ async function sincronizarUm(
       orderBy: { startsAt: "desc" },
     }));
 
-  if (temAgenda && agendadoEm && !cancelado) {
-    if (!reuniao) {
-      const nova = await prisma.meeting.create({
-        data: {
-          title: `Diagnóstico · ${lead.name}`,
-          startsAt: agendadoEm,
-          endsAt: new Date(agendadoEm.getTime() + MEIA_HORA),
-          type: "ONE_ON_ONE",
-          ownerId: dono,
-          leadId: lead.id,
-          // O negócio que esta sincronização acabou de garantir. É o que leva
-          // a presença medida na sala até o `attendance` do negócio certo.
-          dealId,
-          calBookingUid: linha.calBookingUid,
-          location: linha.meetingLocation,
-        },
-      });
-      // Convite pronto desde já: quando o time desligar o Cal.com, o link da
-      // nossa sala já existe para toda reunião do funil.
-      await garantirConvite(nova.id, lead.id);
-      r.reunioesCriadas++;
-    } else if (
-      reuniao.startsAt.getTime() !== agendadoEm.getTime() ||
-      reuniao.status === "CANCELED" ||
-      reuniao.calBookingUid !== linha.calBookingUid
-    ) {
-      // Remarcou — inclusive quem havia cancelado e voltou.
-      await prisma.meeting.update({
-        where: { id: reuniao.id },
-        data: {
-          startsAt: agendadoEm,
-          endsAt: new Date(agendadoEm.getTime() + MEIA_HORA),
-          status: "SCHEDULED",
-          location: linha.meetingLocation,
-          // O uid muda a cada remarcação; sem atualizá-lo, a próxima passagem
-          // perderia o rastro e criaria a reunião duplicada de novo.
-          calBookingUid: linha.calBookingUid,
-        },
-      });
-      r.reunioesRemarcadas++;
-    }
+  // A decisão vive em `lib/sync-reuniao`, pura e com os casos escritos, porque
+  // errar aqui foi o pior defeito que a produção teve: a busca acima exige
+  // `calBookingUid` nos dois caminhos, e reserva feita pela NOSSA agenda tem uid
+  // nulo. Ela não achava nada e o `if (!reuniao)` criava outra reunião — seis
+  // por hora, de dez em dez minutos, para sempre. Foram 26 duplicatas para um
+  // único lead em quatro horas.
+  const decisao = decidirReuniao(
+    {
+      crmMeetingId: linha.crmMeetingId,
+      calBookingUid: linha.calBookingUid,
+      agendadoEm: temAgenda ? agendadoEm : null,
+      cancelado,
+    },
+    reuniao
+      ? {
+          startsAt: reuniao.startsAt,
+          status: reuniao.status,
+          calBookingUid: reuniao.calBookingUid,
+          type: reuniao.type,
+        }
+      : null,
+  );
+
+  if (decisao.acao === "criar" && agendadoEm) {
+    const nova = await prisma.meeting.create({
+      data: {
+        title: `Diagnóstico · ${lead.name}`,
+        startsAt: agendadoEm,
+        endsAt: new Date(agendadoEm.getTime() + MEIA_HORA),
+        type: "ONE_ON_ONE",
+        ownerId: dono,
+        leadId: lead.id,
+        // O negócio que esta sincronização acabou de garantir. É o que leva
+        // a presença medida na sala até o `attendance` do negócio certo.
+        dealId,
+        calBookingUid: linha.calBookingUid,
+        location: linha.meetingLocation,
+      },
+    });
+    // Convite pronto desde já: quando o time desligar o Cal.com, o link da
+    // nossa sala já existe para toda reunião do funil.
+    await garantirConvite(nova.id, lead.id);
+    r.reunioesCriadas++;
+  } else if (decisao.acao === "atualizar" && reuniao && agendadoEm) {
+    // Remarcou — inclusive quem havia cancelado e voltou.
+    await prisma.meeting.update({
+      where: { id: reuniao.id },
+      data: {
+        startsAt: agendadoEm,
+        endsAt: new Date(agendadoEm.getTime() + MEIA_HORA),
+        status: "SCHEDULED",
+        location: linha.meetingLocation,
+        // O uid muda a cada remarcação; sem atualizá-lo, a próxima passagem
+        // perderia o rastro e criaria a reunião duplicada de novo.
+        calBookingUid: linha.calBookingUid,
+      },
+    });
+    r.reunioesRemarcadas++;
   }
 
-  if (cancelado && reuniao && reuniao.status !== "CANCELED") {
+  if (decisao.acao === "cancelar" && reuniao) {
     await prisma.meeting.update({ where: { id: reuniao.id }, data: { status: "CANCELED" } });
     r.reunioesCanceladas++;
 
@@ -292,9 +310,6 @@ async function sincronizarUm(
     }
   }
 
-  // Agendou: a cobrança de agendamento perde o sentido. Deixá-la pendente faz
-  // o vendedor ligar para cobrar horário de quem já marcou — e some a confiança
-  // na fila de tarefas, que é o que o time olha de manhã.
   // Agendou (ou remarcou): as duas cobranças automáticas perdem o sentido.
   // Deixá-las pendentes faz o vendedor ligar para cobrar horário de quem já
   // marcou — e some a confiança na fila de tarefas, que é o que o time olha

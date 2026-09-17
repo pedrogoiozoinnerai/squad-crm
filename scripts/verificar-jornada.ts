@@ -334,6 +334,50 @@ async function main() {
     confere(liberado, `Permissions-Policy em ${caminho}`, liberado ? "camera e microfone liberados" : pp || "ausente");
   }
 
+  // ── 8.5. O sync não duplica a reunião ─────────────────────────────────────
+  //
+  // O pior defeito que a produção teve: o cron criava uma reunião NOVA para o
+  // mesmo lead a cada execução — seis por hora, para sempre. A busca pela
+  // reunião existente exigia `calBookingUid`, e reserva feita pela nossa agenda
+  // tem uid nulo, então ela não achava nada e criava outra. Em quatro horas
+  // foram 26 duplicatas de um lead só.
+  etapa("8.5. Rodar o sync três vezes não duplica nada");
+
+  const contarReunioes = async () =>
+    Number(
+      (
+        await db.query(`select count(*)::int n from "${SCHEMA}"."Meeting" where "leadId"=$1`, [
+          leadCrmId,
+        ])
+      ).rows[0].n,
+    );
+
+  const antesDoSync = await contarReunioes();
+  const cabecalhoDoCron: Record<string, string> = process.env.CRON_SECRET
+    ? { authorization: `Bearer ${process.env.CRON_SECRET}` }
+    : {};
+
+  let lidosNoTotal = 0;
+  for (let i = 0; i < 3; i++) {
+    // Recua a marca d'água antes de cada passagem. Sem isto o sync lê ZERO
+    // leads — a marca já está à frente — e a verificação passaria sem ter
+    // exercitado nada, que é o pior tipo de teste verde.
+    await db.query(
+      `update "${SCHEMA}"."Config" set "funilSincronizadoAte" = now() - interval '10 minutes'`,
+    );
+    const corpo = await fetch(`${CRM}/api/cron/type`, { headers: cabecalhoDoCron }).then(json);
+    lidosNoTotal += Number(corpo?.lidos ?? 0);
+  }
+
+  confere(lidosNoTotal > 0, "o sync realmente olhou o lead", `${lidosNoTotal} leituras`);
+
+  const depoisDoSync = await contarReunioes();
+  confere(
+    depoisDoSync === antesDoSync,
+    "e mesmo assim não criou reunião nenhuma",
+    `${antesDoSync} → ${depoisDoSync}`,
+  );
+
   // ── 9. O vendedor, no CRM ─────────────────────────────────────────────────
   etapa("9. O vendedor vê tudo no CRM");
   const reuniao = await db.query(

@@ -29,6 +29,13 @@ export type FunnelLead = {
   segment: string | null;
   revenueRange: string | null;
   scheduledAt: string | null;
+  /// Id da reunião no CRM, gravado pelo FUNIL no instante da reserva.
+  ///
+  /// É a resposta autoritativa para "este lead já tem reunião?" — e não era
+  /// lida. Sem ela a sincronização só sabia reencontrar reunião do Cal.com,
+  /// não achava nada nas reservas feitas pela nossa agenda, e criava uma
+  /// reunião nova a cada execução do cron. Ver `lib/sync-reuniao`.
+  crmMeetingId: string | null;
   calBookingUid: string | null;
   meetingLocation: string | null;
   /// Preenchido quando a reserva foi cancelada no Cal.com.
@@ -120,6 +127,7 @@ export async function readFunnelLeads(
             segment,
             "revenueRange",
             "scheduledAt",
+            "crmMeetingId",
             "calBookingUid",
             "meetingLocation",
             "calCancelledAt",
@@ -150,6 +158,7 @@ export async function readFunnelLeads(
     segment: r.segment === null ? null : String(r.segment),
     revenueRange: r.revenueRange === null ? null : String(r.revenueRange),
     scheduledAt: iso(r.scheduledAt),
+    crmMeetingId: r.crmMeetingId === null ? null : String(r.crmMeetingId),
     calBookingUid: r.calBookingUid === null ? null : String(r.calBookingUid),
     calCancelledAt: iso(r.calCancelledAt),
     meetingLocation: r.meetingLocation === null ? null : String(r.meetingLocation),

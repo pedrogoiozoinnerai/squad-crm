@@ -26,7 +26,8 @@
     "verificar:jornada": "tsx scripts/verificar-jornada.ts",
     "agenda:gerar": "NODE_OPTIONS=--conditions=react-server tsx scripts/gerar-agenda-producao.ts",
     "sala:teste": "tsx scripts/sala-de-teste.ts",
-    "raio-x": "tsx scripts/raio-x.ts"
+    "raio-x": "tsx scripts/raio-x.ts",
+    "limpar:duplicadas": "tsx scripts/limpar-reunioes-duplicadas.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
