@@ -20,10 +20,16 @@ export function Quadro({
   participante,
   grande,
   souEu,
+  fonte = "auto",
 }: {
   participante: Participant;
   grande?: boolean;
   souEu?: boolean;
+  /// Qual trilha desenhar. `auto` deixa a tela compartilhada vencer a câmera —
+  /// é o que o quadro grande quer. `camera` força o rosto, e é o que a fita
+  /// precisa: sem isso, quem compartilha tem um quadro só, ele mostra a tela, e
+  /// a câmera da pessoa não aparece em lugar nenhum da sala.
+  fonte?: "auto" | "camera";
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const audio = useRef<HTMLAudioElement>(null);
@@ -32,8 +38,9 @@ export function Quadro({
   const tela = participante.getTrackPublication(Track.Source.ScreenShare);
   const microfone = participante.getTrackPublication(Track.Source.Microphone);
 
-  const visivel = tela?.track ?? (camera?.isMuted ? undefined : camera?.track);
-  const compartilhandoTela = Boolean(tela?.track);
+  const daCamera = camera?.isMuted ? undefined : camera?.track;
+  const visivel = fonte === "camera" ? daCamera : (tela?.track ?? daCamera);
+  const compartilhandoTela = visivel !== undefined && visivel === tela?.track;
 
   useEffect(() => {
     const elemento = video.current;

@@ -119,3 +119,22 @@ export function quandoReavaliar(
   if (!estado.candidato) return null;
   return Math.max(0, estado.candidato.desde + sustentacaoMs - agora);
 }
+
+/**
+ * Quem aparece na fita lateral, dado quem está no quadro grande.
+ *
+ * A regra parece uma linha e tem uma exceção que custou a câmera de quem
+ * apresenta: normalmente o destaque sai da fita, porque ele já está grande e
+ * duplicá-lo desperdiça espaço. **Mas quando o quadro grande está mostrando uma
+ * TELA compartilhada, ninguém está grande** — a pessoa que compartilha continua
+ * devendo um quadro, e sem ele a sala vê os slides e perde o rosto de quem está
+ * falando. Quem compartilha, aliás, perde a própria imagem: era esse o defeito.
+ */
+export function fitaDeQuadros<T extends { identity: string }>(
+  todos: readonly T[],
+  destaque: { identity: string } | null,
+  destaqueEhTela: boolean,
+): T[] {
+  if (!destaque || destaqueEhTela) return [...todos];
+  return todos.filter((p) => p.identity !== destaque.identity);
+}

@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { FOCO_VAZIO, quandoReavaliar, SUSTENTACAO_MS, proximoFoco } from "../src/lib/foco";
+import {
+  FOCO_VAZIO,
+  SUSTENTACAO_MS,
+  fitaDeQuadros,
+  proximoFoco,
+  quandoReavaliar,
+} from "../src/lib/foco";
 
 /**
  * O quadro principal trocava de rosto a cada respiração.
@@ -202,5 +208,42 @@ describe("quando reavaliar", () => {
     assert.equal(quandoReavaliar(f, 1000), SUSTENTACAO_MS);
     assert.equal(quandoReavaliar(f, 1000 + SUSTENTACAO_MS - 100), 100);
     assert.equal(quandoReavaliar(f, 99_999), 0, "nunca negativo");
+  });
+});
+
+describe("quem compartilha não pode sumir da sala", () => {
+  const eu = { identity: "u_eu" };
+  const ana = { identity: "l_ana" };
+  const bruno = { identity: "l_bruno" };
+  const todos = [eu, ana, bruno];
+
+  it("sem tela, o destaque sai da fita — ele já está grande", () => {
+    assert.deepEqual(fitaDeQuadros(todos, ana, false), [eu, bruno]);
+  });
+
+  it("COM tela, quem compartilha CONTINUA na fita", () => {
+    // O defeito relatado: eu compartilho, viro o quadro grande mostrando a
+    // tela, saio da fita — e a minha câmera não tem onde aparecer.
+    assert.deepEqual(fitaDeQuadros(todos, eu, true), todos);
+  });
+
+  it("e a sala não perde o rosto de quem apresenta", () => {
+    // O mesmo defeito visto de fora, que é pior: todo mundo vê os slides e
+    // ninguém vê quem está falando.
+    const fita = fitaDeQuadros(todos, ana, true);
+    assert.ok(fita.some((p) => p.identity === ana.identity));
+  });
+
+  it("sem destaque nenhum, a fita é todo mundo", () => {
+    assert.deepEqual(fitaDeQuadros(todos, null, false), todos);
+  });
+
+  it("não devolve a mesma lista que recebeu", () => {
+    // Quem chama renderiza direto; devolver a referência convidaria a mutação.
+    assert.notEqual(fitaDeQuadros(todos, null, false), todos);
+  });
+
+  it("sala de uma pessoa só, compartilhando: ela aparece", () => {
+    assert.deepEqual(fitaDeQuadros([eu], eu, true), [eu]);
   });
 });
