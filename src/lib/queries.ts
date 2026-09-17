@@ -42,7 +42,7 @@ async function somasDoPipeline(ownerId: string | undefined, inicioMes: Date, fim
 
 /** Reuniões da semana, já no escopo do usuário. */
 export async function getWeekMeetings(user: SessionUser, start: Date) {
-  return prisma.meeting.findMany({
+  const reunioes = await prisma.meeting.findMany({
     where: {
       ...ownerScope(user),
       startsAt: { gte: start, lt: addDays(start, 7) },
@@ -51,9 +51,24 @@ export async function getWeekMeetings(user: SessionUser, start: Date) {
     include: {
       lead: { select: { id: true, name: true, company: true, score: true } },
       owner: { select: { id: true, name: true } },
+      // Só a coluna que decide o número — não o lead inteiro de cada inscrito.
+      // Numa semana são ~78 sessões de até 20 pessoas; puxar o lead junto seria
+      // 1.560 registros completos para desenhar dois inteiros por cartão.
+      attendees: { select: { attended: true } },
+      _count: { select: { gravacoes: true } },
     },
     orderBy: { startsAt: "asc" },
   });
+
+  // Agendados e realizados por cartão: é o que o calendário do CRM de
+  // referência mostra, e é a pergunta que o gestor faz olhando a grade —
+  // "quantos marcaram com esse closer, e quantos apareceram".
+  return reunioes.map(({ attendees, _count, ...m }) => ({
+    ...m,
+    inscritos: attendees.length,
+    presentes: attendees.filter((a) => a.attended).length,
+    temGravacao: _count.gravacoes > 0,
+  }));
 }
 
 /**
@@ -974,7 +989,7 @@ export async function getTeamOverview() {
   const inicioMes = new Date(agora.getFullYear(), agora.getMonth(), 1);
   const inicioSemana = weekStart(agora);
 
-  const [closers, ganhos, abertos, tarefas, reunioes, instancias] = await Promise.all([
+  const [closers, ganhos, abertos, tarefas, reunioes] = await Promise.all([
     prisma.user.findMany({
       where: { active: true },
       select: { id: true, name: true, email: true, role: true },
@@ -1001,14 +1016,12 @@ export async function getTeamOverview() {
       where: { startsAt: { gte: inicioSemana }, status: { not: "CANCELED" } },
       _count: true,
     }),
-    prisma.whatsappInstance.findMany({ select: { ownerId: true, status: true } }),
   ]);
 
   const linhas = closers.map((c) => {
     const g = ganhos.find((x) => x.ownerId === c.id);
     const a = abertos.find((x) => x.ownerId === c.id);
     const minhas = tarefas.filter((t) => t.ownerId === c.id);
-    const whats = instancias.find((w) => w.ownerId === c.id);
 
     return {
       id: c.id,
@@ -1022,7 +1035,6 @@ export async function getTeamOverview() {
       pendentes: minhas.length,
       atrasadas: minhas.filter((t) => t.dueAt && t.dueAt < agora).length,
       reunioesSemana: reunioes.find((m) => m.ownerId === c.id)?._count ?? 0,
-      whatsapp: whats?.status ?? null,
     };
   });
 
@@ -1031,14 +1043,13 @@ export async function getTeamOverview() {
     totalGanhoCents: linhas.reduce((s, l) => s + l.ganhoCents, 0),
     totalGanhos: linhas.reduce((s, l) => s + l.ganhos, 0),
     totalAtrasadas: linhas.reduce((s, l) => s + l.atrasadas, 0),
-    whatsappOff: linhas.filter((l) => l.whatsapp && l.whatsapp !== "connected").length,
   };
 }
 
 // ───────────────────── Configuração da operação ─────────────────────
 
 export async function getConfig() {
-  const [stages, lossReasons, templates, automations, cases, permissions, series, regra] = await Promise.all([
+  const [stages, lossReasons, templates, automations, cases, series, regra] = await Promise.all([
     prisma.stage.findMany({ orderBy: { order: "asc" }, include: { _count: { select: { deals: true } } } }),
     prisma.lossReason.findMany({ orderBy: { orderIndex: "asc" }, include: { _count: { select: { deals: true } } } }),
     prisma.taskTemplate.findMany({ orderBy: { name: "asc" }, include: { _count: { select: { tasks: true } } } }),
@@ -1046,7 +1057,6 @@ export async function getConfig() {
       include: { template: { select: { name: true } }, targetStage: { select: { name: true, color: true } } },
     }),
     prisma.case.findMany({ orderBy: { segment: "asc" } }),
-    prisma.rolePermission.findMany({ orderBy: { role: "asc" } }),
     prisma.sessionTemplate.findMany({
       orderBy: [{ active: "desc" }, { name: "asc" }],
       include: {
@@ -1059,7 +1069,7 @@ export async function getConfig() {
     prisma.config.upsert({ where: { id: "unica" }, update: {}, create: {} }),
   ]);
 
-  return { stages, lossReasons, templates, automations, cases, permissions, series, regra };
+  return { stages, lossReasons, templates, automations, cases, series, regra };
 }
 
 /**

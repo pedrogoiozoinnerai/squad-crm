@@ -339,7 +339,6 @@ async function main() {
 
     let semCadastro = 0;
     let comCadastro = 0;
-    let barradas = 0;
 
     for (let i = 0; i < 12; i++) {
       const sid = `sonda-${randomBytes(12).toString("hex")}`;
@@ -363,7 +362,6 @@ async function main() {
         method: "POST", headers: cab, body: JSON.stringify({ meetingId: sessao.id }),
       });
       if (r.status === 409) semCadastro++;
-      else if (r.status === 429) barradas++;
       else if (r.ok) comCadastro++;
     }
 

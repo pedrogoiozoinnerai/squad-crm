@@ -18,7 +18,6 @@ export default async function CalendarPage(props: PageProps<"/admin/calendar">) 
       meetings={meetings}
       start={start}
       offset={offset}
-      showOwner={user.role === "ADMIN"}
       owners={owners}
     />
   );

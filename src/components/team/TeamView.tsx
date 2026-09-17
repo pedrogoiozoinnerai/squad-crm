@@ -5,8 +5,6 @@ import {
   CalendarDays,
   CheckCircle2,
   ListChecks,
-  PlugZap,
-  Smartphone,
   TrendingUp,
   Trophy,
 } from "lucide-react";
@@ -26,7 +24,6 @@ export type TeamRow = {
   pendentes: number;
   atrasadas: number;
   reunioesSemana: number;
-  whatsapp: string | null;
 };
 
 export type TeamData = {
@@ -34,7 +31,6 @@ export type TeamData = {
   totalGanhoCents: number;
   totalGanhos: number;
   totalAtrasadas: number;
-  whatsappOff: number;
 };
 
 /** Tela exclusiva de admin — os destinos são sempre do espaço /admin. */
@@ -46,7 +42,7 @@ const USUARIOS = "/admin/usuarios";
 const LIMITE = 50;
 
 export const ORDENS = ["ganho", "pipeline", "atrasadas", "reunioes"] as const;
-export const RECORTES = ["todos", "atraso", "whatsapp"] as const;
+export const RECORTES = ["todos", "atraso"] as const;
 
 export type Ordem = (typeof ORDENS)[number];
 export type Recorte = (typeof RECORTES)[number];
@@ -61,27 +57,12 @@ const COMPARADORES: Record<Ordem, (a: TeamRow, b: TeamRow) => number> = {
 const FILTROS: Record<Recorte, (linha: TeamRow) => boolean> = {
   todos: () => true,
   atraso: (linha) => linha.atrasadas > 0,
-  whatsapp: (linha) => linha.whatsapp !== "connected",
 };
 
 const RECORTE_LABEL: Record<Recorte, string> = {
   todos: "Todo o time",
   atraso: "Com tarefa atrasada",
-  whatsapp: "WhatsApp pendente",
 };
-
-const WHATSAPP: Record<string, { label: string; tone: string }> = {
-  connected: { label: "Conectado", tone: "bg-waz-95 text-waz-20" },
-  pairing: { label: "Pareando", tone: "bg-amber-50 text-amber-800" },
-  disconnected: { label: "Sem conexão", tone: "bg-red-50 text-red-700" },
-};
-
-const NAO_CONFIGURADO = { label: "Não configurado", tone: "bg-surface-2 text-muted" };
-
-function whatsappInfo(status: string | null) {
-  if (!status) return NAO_CONFIGURADO;
-  return WHATSAPP[status] ?? { label: status, tone: "bg-red-50 text-red-700" };
-}
 
 function plural(n: number, singular: string, pluralForm: string) {
   return n === 1 ? singular : pluralForm;
@@ -117,7 +98,6 @@ export function TeamView({
 
   const closers = linhas.length;
   const comAtraso = linhas.filter((l) => l.atrasadas > 0).length;
-  const semWhatsapp = linhas.filter((l) => !l.whatsapp).length;
   const totalPipeline = linhas.reduce((s, l) => s + l.pipelineCents, 0);
   const totalAbertos = linhas.reduce((s, l) => s + l.abertos, 0);
   const totalPendentes = linhas.reduce((s, l) => s + l.pendentes, 0);
@@ -132,21 +112,13 @@ export function TeamView({
       `${data.totalAtrasadas} ${plural(data.totalAtrasadas, "tarefa atrasada", "tarefas atrasadas")} em ${comAtraso} ${plural(comAtraso, "closer", "closers")}`,
     );
   }
-  if (data.whatsappOff > 0) {
-    problemas.push(
-      `${data.whatsappOff} ${plural(data.whatsappOff, "WhatsApp sem conexão", "WhatsApps sem conexão")}`,
-    );
-  }
-  if (semWhatsapp > 0) {
-    problemas.push(`${semWhatsapp} ainda sem WhatsApp configurado`);
-  }
 
   const cabeca = `Time de ${closers} ${plural(closers, "closer", "closers")}.`;
   const frase =
     closers === 0
       ? "Nenhum closer ativo no CRM ainda."
       : problemas.length === 0
-        ? `${cabeca} Tudo em dia por aqui — nenhuma tarefa atrasada e todo mundo com WhatsApp conectado.`
+        ? `${cabeca} Tudo em dia por aqui — nenhuma tarefa atrasada.`
         : `${cabeca} Hoje: ${enumerar(problemas)}.`;
 
   // ── A tabela: recorte e ordem vêm da URL, nunca de estado local ──
@@ -200,49 +172,12 @@ export function TeamView({
         />
       )}
 
-      {data.whatsappOff > 0 && (
-        <Faixa
-          tone="alerta"
-          icon={PlugZap}
-          titulo={`${data.whatsappOff} ${plural(data.whatsappOff, "WhatsApp sem conexão", "WhatsApps sem conexão")}`}
-          explicacao="Sem sessão conectada, a fila de envio não anda: as mensagens do closer ficam paradas aguardando entrega. Reconecte lendo o QR na ficha do usuário."
-          acoes={
-            <>
-              <Link href={USUARIOS} className="btn-primary">
-                Resolver {data.whatsappOff} {plural(data.whatsappOff, "WhatsApp", "WhatsApps")}
-                <ArrowRight className="size-4" />
-              </Link>
-              {recorte !== "whatsapp" && (
-                <Link href={href(ordem, "whatsapp")} className="btn-ghost">
-                  Ver quem está fora
-                </Link>
-              )}
-            </>
-          }
-        />
-      )}
-
-      {semWhatsapp > 0 && (
-        <Faixa
-          tone="atencao"
-          icon={Smartphone}
-          titulo={`${semWhatsapp} ${plural(semWhatsapp, "closer", "closers")} sem WhatsApp configurado`}
-          explicacao="Quem não tem instância vinculada não consegue enviar mensagem pelo CRM — o follow-up sai por fora e não fica registrado no lead. Crie a instância na ficha do usuário."
-          acoes={
-            <Link href={USUARIOS} className="btn-ghost">
-              Configurar agora
-              <ArrowRight className="size-4" />
-            </Link>
-          }
-        />
-      )}
-
       {closers > 0 && problemas.length === 0 && (
         <Faixa
           tone="ok"
           icon={CheckCircle2}
           titulo="Nada exigindo você agora"
-          explicacao="Conferimos as tarefas vencidas e a conexão de WhatsApp de cada closer: nenhum pendente. Use o ranking abaixo para puxar a conversa de performance."
+          explicacao="Conferimos as tarefas vencidas de cada closer: nenhuma pendente. Use o ranking abaixo para puxar a conversa de performance."
         />
       )}
 
@@ -330,19 +265,18 @@ export function TeamView({
                   label="Reuniões"
                   align="left"
                 />
-                <th className="px-4 py-3">WhatsApp</th>
               </tr>
             </thead>
             <tbody>
               {mostradas.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-14 text-center">
+                  <td colSpan={7} className="px-4 py-14 text-center">
                     <p className="text-muted">
                       {closers === 0
                         ? "Nenhum closer ativo. Cadastre o time em Usuários para o painel ganhar vida."
                         : recorte === "atraso"
                           ? "Ninguém com tarefa atrasada neste recorte — e isso é boa notícia."
-                          : "Ninguém com WhatsApp pendente neste recorte."}
+                          : "Nenhum closer neste recorte."}
                     </p>
                     <Link
                       href={closers === 0 ? USUARIOS : href(ordem, "todos")}
@@ -355,7 +289,6 @@ export function TeamView({
               )}
 
               {mostradas.map((linha, i) => {
-                const info = whatsappInfo(linha.whatsapp);
                 const lider = destacaTopo && i === 0;
 
                 return (
@@ -428,10 +361,6 @@ export function TeamView({
 
                     <td className="px-4 py-3 text-muted">
                       {linha.reunioesSemana === 0 ? "—" : linha.reunioesSemana}
-                    </td>
-
-                    <td className="px-4 py-3">
-                      <span className={`chip ${info.tone}`}>{info.label}</span>
                     </td>
                   </tr>
                 );
