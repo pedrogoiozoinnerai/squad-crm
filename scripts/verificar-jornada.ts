@@ -186,6 +186,107 @@ async function main() {
   confere(pagina.ok, "a página do convite abre", `HTTP ${pagina.status}`);
   confere(html.includes("Lead da Jornada"), "mostra o nome do lead");
 
+  // ── 6.5. O lead consegue NÃO PERDER a reunião ─────────────────────────────
+  //
+  // Não há serviço de e-mail nem canal de WhatsApp ligado: depois de agendar,
+  // nada mais alcança o lead. O convite de calendário é a única lembrança que
+  // funciona hoje — ele põe o alarme dentro do aparelho dele. Se isto quebrar,
+  // ninguém percebe: o arquivo baixa e o calendário recusa em silêncio.
+  etapa("6.5. O convite de calendário");
+  const ics = await fetch(`${CRM}/api/agenda/calendario?convite=${token}`);
+  const corpoIcs = await ics.text();
+  confere(ics.ok, "o arquivo baixa", `HTTP ${ics.status}`);
+  confere(
+    (ics.headers.get("content-type") ?? "").includes("text/calendar"),
+    "é servido como calendário",
+    ics.headers.get("content-type") ?? "",
+  );
+  confere(corpoIcs.startsWith("BEGIN:VCALENDAR"), "tem a cara de um .ics");
+  // Desdobra antes de procurar: o formato quebra linhas longas em 75 octetos e
+  // emenda com "\r\n ", então o link SEMPRE aparece partido no meio.
+  const icsInteiro = corpoIcs.split("\r\n ").join("");
+  confere(icsInteiro.includes(`/convite/${token}`), "leva o link de entrada dentro");
+  confere(corpoIcs.includes("BEGIN:VALARM"), "leva alarme — é o motivo de existir");
+  confere(
+    !corpoIcs.split("\r\n").some((l) => Buffer.from(l, "utf8").length > 75),
+    "nenhuma linha passa de 75 octetos — acima disso o calendário recusa",
+  );
+
+  // Quem não entraria na sala também não baixa o calendário: o arquivo carrega
+  // o link de entrada dentro dele.
+  const icsSemNada = await fetch(`${CRM}/api/agenda/calendario`);
+  confere(
+    icsSemNada.status >= 400 && icsSemNada.status < 500,
+    "sem credencial não baixa",
+    `HTTP ${icsSemNada.status}`,
+  );
+  const icsInventado = await fetch(`${CRM}/api/agenda/calendario?convite=${"0".repeat(64)}`);
+  confere(icsInventado.status === 404, "convite inventado não baixa", `HTTP ${icsInventado.status}`);
+
+  // ── 6.6. Remarcar ─────────────────────────────────────────────────────────
+  //
+  // A página do convite oferecia "Remarque aqui" desde o começo e o link dava
+  // 404 — a página nunca existiu. Quem não podia vir clicava, batia no erro e
+  // sumia: não aparecia E deixava a vaga presa até a hora da sessão.
+  etapa("6.6. O lead troca de horário");
+
+  const telaRemarcar = await fetch(`${CRM}/convite/${token}/remarcar`);
+  confere(telaRemarcar.ok, "a tela de remarcar abre", `HTTP ${telaRemarcar.status}`);
+
+  const outra = sessoes.find((s) => s.id !== escolhida.id);
+  if (!outra) {
+    falha("não há uma segunda sessão para remarcar — agenda com um horário só");
+  } else {
+    const antes = await db.query(
+      `select "meetingId", versao, "inviteToken" from "${SCHEMA}"."MeetingAttendee"
+        where "inviteToken"=$1`,
+      [token],
+    );
+
+    const trocou = await fetch(`${CRM}/api/agenda/remarcar`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ convite: token, meetingId: outra.id }),
+    });
+    confere(trocou.ok, "a troca é aceita", `HTTP ${trocou.status}`);
+
+    const depois = await db.query(
+      `select "meetingId", versao, "inviteToken", attended, "totalSeconds"
+         from "${SCHEMA}"."MeetingAttendee" where "inviteToken"=$1`,
+      [token],
+    );
+    confere(depois.rows[0]?.meetingId === outra.id, "mudou de sessão");
+    confere(
+      depois.rows[0]?.inviteToken === antes.rows[0]?.inviteToken,
+      "o convite NÃO mudou — o link que o lead guardou continua valendo",
+    );
+    confere(
+      Number(depois.rows[0]?.versao) === Number(antes.rows[0]?.versao) + 1,
+      "a versão subiu — é o que atualiza o calendário em vez de duplicar",
+      `${antes.rows[0]?.versao} → ${depois.rows[0]?.versao}`,
+    );
+    confere(
+      Number(depois.rows[0]?.totalSeconds) === 0 && depois.rows[0]?.attended === false,
+      "a presença da sessão antiga foi zerada",
+    );
+
+    // O convite de calendário tem de apontar para o horário NOVO.
+    const icsNovo = await fetch(`${CRM}/api/agenda/calendario?convite=${token}`).then((r) => r.text());
+    const inicioNovo = new Date(outra.inicioEm)
+      .toISOString()
+      .replace(/[-:]/g, "")
+      .replace(/\.\d{3}/, "");
+    confere(icsNovo.includes(`DTSTART:${inicioNovo}`), "o calendário aponta para o novo horário");
+    confere(icsNovo.includes("SEQUENCE:1"), "e diz que é uma atualização, não um evento novo");
+
+    // Volta para onde estava, para o resto da jornada seguir igual.
+    await fetch(`${CRM}/api/agenda/remarcar`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ convite: token, meetingId: escolhida.id }),
+    });
+  }
+
   // ── 7. A sala ─────────────────────────────────────────────────────────────
   etapa("7. O lead entra na sala");
   const cedo = await fetch(`${CRM}/api/livekit/token`, {

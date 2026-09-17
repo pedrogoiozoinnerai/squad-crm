@@ -876,6 +876,13 @@ model MeetingAttendee {
   /// 32 bytes aleatórios. `cuid` não serve: é sequencial, e quem tem um
   /// convite conseguiria adivinhar os vizinhos.
   inviteToken   String    @unique
+  /// Quantas vezes esta inscrição já mudou de horário.
+  ///
+  /// Vira o `SEQUENCE` do convite de calendário, e é ele que faz o compromisso
+  /// ser ATUALIZADO no aparelho do lead em vez de virar um segundo: o
+  /// calendário só aceita a atualização se o número for maior que o que ele já
+  /// tem. Sem isso, remarcar deixava o horário velho no celular da pessoa.
+  versao        Int       @default(0)
   invitedAt     DateTime?
   firstOpenedAt DateTime?
   openCount     Int       @default(0)

@@ -25,7 +25,8 @@
     "senha": "tsx scripts/definir-senha.ts",
     "verificar:jornada": "tsx scripts/verificar-jornada.ts",
     "agenda:gerar": "NODE_OPTIONS=--conditions=react-server tsx scripts/gerar-agenda-producao.ts",
-    "sala:teste": "tsx scripts/sala-de-teste.ts"
+    "sala:teste": "tsx scripts/sala-de-teste.ts",
+    "raio-x": "tsx scripts/raio-x.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { instanteDeCampoLocal, TZ } from "@/lib/dates";
 import { horizonteDaAgenda } from "@/lib/horizonte";
 import { guardaDeTaxa } from "@/lib/limite-servidor";
-import { prisma } from "@/lib/prisma";
+import { sessoesComVaga } from "@/lib/sessoes";
 
 /**
  * As sessões com vaga, para quem está agendando de fora.
@@ -16,44 +16,21 @@ import { prisma } from "@/lib/prisma";
  */
 export const dynamic = "force-dynamic";
 
-/// Quanto tempo antes do início a sessão para de aceitar inscrição.
-///
-/// Uma hora: o lead que termina o funil de manhã consegue entrar numa sessão
-/// ainda hoje, e é isso que se quer — marcar para daqui a três dias é perder a
-/// pessoa no auge do interesse.
-///
-/// Não menos que isso porque a hora que sobra é o que o time usa: a sala abre
-/// 30 minutos antes (`ABRE_ANTES_MIN`), a confirmação precisa chegar ao
-/// WhatsApp e o closer precisa ver o nome na agenda antes de entrar. Quinze
-/// minutos deixavam alguém se inscrever para uma sala que abriria em quinze —
-/// ninguém do lado de cá ficava sabendo a tempo.
-const ANTECEDENCIA_MIN = 60;
-
-/// Teto de linhas. Não é o corte esperado: fica logo acima do que uma série
-/// materializa num mês (650), para uma configuração errada não virar um JSON
-/// de megabytes num endereço público.
-const TETO_SESSOES = 700;
-
 /**
  * Um recorte opcional de dias, se o chamador pedir.
  *
  * Valor torto é IGNORADO, não vira 400: este endereço é público e uma query
  * string estragada não pode virar tela de erro no meio do funil.
  */
-function recorte(request: NextRequest, de: Date, ate: Date) {
+function recorte(request: NextRequest): { de?: Date; ate?: Date } {
   const p = request.nextUrl.searchParams;
   const pedido = (nome: string, hora: string) => {
     const bruto = p.get(nome);
     if (!bruto) return null;
     return instanteDeCampoLocal(`${bruto}T${hora}`);
   };
-  const deP = pedido("de", "00:00");
-  const ateP = pedido("ate", "23:59");
-  return {
-    // Nunca alarga a janela: o recorte só pode estreitar o que a agenda abre.
-    de: deP && deP > de ? deP : de,
-    ate: ateP && ateP < ate ? ateP : ate,
-  };
+  // Quem estreita de verdade é `sessoesComVaga`; aqui só se lê o pedido.
+  return { de: pedido("de", "00:00") ?? undefined, ate: pedido("ate", "23:59") ?? undefined };
 }
 
 export async function GET(request: NextRequest) {
@@ -64,55 +41,23 @@ export async function GET(request: NextRequest) {
   if (barrado) return barrado;
 
   const agora = new Date();
-  const janela = recorte(
-    request,
-    new Date(agora.getTime() + ANTECEDENCIA_MIN * 60_000),
-    // A MESMA função que o materializador usa. Duas regras foi o que fez a
-    // rota mostrar 21 dias enquanto a série enchia 28.
-    horizonteDaAgenda(agora),
-  );
+  const janela = recorte(request);
 
-  const sessoes =
-    janela.ate <= janela.de
-      ? []
-      : await prisma.meeting.findMany({
-          where: {
-            type: "GROUP",
-            status: "SCHEDULED",
-            startsAt: { gte: janela.de, lte: janela.ate },
-            capacity: { not: null },
-          },
-          orderBy: { startsAt: "asc" },
-          take: TETO_SESSOES,
-          select: {
-            id: true,
-            startsAt: true,
-            endsAt: true,
-            capacity: true,
-            _count: {
-              select: { attendees: { where: { status: { in: ["INSCRITO", "CONFIRMADO"] } } } },
-            },
-          },
-        });
-
-  const comVaga = sessoes
-    .map((s) => ({
-      id: s.id,
-      inicioEm: s.startsAt.toISOString(),
-      duracaoMin: Math.round((s.endsAt.getTime() - s.startsAt.getTime()) / 60_000),
-      lotacao: s.capacity ?? 0,
-      inscritos: s._count.attendees,
-      vagas: Math.max(0, (s.capacity ?? 0) - s._count.attendees),
-    }))
-    .filter((s) => s.vagas > 0);
+  // A consulta mora em `lib/sessoes`, junto de `remarcar`, que precisa da MESMA
+  // lista: mostrar aqui uma sessão que a remarcação recusaria seria oferecer um
+  // horário que não existe.
+  const comVaga = await sessoesComVaga(agora, janela);
+  const ate = janela.ate && janela.ate < horizonteDaAgenda(agora)
+    ? janela.ate
+    : horizonteDaAgenda(agora);
 
   return Response.json(
     {
       timezone: TZ,
       /// Até quando a agenda vai. O funil pode dizer "aberta até 31 de
       /// outubro" em vez de deixar a pessoa rolar procurando o fim.
-      horizonteAte: janela.ate.toISOString(),
-      sessoes: comVaga,
+      horizonteAte: ate.toISOString(),
+      sessoes: comVaga.map((s) => ({ ...s, inicioEm: s.inicioEm.toISOString() })),
     },
     {
       headers: {

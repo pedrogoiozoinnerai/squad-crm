@@ -93,6 +93,27 @@ export async function guardaDeTaxa(
 }
 
 /**
+ * A mesma guarda, para uma Server Action.
+ *
+ * A action não recebe `Request` — ela lê os cabeçalhos da requisição em curso
+ * pelo `headers()` do Next. Devolve booleano em vez de `Response` porque quem
+ * chama não responde HTTP: redireciona.
+ */
+export async function passouDoLimite(
+  regra: NomeDaRegra,
+  agora = new Date(),
+): Promise<boolean> {
+  const { headers } = await import("next/headers");
+  const cabecalhos = await headers();
+  const veredicto = await contarEDecidir(
+    regra,
+    quemPede(cabecalhos.get("x-forwarded-for")),
+    agora,
+  );
+  return !veredicto.permitido;
+}
+
+/**
  * Faxina das janelas vencidas.
  *
  * Oportunista, chamada pelo cron que já roda — sem isto a tabela cresce uma

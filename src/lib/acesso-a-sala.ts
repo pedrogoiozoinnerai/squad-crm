@@ -38,6 +38,10 @@ export type NaSala = {
   host: boolean;
   attendeeId?: string;
   primeiroAcesso?: boolean;
+  /// Quantas vezes esta inscrição já trocou de horário. Vira o `SEQUENCE` do
+  /// convite de calendário — é ele que faz o compromisso ser ATUALIZADO no
+  /// aparelho do lead em vez de virar um segundo, com o horário velho junto.
+  versao?: number;
 };
 
 export type Recusa = { erro: string; status: number };
@@ -165,6 +169,7 @@ async function pelaConvite(token: string): Promise<NaSala | Recusa> {
       leadId: true,
       status: true,
       firstOpenedAt: true,
+      versao: true,
       lead: { select: { name: true } },
       meeting: { select: DA_REUNIAO },
     },
@@ -184,5 +189,6 @@ async function pelaConvite(token: string): Promise<NaSala | Recusa> {
     host: false,
     attendeeId: convidado.id,
     primeiroAcesso: convidado.firstOpenedAt === null,
+    versao: convidado.versao,
   };
 }

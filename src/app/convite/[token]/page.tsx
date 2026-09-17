@@ -29,6 +29,7 @@ const hora = new Intl.DateTimeFormat("pt-BR", {
 
 export default async function ConvitePage(props: PageProps<"/convite/[token]">) {
   const { token } = await props.params;
+  const { r } = await props.searchParams;
 
   const convite = await prisma.meetingAttendee.findUnique({
     where: { inviteToken: token },
@@ -57,6 +58,10 @@ export default async function ConvitePage(props: PageProps<"/convite/[token]">) 
 
   return (
     <EntradaDoConvite
+      // Vem da remarcação, que redireciona para cá: sem isso a pessoa troca o
+      // horário e volta para uma tela idêntica à anterior, sem nada dizendo que
+      // deu certo — e remarca de novo, achando que não funcionou.
+      acabouDeRemarcar={(Array.isArray(r) ? r[0] : r) === "remarcado"}
       agoraServidor={agora.toISOString()}
       marca={env("NEXT_PUBLIC_BRAND_NAME", "Squad.com")!}
       convite={{

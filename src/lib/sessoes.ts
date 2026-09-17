@@ -1,8 +1,13 @@
 import "server-only";
 
 import { novoTokenDeConvite } from "@/lib/codes";
+import { TZ } from "@/lib/dates";
 import { horizonteDaAgenda } from "@/lib/horizonte";
 import { prisma } from "@/lib/prisma";
+import {
+  motivoParaNaoRemarcar,
+  type ResultadoDaRemarcacao,
+} from "@/lib/remarcacao";
 import { slotsDaSerie } from "@/lib/slots";
 
 export type RelatorioDeMaterializacao = {
@@ -165,6 +170,183 @@ export async function inscrever(
   );
 
   return linhas.length > 0 ? { situacao: "inscrito", token } : { situacao: "lotada" };
+}
+
+/**
+ * Quanto tempo antes do início a sessão para de aceitar inscrição.
+ *
+ * Uma hora: o lead que termina o funil de manhã consegue entrar numa sessão
+ * ainda hoje, e é isso que se quer — marcar para daqui a três dias é perder a
+ * pessoa no auge do interesse.
+ *
+ * Não menos que isso porque a hora que sobra é o que o time usa: a sala abre
+ * 30 minutos antes, a confirmação precisa chegar e o closer precisa ver o nome
+ * na agenda antes de entrar.
+ */
+export const ANTECEDENCIA_MIN = 60;
+
+/// Teto de linhas. Fica logo acima do que uma série materializa num mês (650),
+/// para uma configuração errada não virar um JSON de megabytes.
+export const TETO_SESSOES = 700;
+
+export type SessaoComVaga = {
+  id: string;
+  inicioEm: Date;
+  duracaoMin: number;
+  lotacao: number;
+  inscritos: number;
+  vagas: number;
+};
+
+/**
+ * As sessões que ainda aceitam gente.
+ *
+ * Mora aqui, e não na rota, porque agora são DOIS lugares que precisam da mesma
+ * lista: o funil, para agendar, e a página de remarcar, para trocar de horário.
+ * Duas cópias desta consulta divergiriam — foi exatamente o que aconteceu com o
+ * horizonte, que valia 28 dias no materializador e 21 na rota.
+ */
+export async function sessoesComVaga(
+  agora = new Date(),
+  recorte?: { de?: Date; ate?: Date },
+): Promise<SessaoComVaga[]> {
+  const abre = new Date(agora.getTime() + ANTECEDENCIA_MIN * 60_000);
+  const fecha = horizonteDaAgenda(agora);
+
+  // O recorte só ESTREITA: nunca alarga o que a agenda abre.
+  const de = recorte?.de && recorte.de > abre ? recorte.de : abre;
+  const ate = recorte?.ate && recorte.ate < fecha ? recorte.ate : fecha;
+  if (ate <= de) return [];
+
+  const sessoes = await prisma.meeting.findMany({
+    where: {
+      type: "GROUP",
+      status: "SCHEDULED",
+      startsAt: { gte: de, lte: ate },
+      capacity: { not: null },
+    },
+    orderBy: { startsAt: "asc" },
+    take: TETO_SESSOES,
+    select: {
+      id: true,
+      startsAt: true,
+      endsAt: true,
+      capacity: true,
+      _count: {
+        select: { attendees: { where: { status: { in: ["INSCRITO", "CONFIRMADO"] } } } },
+      },
+    },
+  });
+
+  return sessoes
+    .map((s) => ({
+      id: s.id,
+      inicioEm: s.startsAt,
+      duracaoMin: Math.round((s.endsAt.getTime() - s.startsAt.getTime()) / 60_000),
+      lotacao: s.capacity ?? 0,
+      inscritos: s._count.attendees,
+      vagas: Math.max(0, (s.capacity ?? 0) - s._count.attendees),
+    }))
+    .filter((s) => s.vagas > 0);
+}
+
+/**
+ * Move uma inscrição para outra sessão, mantendo o mesmo convite.
+ *
+ * O `inviteToken` NÃO muda: o link que o lead guardou, o que está no `.ics` e o
+ * que ele mandou para um colega continuam valendo. Trocar o token faria a
+ * remarcação invalidar exatamente o que a pessoa acabou de salvar.
+ *
+ * A troca é UMA instrução com a conferência de lotação dentro, igual a
+ * `inscrever` e pelo mesmo motivo: entre ler "tem vaga" e gravar, outra pessoa
+ * pode ter entrado. Duas sessões cheias a 20 lugares com 600 inscrições por dia
+ * não é hipótese — é terça-feira.
+ */
+export async function remarcar(
+  inviteToken: string,
+  novoMeetingId: string,
+  agora = new Date(),
+): Promise<ResultadoDaRemarcacao> {
+  const inscricao = await prisma.meetingAttendee.findUnique({
+    where: { inviteToken },
+    select: {
+      id: true,
+      status: true,
+      meetingId: true,
+      leadId: true,
+      meeting: { select: { startsAt: true } },
+    },
+  });
+  if (!inscricao) return { tipo: "indisponivel" };
+
+  const motivo = motivoParaNaoRemarcar(inscricao);
+  if (motivo) return { tipo: "recusado", motivo };
+
+  if (inscricao.meetingId === novoMeetingId) {
+    // Clique repetido, ou a pessoa escolheu o horário em que já está. Não é
+    // erro, e gastar uma `versao` por isso faria o calendário dela piscar.
+    return { tipo: "ok", meetingId: novoMeetingId };
+  }
+
+  const alvo = await prisma.meeting.findUnique({
+    where: { id: novoMeetingId },
+    select: { id: true, capacity: true, status: true, startsAt: true, type: true },
+  });
+  if (!alvo || alvo.status !== "SCHEDULED" || alvo.type !== "GROUP") {
+    return { tipo: "indisponivel" };
+  }
+  // Não dá para remarcar para trás. A sessão que já começou continua fora,
+  // mesmo que a régua de entrada a aceitasse: escolher um horário que já passou
+  // é sempre engano de quem clica.
+  if (alvo.startsAt <= agora) return { tipo: "indisponivel" };
+
+  const linhas = await prisma.$queryRawUnsafe<{ id: string }[]>(
+    `UPDATE "${schema()}"."MeetingAttendee"
+        SET "meetingId" = $2,
+            versao = versao + 1,
+            status = 'INSCRITO',
+            "confirmedAt" = NULL,
+            -- Os campos derivados são da reunião ANTIGA. Sem zerar, o roster da
+            -- sessão nova nasceria dizendo que a pessoa já compareceu.
+            "joinedAt" = NULL,
+            "leftAt" = NULL,
+            "joinCount" = 0,
+            "totalSeconds" = 0,
+            attended = false,
+            "regraMinutos" = NULL
+      WHERE "inviteToken" = $1
+        AND status <> 'CANCELADO'
+        AND ($3::int IS NULL
+             OR (SELECT count(*) FROM "${schema()}"."MeetingAttendee"
+                  WHERE "meetingId" = $2 AND status IN ('INSCRITO','CONFIRMADO')) < $3)
+      RETURNING id`,
+    inviteToken,
+    novoMeetingId,
+    alvo.capacity,
+  );
+
+  if (linhas.length === 0) return { tipo: "lotada" };
+
+  // O vendedor precisa ver que mudou, e de onde para onde: um lead que aparece
+  // noutra sessão sem explicação parece erro do sistema.
+  const quando = (d: Date) =>
+    d.toLocaleString("pt-BR", { timeZone: TZ, dateStyle: "short", timeStyle: "short" });
+  await prisma.activity
+    .create({
+      data: {
+        kind: "MEETING_SCHEDULED",
+        title: `Remarcou a sessão para ${quando(alvo.startsAt)}`,
+        detail: inscricao.meeting
+          ? `antes era ${quando(inscricao.meeting.startsAt)} · pelo próprio convite`
+          : "pelo próprio convite",
+        leadId: inscricao.leadId,
+      },
+    })
+    // A remarcação JÁ aconteceu. Falhar aqui não pode desfazê-la nem devolver
+    // erro para quem acabou de ver o horário mudar na tela.
+    .catch((erro) => console.error("[sessoes] remarcação sem registro na linha do tempo:", erro));
+
+  return { tipo: "ok", meetingId: novoMeetingId };
 }
 
 /** O schema do app, já validado na subida do cliente. */

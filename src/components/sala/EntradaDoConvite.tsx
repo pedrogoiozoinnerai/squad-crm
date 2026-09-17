@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Video } from "lucide-react";
+import { ArrowRight, CalendarCheck, CalendarPlus, Check, Link2, Video } from "lucide-react";
 
 import { Contagem } from "@/components/sala/Contagem";
 
@@ -28,13 +28,37 @@ export function EntradaDoConvite({
   convite,
   agoraServidor,
   marca,
+  acabouDeRemarcar,
 }: {
   convite: DadosDoConvite;
   agoraServidor: string;
   marca: string;
+  /// Chegou aqui vindo da tela de remarcar, e deu certo.
+  acabouDeRemarcar?: boolean;
 }) {
   const router = useRouter();
   const [situacao, setSituacao] = useState(convite.situacao);
+  const [copiado, setCopiado] = useState(false);
+
+  /**
+   * Guardar o link é o que separa quem volta de quem some.
+   *
+   * Não há e-mail nem WhatsApp ligados: esta página é o único lugar onde o
+   * endereço existe. Quem fechar a aba sem guardar não tem como voltar — e não
+   * vai escrever para ninguém pedindo, vai simplesmente não aparecer.
+   */
+  const copiarLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2500);
+    } catch {
+      // Sem permissão de área de transferência (acontece em navegador embutido
+      // de aplicativo): seleciona a barra de endereço mentalmente e segue. Não
+      // vale quebrar a tela por causa disso.
+      setCopiado(false);
+    }
+  }, []);
 
   // A contagem chega a zero: o botão aparece sem recarregar a página. É o que
   // sustenta a promessa de "deixe esta página aberta".
@@ -80,6 +104,16 @@ export function EntradaDoConvite({
             />
             {cabecalho.etiqueta}
           </p>
+
+          {acabouDeRemarcar && (
+            <p
+              role="status"
+              className="mt-5 flex items-center justify-center gap-2 rounded-xl bg-waz-95 px-4 py-2.5 text-sm font-medium text-waz-20"
+            >
+              <CalendarCheck className="size-4 shrink-0" />
+              Pronto — seu horário foi alterado. O link continua o mesmo.
+            </p>
+          )}
 
           <h1 className="mt-4 text-center text-[38px] leading-[1.1] font-semibold tracking-tight text-balance">
             Olá, {convite.leadNome.split(" ")[0]}.
@@ -140,9 +174,33 @@ export function EntradaDoConvite({
             </button>
           )}
 
+          {/* As duas formas de não perder a reunião.
+              Aparecem enquanto ela não terminou, inclusive com a sala já
+              aberta: quem chegou adiantado ainda quer o alarme, e quem vai
+              entrar pelo celular quer o link no computador. */}
+          {(situacao === "esperando" || situacao === "aberta") && (
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <a
+                href={`/api/agenda/calendario?convite=${convite.token}`}
+                className="btn-ghost"
+                // `download` para o navegador salvar em vez de tentar exibir o
+                // texto do arquivo, que é o que o Chrome faz sem isto.
+                download="reuniao-squad.ics"
+              >
+                <CalendarPlus className="size-4" />
+                Adicionar ao calendário
+              </a>
+              <button type="button" onClick={() => void copiarLink()} className="btn-ghost">
+                {copiado ? <Check className="size-4" /> : <Link2 className="size-4" />}
+                {copiado ? "Link copiado" : "Copiar o link"}
+              </button>
+            </div>
+          )}
+
           {situacao === "esperando" && (
-            <p className="mt-6 text-center text-sm leading-relaxed text-muted text-balance">
-              Deixe esta página aberta — o botão de entrar aparece na hora da reunião.
+            <p className="mt-5 text-center text-sm leading-relaxed text-muted text-balance">
+              Guarde o link ou o convite do calendário — é por ele que você entra.
+              Deixando esta página aberta, o botão aparece na hora.
             </p>
           )}
 
