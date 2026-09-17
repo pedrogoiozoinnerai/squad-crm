@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
-import { salaDaReuniao } from "@/lib/livekit";
+import { identidadeDoUsuario, salaDaReuniao } from "@/lib/livekit";
 import { chamarLiveKit } from "@/lib/livekit-servidor";
 import { prisma } from "@/lib/prisma";
 
@@ -47,13 +47,42 @@ export async function POST(request: NextRequest) {
   }
 
   const sala = salaDaReuniao(meetingId);
-  const euMesmo = `u_${reuniao.ownerId}`;
+  // Quem está PEDINDO, não o dono da reunião.
+  //
+  // Era `u_${reuniao.ownerId}`, e errava sempre que um admin conduzia a sessão
+  // de outra pessoa: "silenciar todos" pulava o dono ausente e calava o admin
+  // que estava apresentando, e "remover" deixava o admin remover a si mesmo.
+  const euMesmo = identidadeDoUsuario(user.id);
   const comoAdmin = { roomAdmin: true, room: sala };
 
   try {
     switch (acao) {
       case "encerrar":
-        await chamarLiveKit("livekit.RoomService/DeleteRoom", { room: sala }, comoAdmin);
+        // A sala cai para todo mundo…
+        //
+        // `roomCreate`, e NÃO `roomAdmin`: são permissões diferentes no
+        // LiveKit. `roomAdmin` administra quem está dentro — silenciar,
+        // remover, mudar permissão. Destruir a sala é do mesmo grupo que
+        // criá-la. Com `roomAdmin` o servidor respondia
+        // `401 permissions denied`, o botão devolvia "O LiveKit recusou a
+        // ação", e encerrar a sessão para todos simplesmente não funcionava.
+        await chamarLiveKit(
+          "livekit.RoomService/DeleteRoom",
+          { room: sala },
+          { roomCreate: true },
+        );
+        // …e a reunião fica encerrada de verdade.
+        //
+        // Sem esta segunda parte, "encerrar para todos" derrubava a sala e
+        // pronto: o link continuava válido, e qualquer pessoa que recarregasse
+        // a página reabria a sala e ficava lá sozinha esperando. Encerrar é uma
+        // decisão sobre a REUNIÃO, não sobre a conexão.
+        //
+        // `DONE` e não `CANCELED`: ela aconteceu.
+        await prisma.meeting.update({
+          where: { id: meetingId },
+          data: { status: "DONE" },
+        });
         break;
 
       case "remover": {
@@ -103,8 +132,20 @@ export async function POST(request: NextRequest) {
                 identity: p.identity,
                 permission: {
                   can_subscribe: true,
-                  can_publish: acao === "destravar",
+                  can_publish: true,
                   can_publish_data: true,
+                  // Travar tira o MICROFONE, não tudo.
+                  //
+                  // Era `can_publish: false`, que derruba junto a câmera e o
+                  // compartilhamento de tela — então travar os microfones
+                  // durante uma apresentação impedia o lead de mostrar a tela
+                  // dele quando o closer pedia, e ninguém ligava uma coisa à
+                  // outra. `can_publish_sources` diz o que pode publicar em vez
+                  // de ligar e desligar tudo.
+                  can_publish_sources:
+                    acao === "destravar"
+                      ? ["CAMERA", "MICROPHONE", "SCREEN_SHARE", "SCREEN_SHARE_AUDIO"]
+                      : ["CAMERA", "SCREEN_SHARE", "SCREEN_SHARE_AUDIO"],
                 },
               },
               comoAdmin,

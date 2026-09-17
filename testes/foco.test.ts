@@ -127,6 +127,68 @@ describe("foco na sala", () => {
   });
 });
 
+describe("tela compartilhada", () => {
+  it("ganha do falante — era o bug de 'compartilhei e ninguém viu'", () => {
+    // Sem esta regra o quadro grande seguia a fala, e quem compartilhava não
+    // estava necessariamente falando: a tela ia para a fita lateral do tamanho
+    // de um selo, com o slide ilegível.
+    let f = proximoFoco(FOCO_VAZIO, { candidato: "u_ana", presentes: TODOS }, 0);
+    f = proximoFoco(f, { candidato: "u_ana", presentes: TODOS, compartilhando: "l_bruno" }, 100);
+    assert.equal(f.identidade, "l_bruno");
+  });
+
+  it("não espera sustentação — ninguém compartilha por engano", () => {
+    const f = proximoFoco(
+      FOCO_VAZIO,
+      { candidato: null, presentes: TODOS, compartilhando: "c_carla" },
+      0,
+    );
+    assert.equal(f.identidade, "c_carla");
+  });
+
+  it("segura o foco enquanto a tela estiver no ar, mesmo com outro falando", () => {
+    let f = proximoFoco(
+      FOCO_VAZIO,
+      { candidato: null, presentes: TODOS, compartilhando: "l_bruno" },
+      0,
+    );
+    for (let t = 1000; t <= 20000; t += 1000) {
+      f = proximoFoco(f, { candidato: "u_ana", presentes: TODOS, compartilhando: "l_bruno" }, t);
+    }
+    assert.equal(f.identidade, "l_bruno", "a fala de Ana não roubou a tela");
+  });
+
+  it("parar de compartilhar devolve o foco à conversa", () => {
+    let f = proximoFoco(
+      FOCO_VAZIO,
+      { candidato: null, presentes: TODOS, compartilhando: "l_bruno" },
+      0,
+    );
+    f = proximoFoco(f, { candidato: "u_ana", presentes: TODOS }, 1000);
+    f = proximoFoco(f, { candidato: "u_ana", presentes: TODOS }, 1000 + SUSTENTACAO_MS);
+    assert.equal(f.identidade, "u_ana");
+  });
+
+  it("quem compartilha e sai da sala não trava o quadro", () => {
+    let f = proximoFoco(
+      FOCO_VAZIO,
+      { candidato: null, presentes: TODOS, compartilhando: "l_bruno" },
+      0,
+    );
+    f = proximoFoco(f, { candidato: null, presentes: ["u_ana"], compartilhando: "l_bruno" }, 100);
+    assert.equal(f.identidade, "u_ana");
+  });
+
+  it("o mesmo estado volta idêntico quando a tela continua no ar", () => {
+    const f = proximoFoco(
+      FOCO_VAZIO,
+      { candidato: null, presentes: TODOS, compartilhando: "l_bruno" },
+      0,
+    );
+    assert.equal(proximoFoco(f, { candidato: null, presentes: TODOS, compartilhando: "l_bruno" }, 50), f);
+  });
+});
+
 describe("quando reavaliar", () => {
   it("sem candidato, não há o que esperar", () => {
     assert.equal(quandoReavaliar(FOCO_VAZIO, 0), null);

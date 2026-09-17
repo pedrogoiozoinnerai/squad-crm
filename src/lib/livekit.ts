@@ -130,6 +130,11 @@ export function tokenDeAcesso({
       canPublish: true,
       canSubscribe: true,
       canPublishData: true,
+      // Sem isto, `setAttributes` é RECUSADO pelo servidor — e levantar a mão
+      // falhava em silêncio: o botão acendia no aparelho de quem clicou e mais
+      // ninguém via nada. `attributes` é o canal que replica a mão para a sala
+      // inteira, e ele exige esta concessão.
+      canUpdateOwnMetadata: true,
       // Só o host administra a sala. Sem isso o lead poderia remover o vendedor.
       roomAdmin: host,
     },

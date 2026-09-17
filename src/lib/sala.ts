@@ -28,6 +28,15 @@ export function situacaoDaSala(
   agora: Date,
 ): SituacaoDaSala {
   if (reuniao.status === "CANCELED") return "cancelada";
+
+  // `DONE` fecha a sala, mesmo dentro da janela de horário.
+  //
+  // Sem isto, "encerrar a sessão para todos" só derrubava a conexão: o link
+  // continuava valendo, e quem recarregasse a página reabria a sala e ficava
+  // lá sozinho esperando alguém. Encerrar é uma decisão sobre a REUNIÃO, e ela
+  // precisa sobreviver ao F5.
+  if (reuniao.status === "DONE") return "encerrada";
+
   const { abreEm, fechaEm } = janelaDaSala(reuniao);
   if (agora < abreEm) return "esperando";
   if (agora > fechaEm) return "encerrada";

@@ -57,11 +57,32 @@ export const FOCO_VAZIO: EstadoDoFoco = { identidade: null, candidato: null };
  */
 export function proximoFoco(
   estado: EstadoDoFoco,
-  entrada: { candidato: string | null; presentes: readonly string[] },
+  entrada: {
+    candidato: string | null;
+    presentes: readonly string[];
+    /// Quem está compartilhando a tela, se alguém.
+    compartilhando?: string | null;
+  },
   agora: number,
   sustentacaoMs: number = SUSTENTACAO_MS,
 ): EstadoDoFoco {
-  const { candidato, presentes } = entrada;
+  const { candidato, presentes, compartilhando } = entrada;
+
+  // ── Tela compartilhada ganha de tudo ────────────────────────────────────
+  //
+  // Sem esta regra, compartilhar a tela simplesmente NÃO APARECIA para os
+  // outros: o quadro grande seguia a fala, e quem compartilhava não estava
+  // necessariamente falando. A tela ia parar na fita lateral, do tamanho de um
+  // selo, com o slide ilegível.
+  //
+  // Vem antes até da saída de quem está em foco, porque quem compartilha está
+  // presente por definição — e não tem sustentação: ninguém compartilha tela
+  // por engano durante 900ms.
+  if (compartilhando && presentes.includes(compartilhando)) {
+    return estado.identidade === compartilhando
+      ? estado
+      : { identidade: compartilhando, candidato: null };
+  }
 
   const aindaEstaAqui = estado.identidade !== null && presentes.includes(estado.identidade);
   if (!aindaEstaAqui) {

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import type { Room } from "livekit-client";
 
+import { aparelhosNaTela, type AparelhoNaTela } from "@/lib/aparelhos";
+
 /**
  * Troca de câmera, microfone ou saída de áudio no meio da call.
  *
@@ -11,6 +13,18 @@ import type { Room } from "livekit-client";
  * antessala pergunta — ele entra em cima da hora, e até aqui a única saída era
  * sair e voltar.
  */
+/**
+ * É um celular?
+ *
+ * Por ponteiro grosso e toque, não por largura de tela: a janela estreita de um
+ * navegador no computador não tem câmera traseira, e um tablet em paisagem tem.
+ * `pointer: coarse` é o que separa dedo de mouse.
+ */
+function ehCelular(): boolean {
+  if (typeof window === "undefined" || !window.matchMedia) return false;
+  return window.matchMedia("(pointer: coarse)").matches;
+}
+
 export function SeletorDeAparelho({
   sala,
   tipo,
@@ -20,7 +34,7 @@ export function SeletorDeAparelho({
   tipo: MediaDeviceKind;
   aoFechar: () => void;
 }) {
-  const [lista, setLista] = useState<MediaDeviceInfo[]>([]);
+  const [lista, setLista] = useState<AparelhoNaTela[]>([]);
   const [atual, setAtual] = useState<string | undefined>(sala.getActiveDevice(tipo));
   const [trocando, setTrocando] = useState<string | null>(null);
   const [falha, setFalha] = useState<string | null>(null);
@@ -30,7 +44,11 @@ export function SeletorDeAparelho({
     // concedida — antes disso a lista vem com nomes vazios. Por isso a troca
     // fica aqui dentro, e não na antessala antes de pedir acesso.
     const todos = await navigator.mediaDevices.enumerateDevices();
-    setLista(todos.filter((d) => d.kind === tipo));
+    // A limpeza vive em `lib/aparelhos`, pura: um iPhone devolve seis câmeras
+    // (frontal, traseira, grande-angular, teleobjetiva, dupla, tripla) e o
+    // mesmo microfone três vezes. Nada disso é escolha que alguém queira fazer
+    // no meio de uma apresentação.
+    setLista(aparelhosNaTela(todos, tipo, ehCelular()));
   }, [tipo]);
 
   useEffect(() => {
@@ -111,7 +129,7 @@ export function SeletorDeAparelho({
               <span className="w-4 shrink-0">
                 {d.deviceId === atual && <Check className="size-4" />}
               </span>
-              <span className="min-w-0 flex-1 truncate">{d.label || "Aparelho sem nome"}</span>
+              <span className="min-w-0 flex-1 truncate">{d.nome}</span>
             </button>
           </li>
         ))}

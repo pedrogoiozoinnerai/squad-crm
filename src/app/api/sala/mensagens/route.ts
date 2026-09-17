@@ -2,7 +2,13 @@ import type { NextRequest } from "next/server";
 
 import { portaDoCorpo, quemEstaNaSala } from "@/lib/acesso-a-sala";
 import { guardaDeTaxa } from "@/lib/limite-servidor";
-import { LIMITE_DO_TEXTO, POR_SALA, saneiaMensagem } from "@/lib/mensagens-da-sala";
+import {
+  LIMITE_DO_ROTULO,
+  LIMITE_DO_TEXTO,
+  linkSeguro,
+  POR_SALA,
+  saneiaMensagem,
+} from "@/lib/mensagens-da-sala";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -45,7 +51,15 @@ export async function GET(request: NextRequest) {
     // Teto: numa sessão de 40 pessoas o chat cresce, e quem entra atrasado não
     // precisa de duas horas de conversa para acompanhar o que está sendo dito.
     take: POR_SALA,
-    select: { id: true, identity: true, autor: true, texto: true, createdAt: true },
+    select: {
+      id: true,
+      identity: true,
+      autor: true,
+      texto: true,
+      createdAt: true,
+      tipo: true,
+      url: true,
+    },
   });
 
   return Response.json(
@@ -60,6 +74,8 @@ export async function GET(request: NextRequest) {
         autor: m.autor,
         texto: m.texto,
         em: m.createdAt.toISOString(),
+        tipo: m.tipo,
+        url: m.url,
       })),
     },
     { headers: { "cache-control": "no-store" } },
@@ -78,6 +94,8 @@ export async function POST(request: NextRequest) {
     nome?: string;
     identidade?: string;
     texto?: string;
+    tipo?: "TEXTO" | "OFERTA";
+    url?: string;
   };
   try {
     corpo = await request.json();
@@ -85,7 +103,11 @@ export async function POST(request: NextRequest) {
     return Response.json({ erro: "Corpo inválido." }, { status: 400 });
   }
 
-  const texto = saneiaMensagem(corpo.texto ?? "");
+  const oferta = corpo.tipo === "OFERTA";
+  const texto = oferta
+    ? saneiaMensagem(corpo.texto ?? "").slice(0, LIMITE_DO_ROTULO)
+    : saneiaMensagem(corpo.texto ?? "");
+
   if (!texto) {
     return Response.json(
       { erro: `A mensagem precisa ter entre 1 e ${LIMITE_DO_TEXTO} caracteres.` },
@@ -93,8 +115,26 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // O link é validado AQUI também, não só no navegador de quem mandou: esta
+  // rota é pública para quem tem convite, e do outro lado ele vira um botão que
+  // trinta pessoas clicam.
+  const url = oferta ? linkSeguro(corpo.url ?? "") : null;
+  if (oferta && !url) {
+    return Response.json(
+      { erro: "O link da oferta precisa ser um endereço http ou https." },
+      { status: 400 },
+    );
+  }
+
   const quem = await quemEstaNaSala(portaDoCorpo(corpo));
   if ("erro" in quem) return Response.json({ erro: quem.erro }, { status: quem.status });
+
+  // Só o anfitrião oferta. Sem esta linha, qualquer pessoa com o link do
+  // convite manda um botão de pagamento para a sala inteira — que é a fraude
+  // mais fácil que este produto permitiria.
+  if (oferta && !quem.host) {
+    return Response.json({ erro: "Só o anfitrião pode enviar uma oferta." }, { status: 403 });
+  }
 
   const gravada = await prisma.roomMessage.create({
     data: {
@@ -104,6 +144,8 @@ export async function POST(request: NextRequest) {
       // aparecer como o vendedor.
       autor: quem.nome,
       texto,
+      tipo: oferta ? "OFERTA" : "TEXTO",
+      url,
     },
     select: { id: true, createdAt: true },
   });

@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, MessageSquare, SendHorizontal } from "lucide-react";
+import { AlertCircle, MessageSquare, SendHorizontal, ShoppingCart, X } from "lucide-react";
 
-import { LIMITE_DO_TEXTO, type Mensagem } from "@/lib/mensagens-da-sala";
+import { LIMITE_DO_ROTULO, LIMITE_DO_TEXTO, type Mensagem } from "@/lib/mensagens-da-sala";
 
 /**
  * O painel do chat.
@@ -17,12 +17,23 @@ export function Conversa({
   mensagens,
   carregando,
   aoEnviar,
+  aoOfertar,
+  host,
 }: {
   mensagens: Mensagem[];
   carregando: boolean;
   aoEnviar: (texto: string) => void;
+  /// Só chega preenchido para o anfitrião.
+  aoOfertar?: (rotulo: string, url: string) => void;
+  host?: boolean;
 }) {
   const [texto, setTexto] = useState("");
+  const [ofertando, setOfertando] = useState(false);
+  // O último link fica na mão: o closer manda a mesma oferta em sessões
+  // seguidas, e pedir para colar de novo a cada uma é atrito na hora em que ele
+  // menos pode parar.
+  const [rotulo, setRotulo] = useState("Quero começar agora");
+  const [url, setUrl] = useState("");
   const lista = useRef<HTMLDivElement>(null);
   const grudado = useRef(true);
 
@@ -86,7 +97,22 @@ export function Conversa({
                 </p>
                 {/* `break-words`: um link colado sem espaço estoura a coluna.
                     `whitespace-pre-wrap`: quebra de linha digitada é intenção. */}
-                <p className="mt-0.5 text-sm break-words whitespace-pre-wrap">{m.texto}</p>
+                {m.tipo === "OFERTA" && m.url ? (
+                  // O botão que o closer manda no fim do pitch. Grande e com
+                  // alvo de toque de verdade: quem clica está no celular,
+                  // ouvindo, e tem alguns segundos de decisão.
+                  <a
+                    href={m.url}
+                    target="_blank"
+                    rel="noopener noreferrer nofollow"
+                    className="mt-1.5 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-foreground px-4 text-[15px] font-semibold text-background transition hover:opacity-85"
+                  >
+                    <ShoppingCart className="size-4 shrink-0" />
+                    <span className="truncate">{m.texto}</span>
+                  </a>
+                ) : (
+                  <p className="mt-0.5 text-sm break-words whitespace-pre-wrap">{m.texto}</p>
+                )}
                 {m.naoGravada && (
                   <p className="mt-1 flex items-center gap-1.5 text-[11px] text-amber-700">
                     <AlertCircle className="size-3 shrink-0" />
@@ -99,7 +125,67 @@ export function Conversa({
         )}
       </div>
 
+      {ofertando && aoOfertar && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!rotulo.trim() || !url.trim()) return;
+            aoOfertar(rotulo, url);
+            setOfertando(false);
+          }}
+          className="space-y-2 border-t border-sala-linha bg-surface-2 p-3"
+        >
+          <p className="flex items-center gap-2 text-[11px] font-semibold tracking-[0.12em] text-muted uppercase">
+            <ShoppingCart className="size-3.5" />
+            Botão de compra
+            <button
+              type="button"
+              onClick={() => setOfertando(false)}
+              aria-label="Cancelar"
+              className="ml-auto grid size-6 place-items-center rounded-md hover:bg-surface"
+            >
+              <X className="size-3.5" />
+            </button>
+          </p>
+          <input
+            value={rotulo}
+            onChange={(e) => setRotulo(e.target.value)}
+            placeholder="Texto do botão"
+            maxLength={LIMITE_DO_ROTULO}
+            aria-label="Texto do botão"
+            className="w-full rounded-xl bg-surface px-3.5 py-2.5 text-base outline-none focus:ring-2 focus:ring-foreground/15 sm:text-sm"
+          />
+          <input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="Link do pagamento"
+            inputMode="url"
+            autoComplete="url"
+            aria-label="Link do pagamento"
+            className="w-full rounded-xl bg-surface px-3.5 py-2.5 text-base outline-none focus:ring-2 focus:ring-foreground/15 sm:text-sm"
+          />
+          <button
+            type="submit"
+            disabled={!rotulo.trim() || !url.trim()}
+            className="w-full rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background transition hover:opacity-85 disabled:opacity-30"
+          >
+            Enviar para a sala
+          </button>
+        </form>
+      )}
+
       <form onSubmit={enviar} className="flex items-center gap-2 border-t border-sala-linha p-3">
+        {host && aoOfertar && !ofertando && (
+          <button
+            type="button"
+            onClick={() => setOfertando(true)}
+            aria-label="Enviar botão de compra"
+            title="Enviar botão de compra"
+            className="grid size-11 shrink-0 place-items-center rounded-xl ring-1 ring-sala-linha transition hover:bg-surface-2"
+          >
+            <ShoppingCart className="size-4" />
+          </button>
+        )}
         <input
           value={texto}
           onChange={(e) => setTexto(e.target.value)}

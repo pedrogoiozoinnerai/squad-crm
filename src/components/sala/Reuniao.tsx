@@ -10,6 +10,7 @@ import { SeletorDeAparelho } from "@/components/sala/SeletorDeAparelho";
 import { Participantes } from "@/components/sala/Participantes";
 import { Quadro } from "@/components/sala/Quadro";
 import { useConversa, type Credencial } from "@/components/sala/useConversa";
+import { lerFalhaDaSala } from "@/lib/falhas-da-sala";
 import { useSala } from "@/components/sala/useSala";
 
 type Painel = "participantes" | "chat" | null;
@@ -47,13 +48,31 @@ export function Reuniao({
     };
   }, [sala, aoSair]);
 
+  /**
+   * Executa uma ação da sala e, se falhar, DIZ o que fazer.
+   *
+   * O aviso antes era `Não foi possível ${oQue}. ${erro.message}` — e
+   * `erro.message` é texto do WebRTC escrito para quem depura: "Client
+   * initiated disconnect", "NotReadableError", "could not establish pc
+   * connection". No meio de uma apresentação, com um lead do outro lado, isso
+   * não é informação: é susto.
+   *
+   * Agora o detalhe técnico vai para o console, onde alguém pode investigar, e
+   * a tela recebe a frase que termina numa ação — o mesmo catálogo que a
+   * antessala já usa.
+   */
   const proteger = useCallback(async (acao: () => Promise<unknown>, oQue: string) => {
     try {
       await acao();
       setAviso(null);
     } catch (erro) {
-      // Falha no meio da call não pode ser silenciosa nem derrubar a chamada.
-      setAviso(`Não foi possível ${oQue}. ${(erro as Error)?.message ?? ""}`.trim());
+      console.error(`[sala] ${oQue} falhou:`, erro);
+      const falha = lerFalhaDaSala(erro, erro instanceof ErroDaRota ? "api" : "conexao");
+      setAviso(
+        erro instanceof ErroDaRota
+          ? falha.titulo
+          : `Não foi possível ${oQue}. ${falha.acao || "Tente de novo."}`,
+      );
     }
   }, []);
 
@@ -65,7 +84,12 @@ export function Reuniao({
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ meetingId, acao, identidade }),
         });
-        if (!r.ok) throw new Error((await r.json()).erro ?? "recusado");
+        if (!r.ok) {
+          const corpo = await r.json().catch(() => null);
+          // A mensagem da NOSSA rota já vem em português e com a razão exata
+          // ("Esta reunião não é sua"). Reescrevê-la perderia precisão.
+          throw new ErroDaRota(corpo?.erro ?? "A sala recusou a ação.");
+        }
       }, descricaoDaAcao(acao)),
     [meetingId, proteger],
   );
@@ -195,6 +219,8 @@ export function Reuniao({
               mensagens={conversa.mensagens}
               carregando={conversa.carregando}
               aoEnviar={conversa.enviar}
+              aoOfertar={conversa.enviarOferta}
+              host={host}
             />
           </PainelLateral>
         )}
@@ -251,6 +277,15 @@ export function Reuniao({
     </div>
   );
 }
+
+/**
+ * Erro que veio da nossa rota, e não do WebRTC.
+ *
+ * Existe para `proteger` saber que a mensagem JÁ está pronta para ser lida —
+ * sem isso ela cairia no catálogo de falhas de conexão e viraria "confira sua
+ * internet" quando o problema era "esta reunião não é sua".
+ */
+class ErroDaRota extends Error {}
 
 function descricaoDaAcao(acao: string) {
   return {

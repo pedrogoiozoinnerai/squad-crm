@@ -67,11 +67,17 @@ body {
   @apply rounded-2xl border border-line bg-surface;
 }
 
+/* `text-base` no celular, `text-sm` do `sm` para cima.
+   Não é gosto: o Safari do iPhone dá ZOOM sozinho ao focar um campo com fonte
+   menor que 16px, e a página fica ampliada até a pessoa perceber e voltar à
+   mão. Era o que acontecia ao digitar o nome na antessala da sala — a call
+   começava com a tela torta. */
 @utility field {
-  @apply w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm
+  @apply w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base
          outline-none transition
          placeholder:text-muted/70
-         focus:border-waz-50 focus:ring-4 focus:ring-waz-90;
+         focus:border-waz-50 focus:ring-4 focus:ring-waz-90
+         sm:text-sm;
 }
 
 @utility btn {

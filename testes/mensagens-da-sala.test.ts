@@ -6,6 +6,7 @@ import {
   juntar,
   lerEnvelope,
   LIMITE_DO_TEXTO,
+  linkSeguro,
   marcarNaoGravada,
   saneiaMensagem,
   type Mensagem,
@@ -116,9 +117,60 @@ describe("a mensagem que acabou de ser digitada", () => {
   });
 });
 
+describe("o link da oferta", () => {
+  it("aceita http e https", () => {
+    assert.equal(linkSeguro("https://pay.squad.com/x"), "https://pay.squad.com/x");
+    assert.ok(linkSeguro("http://pay.squad.com/x"));
+  });
+
+  it("assume https em quem colou sem esquema", () => {
+    // Ninguém digita "https://" ao copiar um link de pagamento.
+    assert.equal(linkSeguro("pay.squad.com/x"), "https://pay.squad.com/x");
+  });
+
+  it("RECUSA javascript: — é o caso que importa", () => {
+    // Quem clica são trinta pessoas num botão grande que o anfitrião mandou.
+    // Um `javascript:` ali roda dentro da nossa origem, com o cookie de sessão
+    // de quem for do time.
+    assert.equal(linkSeguro("javascript:alert(1)"), null);
+    assert.equal(linkSeguro("JavaScript:alert(1)"), null);
+    assert.equal(linkSeguro("  javascript:alert(1)  "), null);
+  });
+
+  it("recusa data: e blob:, que são a mesma porta por outro nome", () => {
+    assert.equal(linkSeguro("data:text/html,<script>alert(1)</script>"), null);
+    assert.equal(linkSeguro("blob:https://squad.com/abc"), null);
+  });
+
+  it("recusa o que não é endereço", () => {
+    assert.equal(linkSeguro(""), null);
+    assert.equal(linkSeguro("   "), null);
+    assert.equal(linkSeguro("compre agora"), null, "texto sem ponto não é domínio");
+  });
+});
+
 describe("envelope do canal de dados", () => {
   it("lê o que é nosso", () => {
     assert.deepEqual(lerEnvelope({ tipo: "chat", texto: " oi " }), { tipo: "chat", texto: "oi" });
+  });
+
+  it("lê uma oferta", () => {
+    assert.deepEqual(lerEnvelope({ tipo: "oferta", texto: " Comprar ", url: "pay.squad.com/x" }), {
+      tipo: "oferta",
+      texto: "Comprar",
+      url: "https://pay.squad.com/x",
+    });
+  });
+
+  it("oferta com link perigoso NÃO vira mensagem", () => {
+    // Validado na CHEGADA também, não só na saída: quem manda pelo canal de
+    // dados é outro navegador, e um cliente adulterado publicaria o que
+    // quisesse.
+    assert.equal(lerEnvelope({ tipo: "oferta", texto: "Comprar", url: "javascript:alert(1)" }), null);
+  });
+
+  it("oferta sem rótulo não vira botão em branco", () => {
+    assert.equal(lerEnvelope({ tipo: "oferta", texto: "  ", url: "https://a.com" }), null);
   });
 
   it("ignora o que não é", () => {

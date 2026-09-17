@@ -187,10 +187,6 @@ export function BarraDeControles({
         <Seletor dica="Escolher câmera" aoClicar={acoes.escolherCamera} />
 
         <span className="hidden sm:contents">
-          <Botao dica="Desfoque de fundo entra junto com a gravação" desabilitado>
-            <Aperture className="size-5" />
-          </Botao>
-
           <Botao dica="Saída de áudio" aoClicar={acoes.escolherSaida}>
             <Volume2 className="size-5" />
           </Botao>

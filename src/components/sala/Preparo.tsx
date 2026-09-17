@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, ArrowRight, Camera, CameraOff, Mic, MicOff, Sparkles } from "lucide-react";
+import { AlertCircle, ArrowRight, Camera, CameraOff, Mic, MicOff } from "lucide-react";
 
 import { desligar, lerFalha, type FalhaDeMidia } from "@/components/sala/dispositivos";
 
@@ -188,15 +188,6 @@ export function Preparo({
             desligadoIcone={<MicOff className="size-4" />}
             rotulo={microfone ? "Microfone ligado" : "Microfone desligado"}
           />
-          <button
-            type="button"
-            disabled
-            title="Desfoque de fundo entra junto com a gravação"
-            className="chip cursor-not-allowed border border-line bg-surface px-3 py-2 text-muted opacity-60"
-          >
-            <Sparkles className="size-4" />
-            Desfoque · em breve
-          </button>
         </div>
 
         <div className="mt-7 flex flex-col-reverse gap-2 sm:flex-row">

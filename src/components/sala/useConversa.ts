@@ -7,6 +7,8 @@ import {
   confirmar,
   juntar,
   lerEnvelope,
+  LIMITE_DO_ROTULO,
+  linkSeguro,
   marcarNaoGravada,
   saneiaMensagem,
   type Mensagem,
@@ -73,6 +75,8 @@ export type Conversa = {
   /// O histórico ainda está vindo.
   carregando: boolean;
   enviar: (texto: string) => void;
+  /// Manda o botão de compra. Só o anfitrião — a rota recusa os outros.
+  enviarOferta: (rotulo: string, url: string) => void;
   marcarLidas: () => void;
 };
 
@@ -106,13 +110,23 @@ export function useConversa(sala: Room, credencial: Credencial, painelAberto: bo
         const minhaIdentidade: string = dados.identidade ?? credencial.identidade;
 
         const doBanco: Mensagem[] = (dados.mensagens ?? []).map(
-          (m: { id: string; identidade: string; autor: string; texto: string; em: string }) => ({
+          (m: {
+            id: string;
+            identidade: string;
+            autor: string;
+            texto: string;
+            em: string;
+            tipo?: "TEXTO" | "OFERTA";
+            url?: string | null;
+          }) => ({
             id: m.id,
             identidade: m.identidade,
             autor: m.autor,
             texto: m.texto,
             em: new Date(m.em),
             minha: m.identidade === minhaIdentidade,
+            tipo: m.tipo,
+            url: m.url,
           }),
         );
 
@@ -156,6 +170,8 @@ export function useConversa(sala: Room, credencial: Credencial, painelAberto: bo
         texto: envelope.texto,
         em: new Date(),
         minha: false,
+        tipo: envelope.tipo === "oferta" ? "OFERTA" : "TEXTO",
+        url: envelope.tipo === "oferta" ? envelope.url : null,
       };
 
       setMensagens((atuais) => juntar(atuais, [chegou]));
@@ -218,7 +234,68 @@ export function useConversa(sala: Room, credencial: Credencial, painelAberto: bo
     [sala, credencial],
   );
 
+  /**
+   * O botão de compra, no fim do pitch.
+   *
+   * Mesmo caminho da mensagem comum — canal de dados para chegar na hora,
+   * rota para sobreviver —, com dois campos a mais. A rota confere que quem
+   * manda é o anfitrião; aqui a tela só oferece o controle a ele, que é
+   * conveniência, não segurança.
+   */
+  const enviarOferta = useCallback(
+    (rotuloBruto: string, urlBruta: string) => {
+      const rotulo = saneiaMensagem(rotuloBruto).slice(0, LIMITE_DO_ROTULO);
+      const url = linkSeguro(urlBruta);
+      if (!rotulo || !url) return;
+
+      const idLocal = `local:${crypto.randomUUID()}`;
+      setMensagens((atuais) =>
+        juntar(atuais, [
+          {
+            id: idLocal,
+            identidade: credencial.identidade,
+            autor: sala.localParticipant.name || "Você",
+            texto: rotulo,
+            em: new Date(),
+            minha: true,
+            aCaminho: true,
+            tipo: "OFERTA",
+            url,
+          },
+        ]),
+      );
+
+      void sala.localParticipant
+        .publishData(codificador.encode(JSON.stringify({ tipo: "oferta", texto: rotulo, url })), {
+          reliable: true,
+        })
+        .catch((erro) => console.error("[sala] oferta não saiu pelo canal:", erro));
+
+      void (async () => {
+        try {
+          const r = await fetch("/api/sala/mensagens", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              ...corpoDaCredencial(credencial),
+              texto: rotulo,
+              tipo: "OFERTA",
+              url,
+            }),
+          });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const gravada = await r.json();
+          setMensagens((atuais) => confirmar(atuais, idLocal, gravada));
+        } catch (erro) {
+          console.error("[sala] oferta não foi gravada:", erro);
+          setMensagens((atuais) => marcarNaoGravada(atuais, idLocal));
+        }
+      })();
+    },
+    [sala, credencial],
+  );
+
   const marcarLidas = useCallback(() => setNaoLidas(0), []);
 
-  return { mensagens, naoLidas, carregando, enviar, marcarLidas };
+  return { mensagens, naoLidas, carregando, enviar, enviarOferta, marcarLidas };
 }

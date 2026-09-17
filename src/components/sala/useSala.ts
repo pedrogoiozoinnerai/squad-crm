@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { RoomEvent, type Participant, type Room } from "livekit-client";
+import { RoomEvent, Track, type Participant, type Room } from "livekit-client";
 
 import { FOCO_VAZIO, proximoFoco, quandoReavaliar, type EstadoDoFoco } from "@/lib/foco";
 
@@ -63,8 +63,20 @@ export function useSala(sala: Room | null) {
       const candidato =
         sala.activeSpeakers.find((p) => p.identity !== eu.identity)?.identity ?? null;
 
+      // Quem está com a tela no ar. Ganha do falante — compartilhar tela é a
+      // intenção mais explícita que existe numa call, e antes ela ia parar na
+      // fita lateral do tamanho de um selo.
+      const compartilhando =
+        [eu, ...sala.remoteParticipants.values()].find((p) =>
+          p.getTrackPublication(Track.Source.ScreenShare),
+        )?.identity ?? null;
+
       const agora = Date.now();
-      const proximo = proximoFoco(focoAtual.current, { candidato, presentes }, agora);
+      const proximo = proximoFoco(
+        focoAtual.current,
+        { candidato, presentes, compartilhando },
+        agora,
+      );
       if (proximo !== focoAtual.current) {
         focoAtual.current = proximo;
         setFoco(proximo);
@@ -82,6 +94,14 @@ export function useSala(sala: Room | null) {
       RoomEvent.ActiveSpeakersChanged,
       RoomEvent.ParticipantConnected,
       RoomEvent.ParticipantDisconnected,
+      // Os de trilha entram porque começar a compartilhar não reavaliava o foco:
+      // a tela só apareceria na próxima vez que alguém falasse.
+      RoomEvent.TrackPublished,
+      RoomEvent.TrackUnpublished,
+      RoomEvent.LocalTrackPublished,
+      RoomEvent.LocalTrackUnpublished,
+      RoomEvent.TrackSubscribed,
+      RoomEvent.TrackUnsubscribed,
     ] as const;
     for (const evento of gatilhos) sala.on(evento, avaliar);
     return () => {

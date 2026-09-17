@@ -764,9 +764,28 @@ model RoomEvent {
 /// O canal de dados CONTINUA sendo por onde a mensagem chega (é instantâneo e
 /// não depende de nós); isto aqui é a memória ao lado. Quem manda escreve nos
 /// dois, e quem entra lê o histórico daqui antes de começar a ouvir o canal.
+/// O que a mensagem É.
+///
+/// `OFERTA` é o botão de compra que o closer manda no fim do pitch: mesma
+/// conversa, mesmo canal, mas a tela desenha um botão em vez de uma frase — e
+/// é o único momento em que o chat tem uma ação dentro.
+enum RoomMessageKind {
+  TEXTO
+  OFERTA
+}
+
 model RoomMessage {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
+
+  tipo RoomMessageKind @default(TEXTO)
+
+  /// Para onde o botão leva. Só em `OFERTA`.
+  ///
+  /// Guardado separado do texto porque é o que precisa ser validado antes de
+  /// virar um link clicável na tela de trinta pessoas: `javascript:` num chat
+  /// aberto seria um convite.
+  url String?
 
   meetingId String
   meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)

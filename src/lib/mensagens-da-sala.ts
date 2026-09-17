@@ -17,6 +17,36 @@ export const LIMITE_DO_TEXTO = 2000;
 /// não ler duas horas de conversa.
 export const POR_SALA = 500;
 
+/// Tamanho máximo do rótulo do botão de oferta. Um botão não é um parágrafo.
+export const LIMITE_DO_ROTULO = 60;
+
+/**
+ * O link da oferta, se for seguro clicar nele.
+ *
+ * Só `http` e `https`. Parece paranoia até lembrar QUEM clica: trinta pessoas
+ * numa apresentação, num botão grande e verde que o anfitrião mandou. Um
+ * `javascript:` ali roda no navegador de cada uma delas, dentro da nossa
+ * origem, com o cookie de sessão de quem for do time. `data:` e `blob:` são a
+ * mesma porta por outro nome.
+ *
+ * Devolve a URL normalizada, ou `null` — e `null` significa "não desenhe o
+ * botão", nunca "desenhe sem link".
+ */
+export function linkSeguro(bruto: string): string | null {
+  const limpo = bruto.trim();
+  if (!limpo) return null;
+  try {
+    // Sem esquema, assume https: quem cola "pay.squad.com/x" quer um link, e
+    // `new URL` sozinho recusaria.
+    const url = new URL(/^[a-z][a-z0-9+.-]*:/i.test(limpo) ? limpo : `https://${limpo}`);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (!url.hostname.includes(".")) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 export type Mensagem = {
   /// Id do banco quando já foi gravada; `local:…` enquanto está a caminho.
   id: string;
@@ -33,6 +63,10 @@ export type Mensagem = {
   /// A gravação falhou. A mensagem FOI entregue pelo canal de dados, mas não
   /// vai sobreviver ao recarregar — e dizer isso é melhor que sumir com ela.
   naoGravada?: boolean;
+  /// `OFERTA` desenha um botão em vez de uma frase.
+  tipo?: "TEXTO" | "OFERTA";
+  /// Para onde o botão leva. Já validado por `linkSeguro`.
+  url?: string | null;
 };
 
 /**
@@ -108,11 +142,25 @@ export function marcarNaoGravada(mensagens: Mensagem[], idLocal: string): Mensag
  * outro recurso nosso podem mandar coisas por ali, e ler tudo como chat
  * transformaria um pacote interno numa mensagem em branco no meio da conversa.
  */
-export type Envelope = { tipo: "chat"; texto: string };
+export type Envelope =
+  | { tipo: "chat"; texto: string }
+  | { tipo: "oferta"; texto: string; url: string };
 
 export function lerEnvelope(bruto: unknown): Envelope | null {
   if (typeof bruto !== "object" || bruto === null) return null;
   const e = bruto as Record<string, unknown>;
+
+  if (e.tipo === "oferta") {
+    if (typeof e.texto !== "string" || typeof e.url !== "string") return null;
+    // O link é validado NA CHEGADA também, não só na saída: quem manda pelo
+    // canal de dados é outro navegador, e um cliente adulterado publicaria o
+    // que quisesse. Do outro lado, isto vira um botão que trinta pessoas
+    // clicam.
+    const url = linkSeguro(e.url);
+    const texto = saneiaMensagem(e.texto).slice(0, LIMITE_DO_ROTULO);
+    return url && texto ? { tipo: "oferta", texto, url } : null;
+  }
+
   if (e.tipo !== "chat" || typeof e.texto !== "string") return null;
   const texto = saneiaMensagem(e.texto);
   return texto ? { tipo: "chat", texto } : null;
