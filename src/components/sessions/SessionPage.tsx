@@ -22,6 +22,7 @@ import {
   lerScorecard,
   lerTextos,
   lerVocabulario,
+  INSIGHTS_VISIVEIS,
   type Bloco,
 } from "@/lib/analise";
 import { AnotarSessao } from "@/components/sessions/AnotarSessao";
@@ -29,6 +30,7 @@ import { Gravacao } from "@/components/sessions/Gravacao";
 import { tempoNaSala } from "@/components/sessions/SessionsView";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { TZ, hhmm } from "@/lib/dates";
+import { ehGravador } from "@/lib/identidades";
 import { linkWhatsapp } from "@/lib/mensagem";
 import type { Space } from "@/lib/nav";
 import {
@@ -151,9 +153,15 @@ export function SessionPage({
             O que aconteceu nesta call
           </h2>
           <p className="mt-2.5 text-sm leading-relaxed">{analise.resumo}</p>
-          {Array.isArray(analise.insights) && analise.insights.length > 0 && (
+          {lerTextos(analise.insights).length > 0 && (
             <ul className="mt-4 flex flex-col gap-2 border-t border-line pt-4">
-              {(analise.insights as string[]).slice(0, 3).map((insight, i) => (
+              {/* `lerTextos`, e não um `as string[]`: o cast é uma promessa sem
+                  conferência, e se o jsonb trouxer objetos o React lança
+                  "Objects are not valid as a React child" e derruba a PÁGINA
+                  INTEIRA — presença e roster junto, que não têm nada a ver com
+                  a análise. O resto desta tela já lia jsonb assim; este ponto
+                  tinha escapado. */}
+              {lerTextos(analise.insights).slice(0, INSIGHTS_VISIVEIS).map((insight, i) => (
                 <li key={i} className="flex gap-2.5 text-sm">
                   <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-waz-40" />
                   {insight}
@@ -215,6 +223,7 @@ export function SessionPage({
         emAndamento={emAndamento}
         minutosMinimos={minutosMinimos}
         space={space}
+        doDono={sessao.doDono}
       />
 
       <nav className="mt-8 flex gap-1 overflow-x-auto border-b border-line">
@@ -326,19 +335,29 @@ function Roster({
   emAndamento,
   minutosMinimos,
   space,
+  doDono,
 }: {
   sessao: SessionDetail;
   medida: boolean;
   emAndamento: boolean;
   minutosMinimos: number;
   space: Space;
+  /// Quem conduziu a sessão, ou um admin. Só para eles a linha traz os botões
+  /// de contato: a call é material do time, a carteira não é.
+  doDono: boolean;
 }) {
   const ordenados = ordemDoRoster(sessao.attendees);
   // Quem entrou pelo link avulso não é inscrito de ninguém — e esteve na call.
   // Some-los da tela faria a sala de quinze parecer de oito.
   const inscritos = new Set(sessao.attendees.map((a) => a.leadId));
   const avulsos = sessao.presences.filter(
-    (p) => !p.identity.startsWith("u_") && !inscritos.has(p.identity.slice(2)),
+    (p) =>
+      !p.identity.startsWith("u_") &&
+      // `consolidar` já não cria presença para o gravador — mas linhas de
+      // antes dessa correção continuam no banco, e sem esta peneira o `EG_…`
+      // apareceria na tela como "mais 1 pessoa entrou pelo link da sala".
+      !ehGravador(p.identity) &&
+      !inscritos.has(p.identity.slice(2)),
   );
 
   return (
@@ -415,7 +434,7 @@ function Roster({
                 </span>
 
                 <span className="flex shrink-0 items-center gap-1">
-                  {whatsapp && (
+                  {doDono && whatsapp && (
                     <a
                       href={whatsapp}
                       target="_blank"
@@ -426,7 +445,7 @@ function Roster({
                       <MessageSquare className="size-3.5" />
                     </a>
                   )}
-                  {p.lead.phone && (
+                  {doDono && p.lead.phone && (
                     <a href={`tel:${p.lead.phone}`} title="Ligar" className="btn-ghost px-2 py-1.5 text-xs">
                       <Phone className="size-3.5" />
                     </a>

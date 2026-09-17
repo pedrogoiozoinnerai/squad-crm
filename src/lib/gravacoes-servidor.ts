@@ -1,7 +1,7 @@
 import "server-only";
 
 import { armazenamentoConfigurado } from "@/lib/armazenamento";
-import { derivarGravacao, type SituacaoDaGravacao } from "@/lib/gravacao";
+import { derivarGravacao, semSegredos, type SituacaoDaGravacao } from "@/lib/gravacao";
 import { salaDaReuniao } from "@/lib/identidades";
 import { normalizarEgress } from "@/lib/livekit";
 import { chamarLiveKit, livekitConfigurado } from "@/lib/livekit-servidor";
@@ -134,7 +134,7 @@ export async function conciliarGravacoes(agora = new Date()): Promise<RelatorioD
         iniciadaEm: derivada.iniciadaEm,
         terminadaEm: derivada.terminadaEm,
         erro: derivada.erro,
-        bruto: item as object,
+        bruto: semSegredos(item) as object,
       };
 
       await prisma.recording.upsert({

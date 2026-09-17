@@ -13,6 +13,7 @@ import {
   aguardando,
   alvoDaChave,
   arrendar,
+  desistirDeVez,
   concluir,
   esperandoProvedor,
   falhar,
@@ -100,7 +101,7 @@ export async function pedirAnalises(): Promise<RelatorioDeAnalise> {
       select: { texto: true },
     });
     if (!transcricao?.texto) {
-      await falhar(trabalho.id, Number.MAX_SAFE_INTEGER, "a transcrição não existe mais");
+      await desistirDeVez(trabalho.id, "a transcrição não existe mais");
       relatorio.falhas += 1;
       continue;
     }

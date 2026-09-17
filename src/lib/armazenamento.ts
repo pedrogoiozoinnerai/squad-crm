@@ -1,7 +1,7 @@
 import "server-only";
 
 import { env } from "@/lib/env";
-import { baseRest, type DestinoS3 } from "@/lib/gravacao";
+import { baseRest, caminhoValido, type DestinoS3 } from "@/lib/gravacao";
 
 /**
  * O bucket onde as gravações ficam.
@@ -63,6 +63,13 @@ export const VALIDADE_DA_URL_S = 60 * 60;
 export async function urlParaAssistir(caminho: string): Promise<string | null> {
   const chaves = chavesDoArmazenamento();
   if (!chaves) return null;
+  // O caminho é concatenado numa URL. Ele vem do LiveKit — que ecoa o nosso
+  // próprio `filepath` —, mas quem tivesse a chave do webhook poderia mandar
+  // outra coisa, e esta função assina acesso a arquivo.
+  if (!caminhoValido(caminho)) {
+    console.error("[armazenamento] caminho recusado:", caminho.slice(0, 80));
+    return null;
+  }
 
   const base = baseRest(chaves.endpoint);
   const resposta = await fetch(`${base}/object/sign/${chaves.bucket}/${caminho}`, {
@@ -98,6 +105,13 @@ export async function urlParaAssistir(caminho: string): Promise<string | null> {
 export async function apagarDoBucket(caminho: string): Promise<boolean> {
   const chaves = chavesDoArmazenamento();
   if (!chaves) return false;
+  // Aqui a conferência importa mais que em `urlParaAssistir`: isto APAGA. Um
+  // `../` que passasse faria a retenção remover arquivo de outra pasta — ou de
+  // outro bucket — sem nada indicando o que aconteceu.
+  if (!caminhoValido(caminho)) {
+    console.error("[armazenamento] recusado apagar caminho estranho:", caminho.slice(0, 80));
+    return false;
+  }
 
   const resposta = await fetch(`${baseRest(chaves.endpoint)}/object/${chaves.bucket}/${caminho}`, {
     method: "DELETE",

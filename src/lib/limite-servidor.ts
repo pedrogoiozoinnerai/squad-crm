@@ -84,11 +84,7 @@ export async function guardaDeTaxa(
   request: Request,
   agora = new Date(),
 ): Promise<Response | null> {
-  const veredicto = await contarEDecidir(
-    regra,
-    quemPede(request.headers.get("x-forwarded-for")),
-    agora,
-  );
+  const veredicto = await contarEDecidir(regra, quemPede(origemDaRequisicao(request.headers)), agora);
   return veredicto.permitido ? null : respostaDeExcesso(veredicto, regra);
 }
 
@@ -105,11 +101,7 @@ export async function passouDoLimite(
 ): Promise<boolean> {
   const { headers } = await import("next/headers");
   const cabecalhos = await headers();
-  const veredicto = await contarEDecidir(
-    regra,
-    quemPede(cabecalhos.get("x-forwarded-for")),
-    agora,
-  );
+  const veredicto = await contarEDecidir(regra, quemPede(origemDaRequisicao(cabecalhos)), agora);
   return !veredicto.permitido;
 }
 
@@ -125,4 +117,17 @@ export async function limparBaldesVencidos(agora = new Date()) {
     where: { expiraEm: { lt: new Date(agora.getTime() - 60_000) } },
   });
   return count;
+}
+
+/**
+ * O cabeçalho de onde sai quem está pedindo.
+ *
+ * `x-real-ip` na frente: na Vercel ele é escrito pelo proxy e o cliente não
+ * alcança. O `x-forwarded-for` é uma LISTA, e o primeiro item só é o cliente
+ * real enquanto quem está na frente sobrescrever em vez de anexar — no dia em
+ * que houver outro proxy no caminho, esse primeiro item passa a ser o que o
+ * atacante mandou, e o limite vira um balde por requisição.
+ */
+export function origemDaRequisicao(cabecalhos: Headers): string | null {
+  return cabecalhos.get("x-real-ip") ?? cabecalhos.get("x-forwarded-for");
 }

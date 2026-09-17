@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { derivarGravacao } from "@/lib/gravacao";
+import { derivarGravacao, semSegredos } from "@/lib/gravacao";
 import { lerWebhook, reuniaoDaSala, type EventoDeEgress } from "@/lib/livekit";
 import { chavesDoLiveKit } from "@/lib/livekit-servidor";
 import { prisma } from "@/lib/prisma";
@@ -127,9 +127,11 @@ async function guardarGravacao(egress: EventoDeEgress, meetingId: string, corpoC
     iniciadaEm: derivada.iniciadaEm,
     terminadaEm: derivada.terminadaEm,
     erro: derivada.erro,
-    // O `egressInfo` inteiro, como chegou. Sem ele "falhou" é beco sem saída —
-    // e a forma desse JSON muda do lado deles sem avisar ninguém.
-    bruto: JSON.parse(corpoCru),
+    // O `egressInfo` inteiro, como chegou — menos o que parecer credencial.
+    // Sem ele "falhou" é beco sem saída, e a forma desse JSON muda do lado
+    // deles sem avisar; com ele cru, a chave de escrita do nosso bucket poderia
+    // ir parar numa coluna `jsonb` e em todo backup do banco.
+    bruto: semSegredos(JSON.parse(corpoCru)) as object,
   };
 
   await prisma.recording.upsert({

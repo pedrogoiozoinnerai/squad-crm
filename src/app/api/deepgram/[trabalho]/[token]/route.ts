@@ -33,7 +33,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ trabalho: string; token: string }> },
 ) {
-  const excesso = await guardaDeTaxa("mensagens", request);
+  const excesso = await guardaDeTaxa("retorno", request);
   if (excesso) return excesso;
 
   const { trabalho: trabalhoId, token } = await params;
@@ -68,32 +68,48 @@ export async function POST(
 
   // O `request_id` é a segunda trava: sem ela, um token vazado gravaria
   // qualquer texto como sendo o que foi dito na call.
-  if (trabalho.externoId && transcricao.externoId && transcricao.externoId !== trabalho.externoId) {
-    console.warn("[deepgram] retorno recusado: request_id não confere");
+  //
+  // A ausência do campo tem que ser tratada como recusa, e não como "não dá
+  // para conferir". A versão anterior exigia igualdade SÓ quando o corpo
+  // trazia `request_id` — então bastava omiti-lo para pular esta trava
+  // inteira, o que transformava três travas em duas e deixava a segunda
+  // inútil justamente para quem estivesse tentando burlá-la. Uma sonda contra
+  // o servidor pegou isso.
+  if (trabalho.externoId && transcricao.externoId !== trabalho.externoId) {
+    console.warn("[deepgram] retorno recusado: request_id ausente ou diferente");
     return new Response("Não autorizado.", { status: 401 });
   }
 
   const recordingId = alvoDaChave(trabalho.chave);
 
-  await prisma.transcript.upsert({
-    where: { recordingId },
-    create: {
-      recordingId,
-      externoId: transcricao.externoId,
-      texto: transcricao.texto,
-      segmentos: transcricao.segmentos,
-      falantes: transcricao.falantes,
-      idioma: transcricao.idioma,
-      modelo: transcricao.modelo,
-    },
-    update: {
-      texto: transcricao.texto,
-      segmentos: transcricao.segmentos,
-      falantes: transcricao.falantes,
-      idioma: transcricao.idioma,
-      modelo: transcricao.modelo,
-    },
-  });
+  try {
+    await prisma.transcript.upsert({
+      where: { recordingId },
+      create: {
+        recordingId,
+        externoId: transcricao.externoId,
+        texto: transcricao.texto,
+        segmentos: transcricao.segmentos,
+        falantes: transcricao.falantes,
+        idioma: transcricao.idioma,
+        modelo: transcricao.modelo,
+      },
+      update: {
+        texto: transcricao.texto,
+        segmentos: transcricao.segmentos,
+        falantes: transcricao.falantes,
+        idioma: transcricao.idioma,
+        modelo: transcricao.modelo,
+      },
+    });
+  } catch (erro) {
+    // A gravação pode ter sido apagada entre o pedido e o retorno — pela
+    // retenção, ou por um pedido de exclusão. Isso é uma condição esperada,
+    // não uma exceção: sem este `catch` ela virava 500 numa rota PÚBLICA, e
+    // 500 em endereço que estranhos sondam é convite para continuar sondando.
+    console.error("[deepgram] transcrição não pôde ser gravada:", erro);
+    return Response.json({ ok: false, erro: "não foi possível guardar" }, { status: 409 });
+  }
 
   await concluir(trabalho.id);
   return Response.json({ ok: true });

@@ -255,3 +255,64 @@ export function pedidoDeEgress(
 export function baseRest(endpoint: string): string {
   return endpoint.trim().replace(/\/+$/, "").replace(/\/s3$/, "");
 }
+
+/// Nomes de campo que nunca podem ir para o banco.
+///
+/// O `egressInfo` que o LiveKit devolve descreve o pedido que nós fizemos — e
+/// o nosso pedido carrega as chaves do bucket. O LiveKit diz que redige isso
+/// antes de mandar, e provavelmente redige; mas "provavelmente" aqui significa
+/// a chave de escrita do bucket de gravações gravada em texto puro numa coluna
+/// `jsonb`, replicada para todo backup do banco. Custa dez linhas não depender
+/// da palavra deles.
+const SEGREDOS = /(secret|access_?key|password|passwd|credential|api_?key|token)/i;
+
+export const REDIGIDO = "[removido]";
+
+/**
+ * O JSON do egress sem nada que pareça credencial.
+ *
+ * Recursivo e por NOME de campo, não por valor: o valor de uma chave secreta é
+ * indistinguível de qualquer outra string aleatória, e é o nome que diz o que
+ * ela é. Arrays são percorridos; o resto passa como está.
+ */
+export function semSegredos(bruto: unknown, profundidade = 0): unknown {
+  // Um teto de profundidade porque este JSON vem de fora: um objeto aninhado
+  // fundo de propósito derrubaria a rota do webhook por pilha estourada.
+  if (profundidade > 12) return REDIGIDO;
+  if (Array.isArray(bruto)) return bruto.map((item) => semSegredos(item, profundidade + 1));
+  if (typeof bruto !== "object" || bruto === null) return bruto;
+
+  const limpo: Record<string, unknown> = {};
+  for (const [chave, valor] of Object.entries(bruto as Record<string, unknown>)) {
+    limpo[chave] = SEGREDOS.test(chave) ? REDIGIDO : semSegredos(valor, profundidade + 1);
+  }
+  return limpo;
+}
+
+/**
+ * O caminho tem a cara de um caminho nosso?
+ *
+ * `Recording.caminho` vem do `filename` que o LiveKit devolve — que é o nosso
+ * próprio `filepath` de volta. Em tese não há como ele virar outra coisa. Na
+ * prática ele é concatenado numa URL que ASSINA e que APAGA arquivos no bucket,
+ * e quem tivesse a chave do webhook poderia mandar `../../outro-bucket/x` e
+ * fazer a retenção apagar o que não é dela.
+ *
+ * Não custa nada conferir a forma antes de usar: só o que este código gera é
+ * aceito. Um `..`, uma barra no começo, um `%2e` — nada disso passa.
+ */
+export function caminhoValido(caminho: string): boolean {
+  if (!caminho || caminho.length > 300) return false;
+  if (caminho.startsWith("/")) return false;
+  // Antes de qualquer teste, desfaz um nível de escape: `%2e%2e%2f` é `../`
+  // para o servidor do outro lado, e passaria batido numa comparação literal.
+  let decodificado = caminho;
+  try {
+    decodificado = decodeURIComponent(caminho);
+  } catch {
+    return false;
+  }
+  if (decodificado !== caminho) return false;
+  if (caminho.includes("..") || caminho.includes("\\")) return false;
+  return /^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(caminho);
+}

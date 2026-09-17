@@ -2,7 +2,15 @@ import "server-only";
 
 import { urlParaAssistir } from "@/lib/armazenamento";
 import { env } from "@/lib/env";
-import { alvoDaChave, aguardando, arrendar, falhar, semearTranscricoes, soltarEsquecidos } from "@/lib/trabalhos";
+import {
+  aguardando,
+  alvoDaChave,
+  arrendar,
+  desistirDeVez,
+  falhar,
+  semearTranscricoes,
+  soltarEsquecidos,
+} from "@/lib/trabalhos";
 import { parametrosDaDeepgram } from "@/lib/transcricao";
 import { prisma } from "@/lib/prisma";
 import { tokenDoRetorno } from "@/lib/retorno";
@@ -65,7 +73,7 @@ export async function pedirTranscricoes(): Promise<RelatorioDeTranscricao> {
       // O arquivo sumiu entre semear e executar — retenção, ou alguém apagou
       // no painel. Não é falha de rede: tentar de novo seis vezes não traz o
       // vídeo de volta.
-      await falhar(trabalho.id, Number.MAX_SAFE_INTEGER, "a gravação não está mais no bucket");
+      await desistirDeVez(trabalho.id, "a gravação não está mais no bucket");
       relatorio.falhas += 1;
       continue;
     }

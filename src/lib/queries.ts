@@ -823,7 +823,7 @@ export type AbaDaSessao = "gravacao" | "auditoria" | "sala" | "anotacoes";
  * tem sessenta mil caracteres, e trazê-la para desenhar o cabeçalho seria pagar
  * por ela em toda visita.
  */
-export async function getSessionDetail(_user: SessionUser, id: string, aba?: AbaDaSessao) {
+export async function getSessionDetail(user: SessionUser, id: string, aba?: AbaDaSessao) {
   const sessao = await prisma.meeting.findFirst({
     where: { id, type: "GROUP" },
     include: {
@@ -890,11 +890,33 @@ export async function getSessionDetail(_user: SessionUser, id: string, aba?: Aba
   });
   if (!sessao) return null;
 
-  // `bytes` é BIGINT no banco, e `bigint` não atravessa para um componente:
-  // o `JSON.stringify` do Server Component lança "Do not know how to
-  // serialize a BigInt" — em runtime, na página inteira, sem aviso de tipo.
+  /**
+   * Quem é do time vê a call. O CONTATO continua sendo de quem é.
+   *
+   * A leitura da sessão é do time inteiro de propósito — é isso que faz o
+   * closer novo ouvir a call do closer bom. Mas telefone e e-mail não são
+   * contexto da gravação: são a lista de contatos da carteira de outra pessoa,
+   * e deixá-los aqui abriria pelas Sessões exatamente o que `ownerScope`
+   * fecha em `getLeadDetail`, `getSessions` e `getParticipants`. Trinta e três
+   * contas conseguiriam colher a base inteira abrindo sessões alheias.
+   *
+   * Nome e empresa ficam: sem eles não dá para saber quem estava na call, que
+   * é o motivo de a gravação ser compartilhada.
+   */
+  const doDono = user.role === "ADMIN" || sessao.ownerId === user.id;
+
   return {
     ...sessao,
+    /// Se quem está vendo pode agir sobre estes leads. A tela usa para decidir
+    /// se desenha os botões de WhatsApp e telefone.
+    doDono,
+    attendees: sessao.attendees.map((a) => ({
+      ...a,
+      lead: doDono ? a.lead : { ...a.lead, phone: null, email: null },
+    })),
+    // `bytes` é BIGINT no banco, e `bigint` não atravessa para um componente:
+    // o `JSON.stringify` do Server Component lança "Do not know how to
+    // serialize a BigInt" — em runtime, na página inteira, sem aviso de tipo.
     gravacoes: sessao.gravacoes.map((g) => ({ ...g, bytes: g.bytes == null ? null : Number(g.bytes) })),
   };
 }

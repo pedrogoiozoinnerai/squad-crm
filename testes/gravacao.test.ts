@@ -8,9 +8,12 @@ import {
   baseRest,
   avisoDaGravacao,
   caminhoDaGravacao,
+  caminhoValido,
   derivarGravacao,
   ordemDaSituacao,
   pedidoDeEgress,
+  REDIGIDO,
+  semSegredos,
   situacaoDoEgress,
   VIDEO,
 } from "../src/lib/gravacao";
@@ -268,5 +271,87 @@ describe("a base da REST sai do endpoint S3", () => {
 
   it("espaço de paste não entra na URL", () => {
     assert.equal(baseRest("  https://abc.supabase.co/storage/v1/s3 "), "https://abc.supabase.co/storage/v1");
+  });
+});
+
+describe("o bruto do egress não guarda credencial", () => {
+  it("tira a chave do bucket que o nosso próprio pedido carrega", () => {
+    // O `egressInfo` descreve o pedido que NÓS fizemos, e o nosso pedido leva
+    // as chaves do bucket. O LiveKit diz que redige antes de mandar; depender
+    // disso significa a chave de escrita em texto puro numa coluna `jsonb` e
+    // em todo backup do banco.
+    const info = {
+      egressId: "EG_x",
+      request: {
+        fileOutputs: [
+          { filepath: "a.mp4", s3: { bucket: "gravacoes", accessKey: "AKIA123", secret: "sh!" } },
+        ],
+      },
+    };
+    const limpo = semSegredos(info) as Record<string, never>;
+    const s3 = (limpo.request as never as Record<string, Record<string, unknown>[]>).fileOutputs[0].s3 as Record<string, unknown>;
+    assert.equal(s3.accessKey, REDIGIDO);
+    assert.equal(s3.secret, REDIGIDO);
+    assert.equal(s3.bucket, "gravacoes", "o que não é segredo continua legível");
+  });
+
+  it("pega as variações de nome", () => {
+    const limpo = semSegredos({
+      access_key: "a", AccessKey: "b", api_key: "c", TOKEN: "d", password: "e", credential: "f",
+    }) as Record<string, string>;
+    for (const [k, v] of Object.entries(limpo)) assert.equal(v, REDIGIDO, `${k} passou`);
+  });
+
+  it("não mexe no que é dado de verdade", () => {
+    assert.deepEqual(
+      semSegredos({ status: "EGRESS_COMPLETE", fileResults: [{ filename: "x.mp4", size: "10" }] }),
+      { status: "EGRESS_COMPLETE", fileResults: [{ filename: "x.mp4", size: "10" }] },
+    );
+  });
+
+  it("um JSON fundo de propósito não estoura a pilha da rota", () => {
+    // Este corpo vem de fora. Sem teto de profundidade, um aninhamento
+    // fabricado derrubaria o webhook — que é exatamente o endereço que
+    // estranhos sondam.
+    let fundo: unknown = "fim";
+    for (let i = 0; i < 500; i++) fundo = { a: fundo };
+    assert.doesNotThrow(() => semSegredos(fundo));
+  });
+
+  it("nulo e valores soltos passam inteiros", () => {
+    assert.equal(semSegredos(null), null);
+    assert.equal(semSegredos("texto"), "texto");
+    assert.equal(semSegredos(42), 42);
+  });
+});
+
+describe("o caminho do arquivo, antes de assinar ou apagar", () => {
+  it("aceita o que este código gera", () => {
+    assert.equal(caminhoValido(caminhoDaGravacao("abc123", new Date("2026-09-15T14:00:00Z"))), true);
+  });
+
+  it("recusa subir de pasta", () => {
+    // Quem tivesse a chave do webhook poderia mandar isto no `filename`, e a
+    // retenção apagaria arquivo de outra pasta sem nada indicando o quê.
+    for (const mau of ["../segredo.mp4", "reunioes/../../x", "a/../../b", "/etc/passwd"]) {
+      assert.equal(caminhoValido(mau), false, `${mau} passou`);
+    }
+  });
+
+  it("recusa `..` escondido em escape de URL", () => {
+    // `%2e%2e%2f` é `../` do outro lado da requisição, e passa batido numa
+    // comparação literal por "..".
+    assert.equal(caminhoValido("%2e%2e%2freuniao.mp4"), false);
+    assert.equal(caminhoValido("reunioes%2F..%2Fx.mp4"), false);
+  });
+
+  it("recusa barra invertida, começo com barra e vazio", () => {
+    assert.equal(caminhoValido("a\\b"), false);
+    assert.equal(caminhoValido("/reunioes/x.mp4"), false);
+    assert.equal(caminhoValido(""), false);
+  });
+
+  it("recusa caminho absurdamente longo", () => {
+    assert.equal(caminhoValido("a/".repeat(200) + "x.mp4"), false);
   });
 });

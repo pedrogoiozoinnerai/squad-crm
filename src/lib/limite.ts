@@ -51,6 +51,12 @@ export const REGRAS = {
   reservar: { teto: 10, janelaSegundos: 60 },
   token: { teto: 20, janelaSegundos: 60 },
   mensagens: { teto: 60, janelaSegundos: 60 },
+  /// O retorno da transcrição. Balde PRÓPRIO, e não o de `mensagens`: são
+  /// coisas sem relação nenhuma, e compartilhar o balde faz o chat de uma
+  /// sessão lotada barrar o callback de uma gravação — ou o contrário. O teto é
+  /// folgado para o uso real (são ~13 retornos por dia) e apertado para quem
+  /// achar o endereço: é uma porta que o provedor NÃO assina.
+  retorno: { teto: 30, janelaSegundos: 60 },
 } as const satisfies Record<string, Regra>;
 
 export type NomeDaRegra = keyof typeof REGRAS;

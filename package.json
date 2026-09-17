@@ -33,7 +33,8 @@
     "hubspot:inventario": "tsx scripts/hubspot-inventario.ts",
     "hubspot:completude": "tsx scripts/hubspot-completude.ts",
     "hubspot:falta": "tsx scripts/hubspot-o-que-falta.ts",
-    "esquecer": "NODE_OPTIONS=--conditions=react-server tsx scripts/esquecer-lead.ts"
+    "esquecer": "NODE_OPTIONS=--conditions=react-server tsx scripts/esquecer-lead.ts",
+    "sondar": "tsx scripts/sondar-seguranca.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

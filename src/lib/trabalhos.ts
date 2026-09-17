@@ -138,6 +138,34 @@ export async function falhar(id: string, tentativas: number, erro: string) {
 }
 
 /**
+ * Desiste de vez, sem gastar as seis tentativas.
+ *
+ * Para o que não melhora tentando de novo: a gravação saiu do bucket, a
+ * transcrição foi apagada pela retenção. Repetir isso seis vezes com espera
+ * dobrando só atrasa o resto da fila.
+ *
+ * Existe porque a primeira versão passava `Number.MAX_SAFE_INTEGER` como
+ * contagem de tentativas para forçar a desistência — e `tentativas` é `INTEGER`
+ * no Postgres, que estoura em 2.147.483.647. O banco recusava com
+ * `value out of range for type integer`, a exceção subia, e o caminho de
+ * "desistir para sempre" virava justamente o que ele queria evitar: o trabalho
+ * ficava arrendado, vencia o arrendamento, era pego de novo e falhava igual,
+ * em looping. Uma consulta ao banco provou isso antes deste conserto.
+ */
+export async function desistirDeVez(id: string, erro: string) {
+  await prisma.aiJob.update({
+    where: { id },
+    data: {
+      estado: "DESISTIU",
+      tentativas: MAX_TENTATIVAS,
+      arrendadoAte: null,
+      proximaTentativaEm: null,
+      erro: erro.slice(0, 500),
+    },
+  });
+}
+
+/**
  * Devolve à fila o que o provedor nunca respondeu.
  *
  * Callback perdido não dá erro em lugar nenhum: sem este passo, o trabalho fica
