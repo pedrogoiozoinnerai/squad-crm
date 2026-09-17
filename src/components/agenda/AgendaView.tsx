@@ -16,7 +16,10 @@ type Meeting = {
   type: "GROUP" | "ONE_ON_ONE";
   status: "SCHEDULED" | "DONE" | "NO_SHOW" | "CANCELED";
   lead: { name: string; company: string | null } | null;
-  attendees: { inviteToken: string }[];
+  attendees: { inviteToken: string; lead: { name: string; company: string | null } }[];
+  /// Quantos inscritos a sessão tem ao todo — `attendees` traz só os
+  /// primeiros nomes.
+  _count?: { attendees: number };
   guestToken: string | null;
   presences: { identity: string; seconds: number }[];
 };
@@ -29,6 +32,19 @@ type Task = {
   dueAt: Date | null;
   lead: { name: string } | null;
 };
+
+/** Quantos inscritos a sessão tem. */
+function inscritos(meeting: Meeting): number {
+  // `_count` quando veio; senão o tamanho da lista, que é o que as telas
+  // antigas passam. Sem o fallback, uma delas mostraria "Ninguém inscrito"
+  // numa sessão cheia — e ninguém confere de novo uma tela que já mentiu.
+  return meeting._count?.attendees ?? meeting.attendees.length;
+}
+
+/** Quantos ficaram de fora da lista de nomes. */
+function restantes(meeting: Meeting): number {
+  return Math.max(0, inscritos(meeting) - meeting.attendees.length);
+}
 
 const MEETING_STATUS = {
   SCHEDULED: { text: "Agendada", tone: "bg-sky-50 text-sky-700" },
@@ -144,13 +160,40 @@ export function AgendaView({
                       <span className="flex shrink-0 flex-col items-end gap-1.5">
                         <span className={`chip ${status.tone}`}>{status.text}</span>
                         {meeting.type === "GROUP" && (
-                          <span className="chip bg-surface text-muted ring-1 ring-line">
+                          // O número, não a palavra "Grupo".
+                          //
+                          // O closer abria o dia e via só "Grupo": sem saber se
+                          // a sessão das 10h tinha dezoito inscritos ou nenhum.
+                          // As duas coisas exigem reação, e opostas — uma pede
+                          // preparo, a outra pede avisar que não vale abrir.
+                          <span
+                            className={`chip ring-1 ${
+                              inscritos(meeting) === 0
+                                ? "bg-amber-50 text-amber-800 ring-amber-200"
+                                : "bg-surface text-muted ring-line"
+                            }`}
+                          >
                             <Users className="size-3" />
-                            Grupo
+                            {inscritos(meeting) === 0
+                              ? "Ninguém inscrito"
+                              : `${inscritos(meeting)} ${
+                                  inscritos(meeting) === 1 ? "inscrito" : "inscritos"
+                                }`}
                           </span>
                         )}
                       </span>
                     </div>
+
+                    {/* Quem vem — os primeiros nomes.
+                        É o que o closer precisa antes de abrir a câmera: sem
+                        isto ele entra numa sala de vinte pessoas sem saber o
+                        nome de ninguém. */}
+                    {meeting.type === "GROUP" && meeting.attendees.length > 0 && (
+                      <p className="mt-2 truncate text-xs text-muted">
+                        {meeting.attendees.map((a) => a.lead.name.split(" ")[0]).join(", ")}
+                        {restantes(meeting) > 0 && ` e mais ${restantes(meeting)}`}
+                      </p>
+                    )}
 
                     {/* Entrar aparece na janela da sala, não o dia inteiro:
                         um botão que leva a "ainda não abriu" é pior que

@@ -542,6 +542,13 @@ export async function getDealsParaExportar(user: SessionUser, filters: FiltroDea
   });
 }
 
+/// Quantos nomes a agenda mostra por sessão antes de resumir em "+N".
+///
+/// Quatro: o suficiente para o closer reconhecer a sala sem transformar o
+/// cartão do dia numa lista de vinte linhas que empurra a próxima reunião para
+/// fora da tela.
+const LISTADOS_NA_AGENDA = 4;
+
 /** Agenda pessoal do dia: reuniões + tarefas com prazo. */
 export async function getAgenda(user: SessionUser, day: Date) {
   // O dia daqui, não o do servidor. `setHours(0,0,0,0)` zerava no relógio do
@@ -559,7 +566,21 @@ export async function getAgenda(user: SessionUser, day: Date) {
         // O convite do lead vem junto: é o link que o vendedor manda pelo
         // WhatsApp minutos antes da call, e buscá-lo num segundo clique só
         // acrescentaria espera na hora em que ele tem menos.
-        attendees: { select: { inviteToken: true }, take: 1 },
+        //
+        // E vêm os PRIMEIROS NOMES, não só um convite. Antes era `take: 1`, e
+        // por isso a agenda não sabia dizer quantas pessoas vinham: o closer
+        // abria o dia e via "Grupo" — sem saber se a sessão das 10h tinha
+        // dezoito inscritos ou nenhum. As duas coisas exigem reação, e
+        // opostas.
+        attendees: {
+          where: { status: { in: ["INSCRITO", "CONFIRMADO"] } },
+          select: { inviteToken: true, lead: { select: { name: true, company: true } } },
+          orderBy: { createdAt: "asc" },
+          take: LISTADOS_NA_AGENDA,
+        },
+        _count: {
+          select: { attendees: { where: { status: { in: ["INSCRITO", "CONFIRMADO"] } } } },
+        },
         // Quem de fato esteve na sala, para a agenda contar a história do dia
         // em vez de só o que foi agendado.
         presences: { select: { identity: true, seconds: true } },

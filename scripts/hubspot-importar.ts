@@ -3,6 +3,11 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { PrismaClient } from "../src/generated/prisma/client";
+import {
+  apenasOFaltante,
+  lerAtribuicao,
+  PROPS_ATRIBUICAO,
+} from "../src/lib/atribuicao-hubspot";
 import { env, envObrigatorio, identificador } from "../src/lib/env";
 import { associacoes, buscar, lote, owners } from "./hubspot-client";
 import { PIPELINES, destinoDe, type Destino } from "./hubspot-mapa";
@@ -44,7 +49,21 @@ const prisma = new PrismaClient({
 });
 
 const PROPS_NEGOCIO = ["dealname", "amount", "dealstage", "pipeline", "hubspot_owner_id", "createdate", "closedate", "description", "closed_lost_reason"];
-const PROPS_CONTATO = ["firstname", "lastname", "email", "phone", "mobilephone", "company", "jobtitle", "createdate"];
+// A atribuição entra aqui, e é por não estar aqui que 8.386 contatos vieram
+// sem uma única UTM: a API só devolve o que se pede. Quais propriedades pedir
+// foi MEDIDO, não adivinhado — ver `lib/atribuicao-hubspot` e
+// `npm run hubspot:atribuicao`.
+const PROPS_CONTATO = [
+  "firstname",
+  "lastname",
+  "email",
+  "phone",
+  "mobilephone",
+  "company",
+  "jobtitle",
+  "createdate",
+  ...PROPS_ATRIBUICAO,
+];
 const PROPS_NOTA = ["hs_note_body", "hs_timestamp", "hubspot_owner_id"];
 const PROPS_TAREFA = ["hs_task_subject", "hs_task_body", "hs_task_status", "hs_task_priority", "hs_task_type", "hs_timestamp", "hubspot_owner_id"];
 const PROPS_REUNIAO = ["hs_meeting_title", "hs_meeting_start_time", "hs_meeting_end_time", "hs_meeting_outcome", "hs_meeting_location", "hubspot_owner_id"];
@@ -234,6 +253,24 @@ async function main() {
     const donoHs = primeiro.props.hubspot_owner_id;
     const ownerIdLead = (donoHs && donos.get(donoHs)) || naoAtribuido;
 
+    const atribuicao = lerAtribuicao(contato);
+
+    // No lead que já existe, só o que falta: reimportar não pode apagar uma
+    // atribuição melhor vinda por outro caminho. O funil do Type grava a UTM
+    // real da sessão, e ela vale mais que o primeiro toque de um contato
+    // antigo do HubSpot.
+    const jaExiste = await prisma.lead.findUnique({
+      where: { hubspotContactId: chave },
+      select: {
+        utmSource: true,
+        utmMedium: true,
+        utmCampaign: true,
+        utmTerm: true,
+        utmContent: true,
+      },
+    });
+    const completar = jaExiste ? apenasOFaltante(jaExiste, atribuicao) : {};
+
     const lead = await prisma.lead.upsert({
       where: { hubspotContactId: chave },
       update: {
@@ -242,6 +279,7 @@ async function main() {
         phone: contato?.phone ?? contato?.mobilephone ?? undefined,
         company: contato?.company ?? undefined,
         jobTitle: contato?.jobtitle ?? undefined,
+        ...completar,
       },
       create: {
         hubspotContactId: chave,
@@ -251,7 +289,11 @@ async function main() {
         company: contato?.company ?? null,
         jobTitle: contato?.jobtitle ?? null,
         status: "CONVERTED",
+        // `source` continua dizendo de que SISTEMA o registro veio; a origem do
+        // TRÁFEGO mora nas colunas `utm*`. São perguntas diferentes, e juntá-las
+        // numa coluna só perderia as duas.
         source: contato ? "HubSpot" : "HubSpot (negócio sem contato)",
+        ...atribuicao,
         ownerId: ownerIdLead,
         createdAt: data(contato?.createdate) ?? data(primeiro.props.createdate) ?? new Date(),
       },

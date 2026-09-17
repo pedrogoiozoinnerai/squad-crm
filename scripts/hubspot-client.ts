@@ -78,9 +78,18 @@ export async function* listar(
 }
 
 export async function propriedadesDe(objeto: string) {
-  const r = await req<{ results: { name: string; label: string; type: string; fieldType: string }[] }>(
-    `/crm/v3/properties/${objeto}`,
-  );
+  const r = await req<{
+    results: {
+      name: string;
+      label: string;
+      type: string;
+      fieldType: string;
+      /// `false` quando a propriedade foi criada pela operação, não pelo
+      /// HubSpot. É o que separa `utm_source` (de alguém) de
+      /// `hs_analytics_source` (nativa) — e as duas se comportam diferente.
+      hubspotDefined?: boolean;
+    }[];
+  }>(`/crm/v3/properties/${objeto}`);
   return r.results;
 }
 

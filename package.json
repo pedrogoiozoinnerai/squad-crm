@@ -27,7 +27,9 @@
     "agenda:gerar": "NODE_OPTIONS=--conditions=react-server tsx scripts/gerar-agenda-producao.ts",
     "sala:teste": "tsx scripts/sala-de-teste.ts",
     "raio-x": "tsx scripts/raio-x.ts",
-    "limpar:duplicadas": "tsx scripts/limpar-reunioes-duplicadas.ts"
+    "limpar:duplicadas": "tsx scripts/limpar-reunioes-duplicadas.ts",
+    "hubspot:atribuicao": "tsx scripts/hubspot-atribuicao.ts",
+    "hubspot:utm": "tsx scripts/hubspot-utm-retroativo.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
