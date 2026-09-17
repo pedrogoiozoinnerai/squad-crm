@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarPlus, Plus, X, Zap } from "lucide-react";
+import { CalendarPlus, Plus, Zap } from "lucide-react";
 
 import {
   FormularioDeReuniao,
   type PadraoDaReuniao,
 } from "@/components/reunioes/FormularioDeReuniao";
+import { Modal } from "@/components/ui/Modal";
 
 /**
  * O botão "Nova reunião" e o painel que ele abre.
@@ -29,8 +30,8 @@ export function NovaReuniao({
 }) {
   const [aberto, setAberto] = useState(false);
 
-  if (!aberto) {
-    return (
+  return (
+    <>
       <button
         type="button"
         onClick={() => setAberto(true)}
@@ -45,44 +46,22 @@ export function NovaReuniao({
         )}
         {rotulo}
       </button>
-    );
-  }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/30 p-4 sm:p-8">
-      <button
-        type="button"
-        aria-label="Fechar"
-        onClick={() => setAberto(false)}
-        className="fixed inset-0 -z-10 cursor-default"
-      />
-      <div className="card w-full max-w-xl p-5">
-        <header className="mb-4 flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold">{rotulo}</h2>
-            <p className="mt-0.5 text-xs text-muted">
-              O link sai pronto na tela seguinte. A sala abre 30 minutos antes do horário.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setAberto(false)}
-            aria-label="Fechar"
-            className="rounded-lg p-1 text-muted transition hover:text-foreground"
-          >
-            <X className="size-4" />
-          </button>
-        </header>
-
-        {/* `key` remonta o formulário a cada abertura: reabrir depois de
-            agendar não pode trazer de volta o estado da reunião anterior. */}
-        <FormularioDeReuniao
-          key={aberto ? "aberto" : "fechado"}
-          padrao={padrao}
-          owners={owners}
-          aoConcluir={() => setAberto(false)}
-        />
-      </div>
-    </div>
+      {aberto && (
+        <Modal
+          titulo={rotulo}
+          descricao="O link sai pronto na tela seguinte. A sala abre 30 minutos antes do horário."
+          aoFechar={() => setAberto(false)}
+        >
+          {/* Só existe enquanto está aberto, então reabrir depois de agendar já
+              nasce com o formulário limpo — sem `key` para forçar remontagem. */}
+          <FormularioDeReuniao
+            padrao={padrao}
+            owners={owners}
+            aoConcluir={() => setAberto(false)}
+          />
+        </Modal>
+      )}
+    </>
   );
 }

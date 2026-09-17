@@ -141,6 +141,10 @@ export function StageList({ stages }: { stages: StageRow[] }) {
                   </button>
 
                   {stage._count.deals > 0 || stages.length === 1 ? (
+                    // O rótulo diz o que FAZER, não só que não dá. "Não
+                    // removível" com a saída escondida num `title` não chega a
+                    // quem está no toque nem a quem navega pelo teclado — e a
+                    // saída é a única parte acionável da frase.
                     <span
                       className="chip cursor-not-allowed bg-surface-2 text-muted"
                       title={
@@ -150,7 +154,7 @@ export function StageList({ stages }: { stages: StageRow[] }) {
                       }
                     >
                       <Lock className="size-3" />
-                      Não removível
+                      {stage._count.deals > 0 ? "Mova os negócios antes" : "Única etapa do funil"}
                     </span>
                   ) : confirmando === stage.id ? (
                     <Acao action={excluirEtapa} mensagem="Não deu para excluir a etapa." className="flex items-center gap-1.5">
