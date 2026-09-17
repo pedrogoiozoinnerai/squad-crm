@@ -5,6 +5,7 @@ import { ehGravador, lerIdentidade } from "../src/lib/identidades";
 import { normalizarEgress, type EventoDeEgress } from "../src/lib/livekit";
 import {
   avancar,
+  baseRest,
   avisoDaGravacao,
   caminhoDaGravacao,
   derivarGravacao,
@@ -236,5 +237,36 @@ describe("o pedido de gravação que vai junto do CreateRoom", () => {
     // reassiste uma call assim.
     const p = pedidoDeEgress("reuniao-abc", "x.mp4", destino);
     assert.equal((p?.room as Record<string, unknown>).layout, "speaker");
+  });
+});
+
+describe("a base da REST sai do endpoint S3", () => {
+  it("tira o /s3 do fim", () => {
+    // Uma variável só para as duas portas. Duas variáveis apontando para
+    // projetos diferentes é o engano mais provável aqui — e ele só apareceria
+    // no dia em que alguém tentasse assistir uma call, com o arquivo lá,
+    // gravado e cobrado.
+    assert.equal(
+      baseRest("https://abc.supabase.co/storage/v1/s3"),
+      "https://abc.supabase.co/storage/v1",
+    );
+  });
+
+  it("barra sobrando no fim não vira barra dupla na URL", () => {
+    assert.equal(
+      baseRest("https://abc.supabase.co/storage/v1/s3/"),
+      "https://abc.supabase.co/storage/v1",
+    );
+  });
+
+  it("endpoint já sem /s3 fica como está", () => {
+    assert.equal(
+      baseRest("https://abc.supabase.co/storage/v1"),
+      "https://abc.supabase.co/storage/v1",
+    );
+  });
+
+  it("espaço de paste não entra na URL", () => {
+    assert.equal(baseRest("  https://abc.supabase.co/storage/v1/s3 "), "https://abc.supabase.co/storage/v1");
   });
 });

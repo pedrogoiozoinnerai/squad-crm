@@ -242,3 +242,16 @@ export function pedidoDeEgress(
     },
   };
 }
+
+/**
+ * A base da API REST do storage, derivada do endpoint S3.
+ *
+ * O endpoint S3 do Supabase é `https://<ref>.supabase.co/storage/v1/s3`, e a
+ * REST mora um nível acima. Derivar em vez de pedir uma sexta variável de
+ * ambiente evita o engano mais provável de todos: as duas apontando para
+ * projetos diferentes, o que só apareceria no dia em que alguém tentasse
+ * assistir uma call — com o arquivo lá, gravado e cobrado.
+ */
+export function baseRest(endpoint: string): string {
+  return endpoint.trim().replace(/\/+$/, "").replace(/\/s3$/, "");
+}

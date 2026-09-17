@@ -1,6 +1,8 @@
 import "server-only";
 
+import { chavesDoArmazenamento } from "@/lib/armazenamento";
 import { env } from "@/lib/env";
+import { caminhoDaGravacao, pedidoDeEgress } from "@/lib/gravacao";
 import { salaDaReuniao, tokenDeServico, urlHttpDoLiveKit } from "@/lib/livekit";
 
 /**
@@ -79,9 +81,23 @@ export async function chamarLiveKit(
  */
 export async function criarSala(
   meetingId: string,
-  opcoes: { duracaoMin: number; maxParticipantes?: number },
+  opcoes: { duracaoMin: number; inicio: Date; maxParticipantes?: number },
 ) {
   const nome = salaDaReuniao(meetingId);
+
+  // A gravação é DECLARADA na criação da sala, não pedida numa chamada
+  // separada de "começar a gravar". `criarSala` roda em toda requisição de
+  // token: com trinta pessoas entrando ao mesmo tempo, um start explícito
+  // seriam trinta gravações e trinta faturas. `CreateRoom` numa sala que já
+  // existe devolve a que está lá, sem abrir um segundo egress.
+  //
+  // Sem chaves de bucket, `pedidoDeEgress` devolve `null` e o corpo sai sem o
+  // campo — a sala é criada exatamente como antes. É a guarda inteira.
+  const egress = pedidoDeEgress(
+    nome,
+    caminhoDaGravacao(meetingId, opcoes.inicio),
+    chavesDoArmazenamento(),
+  );
 
   await chamarLiveKit(
     "livekit.RoomService/CreateRoom",
@@ -95,9 +111,13 @@ export async function criarSala(
       departureTimeout: 60,
       maxParticipants: opcoes.maxParticipantes ?? 0,
       metadata: JSON.stringify({ meetingId, duracaoMin: opcoes.duracaoMin }),
+      ...(egress ? { egress } : {}),
     },
-    { roomCreate: true },
+    // `roomRecord` entra junto de `roomCreate`: sem ela o LiveKit recusa a
+    // sala inteira quando o corpo traz egress — e a recusa vira "não foi
+    // possível abrir a sala agora" na cara de quem ia entrar.
+    { roomCreate: true, roomRecord: !!egress },
   );
 
-  return { sala: nome };
+  return { sala: nome, gravando: !!egress };
 }

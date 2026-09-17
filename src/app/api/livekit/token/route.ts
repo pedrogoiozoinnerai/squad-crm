@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
   );
 
   try {
-    await criarSala(reuniao.id, { duracaoMin });
+    await criarSala(reuniao.id, { duracaoMin, inicio: reuniao.startsAt });
   } catch (erro) {
     // A sala não subiu: sem ela o token não serve de nada, e um token emitido
     // aqui viraria uma tela de call que nunca conecta, sem dizer por quê.

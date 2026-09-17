@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { AnotarSessao } from "@/components/sessions/AnotarSessao";
+import { Gravacao } from "@/components/sessions/Gravacao";
 import { tempoNaSala } from "@/components/sessions/SessionsView";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { TZ, hhmm } from "@/lib/dates";
@@ -497,19 +498,12 @@ function AbaGravacao({
     );
   }
 
-  // O player entra com o bucket (Fase 1): sem chave assinada não há o que
-  // tocar, e desenhar um `<video>` apontando para lugar nenhum seria pior que
-  // dizer o que já se sabe.
   return (
-    <div className="card p-5">
-      <p className="text-sm">
-        Gravação pronta
-        {gravacao.duracaoSegundos ? ` · ${Math.round(gravacao.duracaoSegundos / 60)} min` : ""}
+    <div className="flex flex-col gap-2">
+      <Gravacao recordingId={gravacao.id} duracaoSegundos={gravacao.duracaoSegundos} />
+      <p className="text-[11px] text-muted">
+        {gravacao.duracaoSegundos ? `${Math.round(gravacao.duracaoSegundos / 60)} min` : "duração desconhecida"}
         {gravacao.bytes ? ` · ${(gravacao.bytes / 1024 ** 3).toFixed(2)} GB` : ""}
-      </p>
-      <p className="mt-1.5 text-xs text-muted">
-        O player aparece aqui assim que o bucket estiver configurado — o arquivo já
-        está guardado.
       </p>
     </div>
   );
