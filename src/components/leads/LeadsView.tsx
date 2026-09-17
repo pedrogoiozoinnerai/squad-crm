@@ -53,6 +53,12 @@ const COLUMNS = [
     hint: "Virou negócio no pipeline",
     dot: "bg-waz-50",
   },
+  {
+    status: "LOST" as const,
+    title: "Perdido",
+    hint: "Não seguiu — o histórico fica",
+    dot: "bg-stone-300",
+  },
 ];
 
 export function LeadsView({
@@ -96,7 +102,7 @@ export function LeadsView({
         ]}
       />
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {COLUMNS.map((column) => {
           const items = leads.filter((lead) => lead.status === column.status);
           const escondidos = Math.max(0, count(column.status) - items.length);

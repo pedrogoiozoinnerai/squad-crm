@@ -83,9 +83,16 @@ export async function getWeekMeetings(user: SessionUser, start: Date) {
  */
 const POR_COLUNA = 60;
 
-/** As colunas da tela. `LOST` não tem coluna, mas conta no total. */
-const COLUNAS_LEAD = ["INCOMPLETE", "COMPLETE", "CONVERTED"] as const;
-const STATUS_LEAD = [...COLUNAS_LEAD, "LOST"] as const;
+/**
+ * As colunas da tela.
+ *
+ * `LOST` entrou. Antes ele contava no cabeçalho e não tinha coluna: o vendedor
+ * lia "Perdidos: 12" e não havia lugar nenhum onde ver os doze. Marcar um lead
+ * como perdido o fazia desaparecer da tela — sem caminho de volta para rever ou
+ * reabrir, e com um número em cima apontando para nada.
+ */
+const COLUNAS_LEAD = ["INCOMPLETE", "COMPLETE", "CONVERTED", "LOST"] as const;
+const STATUS_LEAD = COLUNAS_LEAD;
 
 export async function getLeads(user: SessionUser) {
   const escopo = ownerScope(user);
