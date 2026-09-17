@@ -6,6 +6,7 @@ import { StageList, type StageRow } from "@/components/settings/StageList";
 import { TaskTemplateList, type TemplateRow } from "@/components/settings/TaskTemplateList";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { RegraDePresenca } from "@/components/settings/RegraDePresenca";
+import { Rubrica, type RubricaRow } from "@/components/settings/Rubrica";
 import { SerieList, type SerieRow } from "@/components/settings/SerieList";
 
 export type AutomationRow = {
@@ -28,7 +29,7 @@ export type CaseRow = {
   active: boolean;
 };
 
-export const SECOES = ["etapas", "motivos", "templates", "sessoes", "reunioes", "automacoes"] as const;
+export const SECOES = ["etapas", "motivos", "templates", "sessoes", "reunioes", "prompts", "automacoes"] as const;
 export type Secao = (typeof SECOES)[number];
 
 export function SettingsView({
@@ -42,6 +43,8 @@ export function SettingsView({
   series,
   owners,
   regra,
+  rubricas,
+  analisePronta,
 }: {
   basePath: string;
   secao: Secao;
@@ -53,6 +56,10 @@ export function SettingsView({
   series: SerieRow[];
   owners: { id: string; name: string }[];
   regra: { presencaMinutos: number; presencaPercentual: number };
+  rubricas: RubricaRow[];
+  /// Se a chave da Anthropic existe. Decide se a tela promete auditoria ou
+  /// explica por que ela ainda não roda.
+  analisePronta: boolean;
 }) {
   const abas: { key: Secao; label: string; count: number }[] = [
     { key: "etapas", label: "Etapas do pipeline", count: stages.length },
@@ -60,6 +67,7 @@ export function SettingsView({
     { key: "templates", label: "Templates de tarefa", count: templates.length },
     { key: "sessoes", label: "Sessões recorrentes", count: series.length },
     { key: "reunioes", label: "Reuniões e presença", count: 1 },
+    { key: "prompts", label: "Rubrica de auditoria", count: rubricas.length },
     { key: "automacoes", label: "Automações e cases", count: automations.length + cases.length },
   ];
 
@@ -106,6 +114,7 @@ export function SettingsView({
           presencaPercentual={regra.presencaPercentual}
         />
       )}
+      {secao === "prompts" && <Rubrica versoes={rubricas} analisePronta={analisePronta} />}
       {secao === "automacoes" && <ReadOnlySection automations={automations} cases={cases} />}
     </>
   );

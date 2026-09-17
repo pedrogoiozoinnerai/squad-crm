@@ -175,3 +175,46 @@ export function alvoDaChave(chave: string): string {
 }
 
 export { chaveDoTrabalho };
+
+/**
+ * Cria os trabalhos de análise que o estado do banco pede.
+ *
+ * Mesma forma da semeadura de transcrição, com uma condição a mais: só semeia
+ * se existir rubrica ATIVA. Sem ela não há régua, e analisar sem régua produz
+ * uma opinião genérica sobre a call — que é pior que nenhuma análise, porque
+ * parece uma e o closer age em cima dela.
+ */
+export async function semearAnalises(): Promise<number> {
+  const linhas = await prisma.$queryRawUnsafe<{ id: string }[]>(
+    `INSERT INTO "${DB_SCHEMA}"."AiJob" ("id","chave","etapa","estado","createdAt","updatedAt")
+     SELECT gen_random_uuid()::text, 'ANALISAR:' || t.id, 'ANALISAR', 'PENDENTE', now(), now()
+       FROM "${DB_SCHEMA}"."Transcript" t
+       LEFT JOIN "${DB_SCHEMA}"."CallAnalysis" a ON a."transcriptId" = t.id
+      WHERE a.id IS NULL
+        AND length(t.texto) > 200
+        AND EXISTS (SELECT 1 FROM "${DB_SCHEMA}"."AiPrompt" p
+                     WHERE p.tipo = 'AUDITORIA' AND p.ativo = true)
+     ON CONFLICT ("chave") DO NOTHING
+     RETURNING id`,
+  );
+  return linhas.length;
+}
+
+/** Os trabalhos que estão esperando o provedor, para conferir se já ficaram prontos. */
+export async function esperandoProvedor(etapa: EtapaDoTrabalho, limite: number) {
+  return prisma.aiJob.findMany({
+    where: { etapa, estado: "AGUARDANDO", externoId: { not: null } },
+    select: { id: true, chave: true, externoId: true, tentativas: true },
+    orderBy: { updatedAt: "asc" },
+    take: limite,
+  });
+}
+
+/** A rubrica em vigor. Versionada: nunca há `UPDATE` por cima da anterior. */
+export async function rubricaAtiva() {
+  return prisma.aiPrompt.findFirst({
+    where: { tipo: "AUDITORIA", ativo: true },
+    orderBy: { versao: "desc" },
+    select: { id: true, versao: true, corpo: true },
+  });
+}

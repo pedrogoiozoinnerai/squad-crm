@@ -3,6 +3,10 @@ import { describe, it } from "node:test";
 
 import {
   contarCriticos,
+  lerBlocos,
+  lerErros,
+  lerScorecard,
+  lerTextos,
   contarProibidas,
   contratoDeSaida,
   ERROS_VISIVEIS,
@@ -159,5 +163,40 @@ describe("o operador não alcança o formato", () => {
     const p = montarPrompt("REGRA DO SQUAD AQUI COM TAMANHO SUFICIENTE PARA VALER", "olá mundo");
     assert.ok(p.indexOf("REGRA DO SQUAD") < p.indexOf("JSON Schema"));
     assert.ok(p.indexOf("JSON Schema") < p.indexOf("olá mundo"));
+  });
+});
+
+describe("os campos jsonb de volta do banco", () => {
+  it("lê o que este mesmo schema gravou", () => {
+    const r = lerAnalise({
+      ...MINIMA,
+      blocos: [{ nome: "Abertura", status: "OK", minutos: 5 }],
+      erros: [{ gravidade: "CRITICO", oQueAconteceu: "x", citacao: "y" }],
+      insights: ["ligar para a Ana"],
+    });
+    assert.ok(r.ok);
+    const ida = JSON.parse(JSON.stringify(r.analise));
+    assert.equal(lerBlocos(ida.blocos)[0].nome, "Abertura");
+    assert.equal(lerErros(ida.erros)[0].citacao, "y");
+    assert.deepEqual(lerTextos(ida.insights), ["ligar para a Ana"]);
+  });
+
+  it("forma desconhecida vira lista vazia, não exceção", () => {
+    // O que está no jsonb foi gravado por uma versão anterior deste schema.
+    // Um campo que mudou de nome há três meses não pode derrubar a página
+    // inteira de uma call — levando junto a presença, que não tem nada a ver
+    // com a análise.
+    for (const lixo of [null, undefined, "texto", 42, {}, [{ nada: 1 }]]) {
+      assert.deepEqual(lerBlocos(lixo), [], `${JSON.stringify(lixo)} passou em blocos`);
+      assert.deepEqual(lerErros(lixo), [], `${JSON.stringify(lixo)} passou em erros`);
+      assert.deepEqual(lerScorecard(lixo), []);
+    }
+  });
+
+  it("um item torto NÃO leva os certos junto", () => {
+    // É uma lista inteira ou nada: aproveitar metade dos blocos daria um
+    // trilho com buraco no meio, que mente sobre a call em vez de admitir que
+    // não sabe.
+    assert.deepEqual(lerBlocos([{ nome: "Abertura", status: "INVENTADO" }]), []);
   });
 });

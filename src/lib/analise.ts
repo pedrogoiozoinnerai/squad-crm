@@ -106,6 +106,33 @@ export const AnaliseSchema = z.object({
 
 export type Analise = z.infer<typeof AnaliseSchema>;
 export type ErroDaCall = z.infer<typeof ErroSchema>;
+export type Bloco = z.infer<typeof BlocoSchema>;
+export type Termo = z.infer<typeof TermoSchema>;
+export type Objecao = z.infer<typeof ObjecaoSchema>;
+export type ItemDoScorecard = z.infer<typeof ItemDoScorecardSchema>;
+
+/**
+ * Os campos `jsonb` de volta do banco.
+ *
+ * O que está gravado lá foi escrito por uma versão anterior deste schema. Lê-lo
+ * sem validar é como a página de uma call inteira cai por um campo que mudou de
+ * nome há três meses — levando junto a presença, que não tem nada a ver com a
+ * análise. Cada leitor devolve lista vazia quando não reconhece a forma, e a
+ * tela simplesmente não desenha aquele bloco.
+ */
+function lista<T>(esquema: z.ZodType<T>) {
+  return (bruto: unknown): T[] => {
+    const r = z.array(esquema).safeParse(bruto);
+    return r.success ? r.data : [];
+  };
+}
+
+export const lerBlocos = lista(BlocoSchema);
+export const lerErros = lista(ErroSchema);
+export const lerVocabulario = lista(TermoSchema);
+export const lerObjecoes = lista(ObjecaoSchema);
+export const lerScorecard = lista(ItemDoScorecardSchema);
+export const lerTextos = lista(z.string());
 
 /**
  * Os erros que a tela pode desenhar.

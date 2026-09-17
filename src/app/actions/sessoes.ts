@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { problemaNaRubrica } from "@/lib/analise";
 import { TZ } from "@/lib/dates";
 import { dataDoDia, text } from "@/lib/forms";
 import {
@@ -158,4 +159,71 @@ export async function anotarSessao(_prev: FormState, formData: FormData): Promis
   revalidatePath(`/admin/sessoes/${meetingId}`);
   revalidatePath(`/user/sessoes/${meetingId}`);
   return { ok: true };
+}
+
+/**
+ * Publica uma versão nova da rubrica de auditoria.
+ *
+ * **Nunca `UPDATE`.** Editar por cima apagaria a régua pela qual as calls
+ * antigas foram julgadas: duas calls com a mesma nota passariam a ter sido
+ * medidas por textos diferentes, e nada registraria isso. Cada salvamento é uma
+ * versão nova, e a anterior continua pendurada nas análises que ela produziu.
+ *
+ * O corpo é SÓ a régua de julgamento. O formato da resposta é gerado do Zod em
+ * `lib/analise` e anexado pelo código — o operador não o alcança. É o conserto,
+ * por construção, do erro do CRM de referência: lá o prompt de 13.605
+ * caracteres pede dezenas de campos e o schema de saída aceita cinco, então a
+ * maior parte da análise é gerada, paga e descartada em silêncio.
+ */
+export async function publicarRubrica(_prev: FormState, formData: FormData): Promise<FormState> {
+  const user = await currentUser();
+  if (user.role !== "ADMIN") return { error: "Só administradores mexem na rubrica." };
+
+  const corpo = String(formData.get("corpo") ?? "").trim();
+  const problema = problemaNaRubrica(corpo);
+  if (problema) return { error: problema.motivo };
+
+  const ultima = await prisma.aiPrompt.findFirst({
+    where: { tipo: "AUDITORIA" },
+    orderBy: { versao: "desc" },
+    select: { versao: true },
+  });
+
+  // Desativa e cria numa transação só: entre as duas instruções, uma execução
+  // do cron acharia zero rubricas ativas e pularia a semeadura — ou duas, e
+  // pegaria a errada pela ordem.
+  await prisma.$transaction([
+    prisma.aiPrompt.updateMany({ where: { tipo: "AUDITORIA", ativo: true }, data: { ativo: false } }),
+    prisma.aiPrompt.create({
+      data: {
+        tipo: "AUDITORIA",
+        versao: (ultima?.versao ?? 0) + 1,
+        ativo: true,
+        corpo,
+        autorId: user.id,
+      },
+    }),
+  ]);
+
+  revalidatePath("/admin/configuracoes");
+  return { ok: true };
+}
+
+/** Liga ou desliga a auditoria sem apagar a régua. */
+export async function alternarRubrica(formData: FormData) {
+  const user = await currentUser();
+  if (user.role !== "ADMIN") throw new Error("Só administradores mexem na rubrica.");
+
+  const id = text(formData.get("id"));
+  if (!id) throw new Error("Rubrica não informada.");
+
+  const rubrica = await prisma.aiPrompt.findUnique({ where: { id }, select: { ativo: true } });
+  if (!rubrica) throw new Error("Rubrica não encontrada.");
+
+  await prisma.$transaction([
+    prisma.aiPrompt.updateMany({ where: { tipo: "AUDITORIA", ativo: true }, data: { ativo: false } }),
+    ...(rubrica.ativo ? [] : [prisma.aiPrompt.update({ where: { id }, data: { ativo: true } })]),
+  ]);
+
+  revalidatePath("/admin/configuracoes");
 }

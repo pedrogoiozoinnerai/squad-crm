@@ -1060,3 +1060,23 @@ export async function contarErros24h() {
   const ontem = new Date(Date.now() - 24 * 60 * 60 * 1000);
   return prisma.errorLog.count({ where: { createdAt: { gte: ontem } } });
 }
+
+/**
+ * As versões da rubrica de auditoria, da mais nova para a mais velha.
+ *
+ * Todas, e não só a ativa: as antigas ficam porque são elas que explicam as
+ * notas que deram. Uma análise de três meses atrás foi julgada por um texto que
+ * talvez não seja mais o que está em vigor, e apagar esse texto tornaria a nota
+ * impossível de defender.
+ */
+export async function getRubricas() {
+  return prisma.aiPrompt.findMany({
+    where: { tipo: "AUDITORIA" },
+    orderBy: { versao: "desc" },
+    take: 20,
+    select: {
+      id: true, versao: true, ativo: true, corpo: true, createdAt: true,
+      autor: { select: { name: true } },
+    },
+  });
+}

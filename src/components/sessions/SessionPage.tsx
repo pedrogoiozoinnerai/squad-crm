@@ -14,6 +14,16 @@ import {
   Video,
 } from "lucide-react";
 
+import {
+  errosVisiveis,
+  lerBlocos,
+  lerErros,
+  lerObjecoes,
+  lerScorecard,
+  lerTextos,
+  lerVocabulario,
+  type Bloco,
+} from "@/lib/analise";
 import { AnotarSessao } from "@/components/sessions/AnotarSessao";
 import { Gravacao } from "@/components/sessions/Gravacao";
 import { tempoNaSala } from "@/components/sessions/SessionsView";
@@ -31,7 +41,7 @@ import {
   taxaDaSessao,
 } from "@/lib/presenca";
 import type { AbaDaSessao, SessionDetail } from "@/lib/queries";
-import { lerSegmentos, medirFalantes, provavelCondutor } from "@/lib/transcricao";
+import { carimboDoTrecho, lerSegmentos, medirFalantes, provavelCondutor } from "@/lib/transcricao";
 
 const STATUS = {
   SCHEDULED: { text: "Agendada", tone: "bg-sky-50 text-sky-700" },
@@ -516,6 +526,18 @@ function AbaGravacao({
   );
 }
 
+/**
+ * A auditoria, sem virar paredão.
+ *
+ * O erro a não repetir é de renderização, não de dados: a referência produz uma
+ * análise enorme e a despeja inteira na tela. Uma tela com onze erros faz o
+ * closer parar de abrir a página — e uma auditoria que ninguém abre não corrige
+ * ninguém.
+ *
+ * Então: veredito em uma linha, trilho de blocos, no máximo três erros, chips de
+ * vocabulário, e o scorecard atrás de um `<details>`. O closer lê o veredito e
+ * os três erros; o gestor abre o resto.
+ */
 function AbaAuditoria({
   temTranscricao,
   analise,
@@ -527,37 +549,246 @@ function AbaAuditoria({
     return (
       <Vazio>
         {temTranscricao
-          ? "A transcrição existe, mas a auditoria ainda não rodou — falta a rubrica ativa."
+          ? "A transcrição existe, mas a auditoria ainda não rodou — falta a rubrica ativa ou a chave da análise."
           : "Sem transcrição, não há o que auditar."}
       </Vazio>
     );
   }
 
+  const blocos = lerBlocos(analise.blocos);
+  const erros = errosVisiveis(lerErros(analise.erros));
+  const vocabulario = lerVocabulario(analise.vocabulario);
+  const objecoes = lerObjecoes(analise.objecoes);
+  const scorecard = lerScorecard(analise.scorecard);
+  const passos = lerTextos(analise.proximosPassos);
+
+  const proibidas = vocabulario.filter((t) => t.tipo === "PROIBIDO" && t.ocorrencias > 0);
+  const recomendadas = vocabulario.filter((t) => t.tipo === "RECOMENDADO" && t.ocorrencias > 0);
+
   return (
-    <div className="card p-5">
-      <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm font-semibold">
-        <span>{analise.veredicto ?? "Sem veredito"}</span>
-        {analise.aderenciaPct != null && <span>{analise.aderenciaPct}% de aderência</span>}
-        {analise.blocosTotal != null && (
-          <span className="text-xs font-normal text-muted">
+    <div className="flex flex-col gap-6">
+      {/* O veredito em UMA linha. Quem abre esta aba quer saber se foi bem
+          antes de ler por quê. */}
+      <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className={`chip ${TOM_DO_VEREDICTO[analise.veredicto ?? ""] ?? "bg-surface-2 text-muted"}`}>
+          {ROTULO_DO_VEREDICTO[analise.veredicto ?? ""] ?? "Sem veredito"}
+        </span>
+        {analise.aderenciaPct != null && (
+          <span className="text-sm font-semibold tabular-nums">{analise.aderenciaPct}% de aderência</span>
+        )}
+        {analise.blocosTotal ? (
+          <span className="text-xs text-muted tabular-nums">
             {analise.blocosOk ?? 0}/{analise.blocosTotal} blocos
+          </span>
+        ) : null}
+        {analise.engajamento != null && (
+          <span className="text-xs text-muted">engajamento {analise.engajamento}/10</span>
+        )}
+        {analise.errosCriticos > 0 && (
+          <span className="text-xs text-red-700">
+            {analise.errosCriticos} {analise.errosCriticos === 1 ? "erro crítico" : "erros críticos"}
           </span>
         )}
       </p>
-      {analise.roleplayFoco.length > 0 && (
-        <p className="mt-3 flex flex-wrap gap-1.5">
-          {analise.roleplayFoco.map((foco) => (
-            <span key={foco} className="chip bg-surface-2 text-muted">
-              {foco}
+
+      {blocos.length > 0 && <TrilhoDeBlocos blocos={blocos} />}
+
+      {erros.length > 0 && (
+        <section>
+          <h3 className="mb-2.5 flex items-baseline gap-2 text-sm font-semibold">
+            O que corrigir
+            <span className="text-xs font-normal text-muted">
+              {/* A regra que vale mais que o desenho: sem citação literal da
+                  transcrição, o apontamento NÃO é mostrado. O que está sendo
+                  dito é que uma pessoa conduziu mal uma conversa, e isso é lido
+                  pelo gestor dela. */}
+              cada um com a frase que o sustenta
             </span>
-          ))}
-        </p>
+          </h3>
+          <ul className="flex flex-col gap-2.5">
+            {erros.map((erro, i) => (
+              <li key={i} className="card p-4">
+                <p className="flex flex-wrap items-baseline gap-2">
+                  <span className={`chip ${TOM_DA_GRAVIDADE[erro.gravidade]}`}>
+                    {ROTULO_DA_GRAVIDADE[erro.gravidade]}
+                  </span>
+                  {erro.bloco && <span className="text-xs text-muted">{erro.bloco}</span>}
+                  {erro.emSegundos != null && (
+                    <span className="text-[11px] text-muted tabular-nums">
+                      {carimboDoTrecho(erro.emSegundos)}
+                    </span>
+                  )}
+                </p>
+                <p className="mt-2 text-sm">{erro.oQueAconteceu}</p>
+                <blockquote className="mt-2.5 border-l-2 border-line pl-3 text-sm text-muted italic">
+                  “{erro.citacao}”
+                </blockquote>
+                {erro.oQuePlaybookManda && (
+                  <p className="mt-2.5 text-sm">
+                    <span className="text-xs font-semibold text-muted">O playbook manda: </span>
+                    {erro.oQuePlaybookManda}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
-      <p className="mt-3 text-xs text-muted">
-        O trilho de blocos, os erros com citação e o scorecard entram junto com a
-        análise de verdade.
+
+      {(proibidas.length > 0 || recomendadas.length > 0) && (
+        <section>
+          <h3 className="mb-2.5 text-sm font-semibold">Vocabulário</h3>
+          <p className="flex flex-wrap gap-1.5">
+            {proibidas.map((t) => (
+              <span key={`p-${t.termo}`} className="chip bg-red-50 text-red-700">
+                {t.termo}
+                <span className="tabular-nums">{t.ocorrencias}</span>
+              </span>
+            ))}
+            {recomendadas.map((t) => (
+              <span key={`r-${t.termo}`} className="chip bg-waz-90 text-waz-20">
+                {t.termo}
+                <span className="tabular-nums">{t.ocorrencias}</span>
+              </span>
+            ))}
+          </p>
+        </section>
+      )}
+
+      {objecoes.length > 0 && (
+        <section>
+          <h3 className="mb-2.5 text-sm font-semibold">Objeções</h3>
+          <ul className="flex flex-col gap-2">
+            {objecoes.map((o, i) => (
+              <li key={i} className="rounded-xl border border-line bg-surface px-3.5 py-3">
+                <p className="flex items-baseline gap-2 text-sm font-medium">
+                  {o.objecao}
+                  {o.resolvida !== null && (
+                    <span
+                      className={`chip ${o.resolvida ? "bg-waz-90 text-waz-20" : "bg-amber-50 text-amber-800"}`}
+                    >
+                      {o.resolvida ? "tratada" : "ficou de pé"}
+                    </span>
+                  )}
+                </p>
+                {o.comoFoiTratada && <p className="mt-1 text-sm text-muted">{o.comoFoiTratada}</p>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {passos.length > 0 && (
+        <section>
+          <h3 className="mb-2.5 text-sm font-semibold">Próximos passos</h3>
+          <ul className="flex flex-col gap-2">
+            {passos.map((passo, i) => (
+              <li key={i} className="flex gap-2.5 text-sm">
+                <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-waz-40" />
+                {passo}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {scorecard.length > 0 && (
+        // Atrás do `<details>` de propósito: o closer lê veredito e os três
+        // erros; o gestor é quem abre o scorecard inteiro.
+        <details className="card p-4">
+          <summary className="cursor-pointer text-sm font-semibold">
+            Scorecard completo
+            <span className="ml-2 text-xs font-normal text-muted">{scorecard.length} critérios</span>
+          </summary>
+          <ul className="mt-3 flex flex-col gap-2 border-t border-line pt-3">
+            {scorecard.map((item, i) => (
+              <li key={i} className="flex items-baseline gap-3 text-sm">
+                <span className="w-10 shrink-0 font-semibold tabular-nums">{item.nota}/10</span>
+                <span className="min-w-0 flex-1">
+                  {item.criterio}
+                  {item.justificativa && (
+                    <span className="block text-xs text-muted">{item.justificativa}</span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      <p className="text-[11px] text-muted">
+        Gerada por {analise.modelo ?? "modelo desconhecido"} em{" "}
+        {analise.createdAt.toLocaleString("pt-BR", { timeZone: TZ, dateStyle: "short", timeStyle: "short" })}
+        {analise.redigidaEm && " · as citações foram removidas pela retenção"}. É uma
+        leitura automática da transcrição, não um julgamento final.
       </p>
     </div>
+  );
+}
+
+const TOM_DO_VEREDICTO: Record<string, string> = {
+  EXCELENTE: "bg-waz-90 text-waz-20",
+  BOA: "bg-waz-90 text-waz-20",
+  MEDIANA: "bg-amber-50 text-amber-800",
+  FRACA: "bg-red-50 text-red-700",
+};
+const ROTULO_DO_VEREDICTO: Record<string, string> = {
+  EXCELENTE: "Excelente",
+  BOA: "Boa",
+  MEDIANA: "Mediana",
+  FRACA: "Fraca",
+};
+const TOM_DA_GRAVIDADE: Record<string, string> = {
+  CRITICO: "bg-red-50 text-red-700",
+  MEDIO: "bg-amber-50 text-amber-800",
+  LEVE: "bg-surface-2 text-muted",
+};
+const ROTULO_DA_GRAVIDADE: Record<string, string> = {
+  CRITICO: "Crítico",
+  MEDIO: "Médio",
+  LEVE: "Leve",
+};
+
+/**
+ * Os blocos do playbook, em barra.
+ *
+ * Largura proporcional aos minutos, cor pelo status — mas a cor NUNCA é o único
+ * sinal: o nome e o status aparecem na legenda abaixo. Um trilho onde só a cor
+ * informa não é lido por quem não distingue vermelho de verde, e este time tem
+ * gente assim como qualquer outro.
+ */
+function TrilhoDeBlocos({ blocos }: { blocos: Bloco[] }) {
+  const total = blocos.reduce((soma, b) => soma + (b.minutos ?? 1), 0) || 1;
+  const cor: Record<string, string> = {
+    OK: "bg-waz-40",
+    PARCIAL: "bg-amber-400",
+    AUSENTE: "bg-stone-300",
+  };
+
+  return (
+    <section>
+      <h3 className="mb-2.5 text-sm font-semibold">Como a call andou</h3>
+      <div className="flex h-2.5 w-full gap-0.5 overflow-hidden rounded-full">
+        {blocos.map((b, i) => (
+          <span
+            key={i}
+            title={`${b.nome} · ${b.status.toLowerCase()}${b.minutos ? ` · ${b.minutos} min` : ""}`}
+            className={`h-full ${cor[b.status] ?? "bg-surface-2"}`}
+            style={{ width: `${((b.minutos ?? 1) / total) * 100}%` }}
+          />
+        ))}
+      </div>
+      <ul className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1">
+        {blocos.map((b, i) => (
+          <li key={i} className="flex items-center gap-1.5 text-xs text-muted">
+            <span className={`size-2 shrink-0 rounded-full ${cor[b.status] ?? "bg-surface-2"}`} />
+            {b.nome}
+            {b.minutos ? <span className="tabular-nums">{b.minutos} min</span> : null}
+            {b.status !== "OK" && <span className="font-medium">{b.status.toLowerCase()}</span>}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

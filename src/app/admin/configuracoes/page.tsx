@@ -1,6 +1,7 @@
 import { SECOES, SettingsView, type Secao } from "@/components/settings/SettingsView";
 import { requireUser } from "@/lib/auth";
-import { getConfig, getOwners } from "@/lib/queries";
+import { anthropicConfigurado } from "@/lib/anthropic";
+import { getConfig, getOwners, getRubricas } from "@/lib/queries";
 
 const BASE = "/admin/configuracoes";
 
@@ -12,7 +13,7 @@ export default async function ConfiguracoesPage(props: PageProps<"/admin/configu
   const pedida = Array.isArray(secao) ? secao[0] : secao;
   const atual: Secao = SECOES.includes(pedida as Secao) ? (pedida as Secao) : "etapas";
 
-  const [config, owners] = await Promise.all([getConfig(), getOwners()]);
+  const [config, owners, rubricas] = await Promise.all([getConfig(), getOwners(), getRubricas()]);
 
   return (
     <SettingsView
@@ -26,6 +27,8 @@ export default async function ConfiguracoesPage(props: PageProps<"/admin/configu
       series={config.series}
       owners={owners}
       regra={config.regra}
+      rubricas={rubricas}
+      analisePronta={anthropicConfigurado()}
     />
   );
 }
