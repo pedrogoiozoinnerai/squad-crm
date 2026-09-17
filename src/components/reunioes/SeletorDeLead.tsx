@@ -28,18 +28,20 @@ export function SeletorDeLead({ inicial }: { inicial?: Lead }) {
   // depois de "ana paula" sobrescreveria a lista certa pela antiga.
   const pedido = useRef(0);
 
-  useEffect(() => {
-    const q = termo.trim();
-    if (escolhido || q.length < 2) {
-      setAchados([]);
-      return;
-    }
+  const termoValido = !escolhido && termo.trim().length >= 2;
 
+  useEffect(() => {
+    if (!termoValido) return;
+    const q = termo.trim();
     const meu = ++pedido.current;
-    setBuscando(true);
+
     // Espera a pessoa parar de digitar: uma consulta por tecla seria uma
-    // consulta ao banco por tecla.
+    // consulta ao banco por tecla. O `setBuscando` mora DENTRO do timer, e não
+    // no corpo do efeito — assim nenhuma renderização é encadeada por outra
+    // antes de a busca sequer começar.
     const timer = setTimeout(async () => {
+      if (meu !== pedido.current) return;
+      setBuscando(true);
       try {
         const r = await buscarLeads(q);
         if (meu === pedido.current) setAchados(r);
@@ -49,7 +51,12 @@ export function SeletorDeLead({ inicial }: { inicial?: Lead }) {
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [termo, escolhido]);
+  }, [termo, termoValido]);
+
+  // Derivado, e não `setAchados([])` no efeito: com o termo curto ou o lead já
+  // escolhido, a lista NÃO É para aparecer — isso se sabe na renderização, sem
+  // precisar de um estado que corrige o anterior.
+  const lista = termoValido ? achados : [];
 
   if (escolhido) {
     return (
@@ -93,9 +100,9 @@ export function SeletorDeLead({ inicial }: { inicial?: Lead }) {
         />
       </div>
 
-      {achados.length > 0 && (
+      {lista.length > 0 && (
         <ul className="flex flex-col gap-1 rounded-xl border border-line bg-surface p-1">
-          {achados.map((lead) => (
+          {lista.map((lead) => (
             <li key={lead.id}>
               <button
                 type="button"
@@ -115,7 +122,7 @@ export function SeletorDeLead({ inicial }: { inicial?: Lead }) {
       <span className="text-[11px] text-muted">
         {buscando
           ? "Procurando…"
-          : termo.trim().length >= 2 && achados.length === 0
+          : termoValido && lista.length === 0
             ? "Nenhum lead com esse termo. Sem lead, a reunião fica só na sua agenda."
             : "Deixe em branco para uma reunião interna, sem lead."}
       </span>

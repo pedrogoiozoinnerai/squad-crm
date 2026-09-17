@@ -335,6 +335,83 @@ async function main() {
   const id2 = JSON.parse(Buffer.from(String(segundo.token).split(".")[1], "base64url").toString()).sub;
   confere(id1 !== id2, "duas pessoas pelo mesmo link viram dois participantes");
 
+  // ── 8.6. O chat guarda a conversa ─────────────────────────────────────────
+  //
+  // O defeito era este: a conversa vivia só no canal de dados do LiveKit, que
+  // não tem memória. Fechar o painel apagava tudo, recarregar apagava tudo, e
+  // quem entrava no meio da sessão via um chat vazio. Estas verificações batem
+  // na rota pela mesma porta que o convidado usa.
+  etapa(8.6 as unknown as number, "O chat guarda a conversa");
+
+  const comoConvidado = { convidado: guest, identidade: id1, nome: "Pessoa Convidada" };
+
+  const mandou = await fetch(`${BASE}/api/sala/mensagens`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ...comoConvidado, texto: "  mensagem do teste  " }),
+  });
+  const gravada = await mandou.json().catch(() => null);
+  confere(mandou.ok, "a mensagem é aceita", `HTTP ${mandou.status}`);
+  confere(
+    gravada?.autor === "Pessoa Convidada",
+    "assinada com o nome que a pessoa digitou",
+    gravada?.autor,
+  );
+
+  const historico = await fetch(
+    `${BASE}/api/sala/mensagens?${new URLSearchParams(comoConvidado)}`,
+  ).then((r) => r.json());
+  const minhas = (historico?.mensagens ?? []) as { texto: string; identidade: string }[];
+  confere(minhas.length === 1, "o histórico devolve a mensagem", `${minhas.length}`);
+  confere(minhas[0]?.texto === "mensagem do teste", "o texto vem aparado", minhas[0]?.texto);
+  confere(
+    historico?.identidade === id1,
+    "a identidade dita é respeitada — senão a própria mensagem volta como de outro",
+    historico?.identidade,
+  );
+
+  // Mensagem vazia não existe: sem isto, apertar enviar sem digitar nada
+  // guardaria uma linha em branco na conversa de todo mundo.
+  const vazia = await fetch(`${BASE}/api/sala/mensagens`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ...comoConvidado, texto: "   \n  " }),
+  });
+  confere(vazia.status === 400, "mensagem em branco é recusada", `HTTP ${vazia.status}`);
+
+  // A porta do chat é a MESMA da sala: quem não entra não escreve.
+  const semPorta = await fetch(`${BASE}/api/sala/mensagens`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ meetingId: agoraId, texto: "não devia passar" }),
+  });
+  confere(semPorta.status === 401, "sem credencial nenhuma, não escreve", `HTTP ${semPorta.status}`);
+
+  const linkFalso = await fetch(`${BASE}/api/sala/mensagens`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ convidado: "0".repeat(64), texto: "de outra sala" }),
+  });
+  confere(linkFalso.status === 404, "link inventado não escreve", `HTTP ${linkFalso.status}`);
+
+  // E ninguém assina como o vendedor: o autor sai de quem autorizou, não do
+  // corpo da requisição.
+  const forjada = await fetch(`${BASE}/api/sala/mensagens`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      ...comoConvidado,
+      identidade: `u_${criados.meetingId}`,
+      texto: "sou o vendedor",
+    }),
+  });
+  const forjadaCorpo = await forjada.json().catch(() => null);
+  confere(
+    forjada.ok && String(forjadaCorpo?.identidade).startsWith("c_"),
+    "identidade forjada de usuário é descartada",
+    forjadaCorpo?.identidade,
+  );
+
   // ── 9. O webhook do LiveKit vira evento cru ───────────────────────────────
   etapa(9, "O webhook do LiveKit");
   const sala = `reuniao-${agoraId}`;

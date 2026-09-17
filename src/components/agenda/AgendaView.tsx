@@ -6,7 +6,7 @@ import { LinkDaSala } from "@/components/sala/LinkDaSala";
 import { toggleTask } from "@/app/actions/tasks";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { NovaReuniao } from "@/components/reunioes/NovaReuniao";
-import { TZ, chaveDoDia, hhmm, horaLocal, paraCampoLocal } from "@/lib/dates";
+import { TZ, chaveDoDia, hhmm, horaLocal } from "@/lib/dates";
 
 type Meeting = {
   id: string;

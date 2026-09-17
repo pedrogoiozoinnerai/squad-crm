@@ -23,17 +23,25 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* ── A sala de reunião ──────────────────────────────────────────────
-     Escura porque vídeo precisa de contraste: fundo claro atrás de uma
-     webcam lava a imagem e cansa em call de uma hora.
+     CLARA, como o resto do Squad.com: mesmo fundo #faf9f7, superfícies
+     brancas, texto preto, linha fina no lugar de sombra. Antes era um
+     verde quase preto, e a sala era a única tela do produto que não
+     parecia do produto — quem entrava pelo link via outra marca.
 
-     Mas escuro não quer dizer azul-marinho. Estes quatro tons descem do
-     MESMO verde do manual (`waz-10` é o terceiro deles) — antes eram
-     #0d1424, #111a2e, #131c33 e #1a2540, uma paleta que não existe em
-     lugar nenhum da marca e que veio junto das telas de referência. */
-  --color-sala-fundo: #05170c;
-  --color-sala-painel: #072110;
-  --color-sala-superficie: #092a16;
-  --color-sala-elevado: #0e3a1f;
+     A troca tem um custo real e conhecido: fundo escuro dá mais
+     contraste para imagem de webcam. O contorno do quadro (`sala-video`)
+     existe por isso — o retângulo do vídeo precisa se separar do branco
+     sozinho, sem o fundo escuro fazendo esse trabalho.
+
+     `sala-video` é o único tom escuro que sobra, e é o CHÃO DO VÍDEO:
+     enquanto a câmera não chega, um retângulo branco pisca em branco e
+     depois em imagem. Escuro ali é o que quase todo player faz. */
+  --color-sala-fundo: #faf9f7;
+  --color-sala-painel: #ffffff;
+  --color-sala-superficie: #ffffff;
+  --color-sala-elevado: #ffffff;
+  --color-sala-linha: #e3e1dc;
+  --color-sala-video: #17150f;
 
   /* Waz — paleta oficial do manual de marca Squad.com */
   --color-waz-10: #092a16;

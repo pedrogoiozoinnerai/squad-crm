@@ -8,6 +8,7 @@ import type { Room } from "livekit-client";
 
 import { Preparo, type Preferencias } from "@/components/sala/Preparo";
 import { Reuniao } from "@/components/sala/Reuniao";
+import type { Credencial } from "@/components/sala/useConversa";
 import { lerFalhaDaSala, type FalhaDaSala } from "@/lib/falhas-da-sala";
 import type { SituacaoDaSala } from "@/lib/sala";
 
@@ -38,6 +39,10 @@ export function SalaCliente({
   const [fase, setFase] = useState<Fase>("preparo");
   const [sala, setSala] = useState<Room | null>(null);
   const [erro, setErro] = useState<FalhaDaSala | null>(null);
+  // Guardada ao entrar porque o chat precisa dela: quem chegou pelo LINK não
+  // tem conta nem inscrição, e sem repetir a MESMA identidade cada mensagem
+  // sua seria de outra pessoa.
+  const [credencial, setCredencial] = useState<Credencial | null>(null);
 
   // Desconecta ao sair da página.
   //
@@ -80,6 +85,15 @@ export function SalaCliente({
         // baixá-lo.
         const { conectar } = await import("@/components/sala/conexao");
         setSala(await conectar({ url: dados.url, token: dados.token, preferencias }));
+        setCredencial({
+          meetingId,
+          convite: convite ?? null,
+          convidado: convidado ?? null,
+          identidade: dados.identidade ?? "",
+          // O nome como o SERVIDOR o entendeu, não o que foi digitado: ele
+          // apara e corta em 60, e o histórico tem que bater com a sala.
+          nome: dados.nome ?? preferencias.nome ?? "",
+        });
         setFase("dentro");
       } catch (e) {
         // O detalhe técnico fica no console para quem for investigar; a tela
@@ -129,7 +143,7 @@ export function SalaCliente({
     return <Aviso texto="Entrando na sala…" voltarPara={null} />;
   }
 
-  if (fase === "saiu" || !sala) {
+  if (fase === "saiu" || !sala || !credencial) {
     return (
       <Aviso
         texto={fase === "saiu" ? "Você saiu da reunião." : "A conexão caiu."}
@@ -144,6 +158,7 @@ export function SalaCliente({
       titulo={titulo}
       host={host}
       meetingId={meetingId}
+      credencial={credencial}
       aoSair={() => {
         setSala(null);
         setFase("saiu");

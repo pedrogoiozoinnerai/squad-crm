@@ -42,6 +42,10 @@ export function Preparo({
   const [microfone, setMicrofone] = useState(true);
   const [falha, setFalha] = useState<FalhaDeMidia | null>(null);
   const [temVideo, setTemVideo] = useState(false);
+  // Em estado, e não lido de `stream.current` na renderização: uma ref não
+  // redesenha nada quando muda, então o botão do microfone continuava
+  // desabilitado depois de uma segunda tentativa bem-sucedida.
+  const [temAudio, setTemAudio] = useState(false);
   const [pedindo, setPedindo] = useState(true);
 
   const pedirAcesso = useCallback(async () => {
@@ -50,18 +54,21 @@ export function Preparo({
     desligar(stream.current);
     stream.current = null;
     setTemVideo(false);
+    setTemAudio(false);
 
     try {
       const midia = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       stream.current = midia;
       if (video.current) video.current.srcObject = midia;
       setTemVideo(true);
+      setTemAudio(midia.getAudioTracks().length > 0);
     } catch (erro) {
       // Uma segunda tentativa só com áudio separa "negou tudo" de "não tem
       // câmera". Sem ela, quem não tem webcam ouviria que negou permissão.
       try {
         const soAudio = await navigator.mediaDevices.getUserMedia({ audio: true });
         stream.current = soAudio;
+        setTemAudio(soAudio.getAudioTracks().length > 0);
         setCamera(false);
         setFalha(lerFalha(erro, "câmera"));
       } catch (erroAudio) {
@@ -75,6 +82,10 @@ export function Preparo({
   }, []);
 
   useEffect(() => {
+    // Os `setState` acontecem DEPOIS dos awaits, não no corpo do efeito — mas
+    // a regra não enxerga através do `async`, e pedir câmera ao montar é
+    // exatamente o que um efeito serve para fazer.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void pedirAcesso();
     // Desliga ao sair: sem isto a luz da câmera fica acesa depois de entrar.
     return () => desligar(stream.current);
@@ -171,7 +182,7 @@ export function Preparo({
           />
           <Alternar
             ligado={microfone}
-            desabilitado={Boolean(falha && !stream.current?.getAudioTracks().length)}
+            desabilitado={!temAudio}
             aoClicar={() => setMicrofone((v) => !v)}
             ligadoIcone={<Mic className="size-4" />}
             desligadoIcone={<MicOff className="size-4" />}

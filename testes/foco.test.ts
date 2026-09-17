@@ -1,0 +1,144 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+
+import { FOCO_VAZIO, quandoReavaliar, SUSTENTACAO_MS, proximoFoco } from "../src/lib/foco";
+
+/**
+ * O quadro principal trocava de rosto a cada respiração.
+ *
+ * `activeSpeakers` do LiveKit muda muito mais rápido do que um olho acompanha:
+ * um "uhum" de meio segundo roubava a tela de quem estava explicando. Estes
+ * casos são a conversa cruzada real, medida em milissegundos.
+ */
+
+const TODOS = ["u_ana", "l_bruno", "c_carla"];
+
+/** Roda uma conversa: cada passo é [instante, quem está falando]. */
+function conversar(
+  passos: [number, string | null][],
+  presentes: readonly string[] = TODOS,
+  inicial = FOCO_VAZIO,
+) {
+  let estado = inicial;
+  const trocas: string[] = [];
+  for (const [t, candidato] of passos) {
+    const antes = estado.identidade;
+    estado = proximoFoco(estado, { candidato, presentes }, t);
+    if (estado.identidade !== antes && estado.identidade) trocas.push(estado.identidade);
+  }
+  return { estado, trocas };
+}
+
+describe("foco na sala", () => {
+  it("o primeiro rosto entra na hora, sem esperar sustentação", () => {
+    // Esperar aqui deixaria a sala começar com o quadro vazio.
+    const f = proximoFoco(FOCO_VAZIO, { candidato: "u_ana", presentes: TODOS }, 1000);
+    assert.equal(f.identidade, "u_ana");
+  });
+
+  it("uma interjeição curta NÃO rouba a tela", () => {
+    const { estado } = conversar([
+      [0, "u_ana"],
+      // Bruno solta um "uhum" de 400ms — é o caso que quebrava a tela.
+      [1000, "l_bruno"],
+      [1400, null],
+      [2000, null],
+    ]);
+    assert.equal(estado.identidade, "u_ana");
+  });
+
+  it("uma interjeição depois de silêncio também não rouba", () => {
+    // Este é o caso que a regra de permanência pós-troca deixava passar: com o
+    // foco parado há muito tempo, qualquer ruído qualificaria na hora.
+    const { estado } = conversar([
+      [0, "u_ana"],
+      [60_000, "l_bruno"],
+      [60_300, null],
+    ]);
+    assert.equal(estado.identidade, "u_ana");
+  });
+
+  it("quem assume a palavra aparece", () => {
+    const { estado } = conversar([
+      [0, "u_ana"],
+      [1000, "l_bruno"],
+      [1000 + SUSTENTACAO_MS, "l_bruno"],
+    ]);
+    assert.equal(estado.identidade, "l_bruno");
+  });
+
+  it("conversa cruzada de dois segundos não troca nada", () => {
+    // Ana e Bruno se atropelando a cada 200ms: nenhum dos dois sustenta.
+    const passos: [number, string | null][] = [[0, "u_ana"]];
+    for (let t = 200; t <= 2000; t += 200) {
+      passos.push([t, t % 400 === 0 ? "l_bruno" : "c_carla"]);
+    }
+    const { trocas } = conversar(passos);
+    assert.deepEqual(trocas, ["u_ana"], `trocou para ${trocas.slice(1).join(", ")}`);
+  });
+
+  it("sustentação interrompida volta à estaca zero", () => {
+    // Sem zerar, duas interjeições separadas por um minuto somariam como se
+    // fossem fala contínua.
+    const { estado } = conversar([
+      [0, "u_ana"],
+      [1000, "l_bruno"],
+      [1500, null],
+      [2000, "l_bruno"],
+      [2400, null],
+    ]);
+    assert.equal(estado.identidade, "u_ana");
+  });
+
+  it("silêncio não apaga o quadro", () => {
+    const { estado } = conversar([
+      [0, "u_ana"],
+      [5000, null],
+    ]);
+    assert.equal(estado.identidade, "u_ana");
+  });
+
+  it("quem some da sala sai do foco na hora, sem esperar", () => {
+    let f = proximoFoco(FOCO_VAZIO, { candidato: "u_ana", presentes: TODOS }, 0);
+    f = proximoFoco(f, { candidato: null, presentes: ["l_bruno", "c_carla"] }, 100);
+    assert.equal(f.identidade, "l_bruno");
+  });
+
+  it("candidato que não está mais na sala é ignorado", () => {
+    // Acontece: o evento de quem fala e o de quem saiu correm juntos.
+    let f = proximoFoco(FOCO_VAZIO, { candidato: "u_ana", presentes: TODOS }, 0);
+    f = proximoFoco(f, { candidato: "l_bruno", presentes: ["u_ana"] }, 9999);
+    assert.equal(f.identidade, "u_ana");
+  });
+
+  it("sala vazia não quebra", () => {
+    assert.equal(proximoFoco(FOCO_VAZIO, { candidato: null, presentes: [] }, 0).identidade, null);
+  });
+
+  it("sozinho na sala, sou eu no quadro", () => {
+    const f = proximoFoco(FOCO_VAZIO, { candidato: null, presentes: ["u_ana"] }, 0);
+    assert.equal(f.identidade, "u_ana");
+  });
+
+  it("o mesmo estado volta idêntico quando nada muda — não redesenha à toa", () => {
+    const f = proximoFoco(FOCO_VAZIO, { candidato: "u_ana", presentes: TODOS }, 0);
+    assert.equal(proximoFoco(f, { candidato: "u_ana", presentes: TODOS }, 10), f);
+    assert.equal(proximoFoco(f, { candidato: null, presentes: TODOS }, 20), f);
+  });
+});
+
+describe("quando reavaliar", () => {
+  it("sem candidato, não há o que esperar", () => {
+    assert.equal(quandoReavaliar(FOCO_VAZIO, 0), null);
+  });
+
+  it("com candidato, aponta o fim da sustentação", () => {
+    // Sem este despertador, quem assume a palavra e fala sem parar nunca
+    // apareceria: não haveria um segundo evento para disparar a conta.
+    let f = proximoFoco(FOCO_VAZIO, { candidato: "u_ana", presentes: TODOS }, 0);
+    f = proximoFoco(f, { candidato: "l_bruno", presentes: TODOS }, 1000);
+    assert.equal(quandoReavaliar(f, 1000), SUSTENTACAO_MS);
+    assert.equal(quandoReavaliar(f, 1000 + SUSTENTACAO_MS - 100), 100);
+    assert.equal(quandoReavaliar(f, 99_999), 0, "nunca negativo");
+  });
+});

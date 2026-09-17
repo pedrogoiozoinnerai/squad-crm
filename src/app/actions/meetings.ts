@@ -10,7 +10,6 @@ import {
   currentUser,
   logActivity,
   revalidateBoth,
-  type FormState,
 } from "@/lib/guard";
 import { garantirConvite, linkDaReuniao, linkDoConvite } from "@/lib/convites";
 import { prisma } from "@/lib/prisma";

@@ -57,6 +57,16 @@ export function EntradaDoConvite({
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center px-4 py-10">
       <div className="w-full max-w-[520px]">
+        {/* A marca, no primeiro contato do lead com ela.
+            Esta página é onde ele chega vindo do funil, e não havia nada aqui
+            que dissesse de quem é a reunião além do nome do vendedor. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/brand/logo-black.svg"
+          alt="Squad.com"
+          className="mx-auto mb-7 h-7 w-auto sm:h-8"
+        />
+
         <div className="card p-7 shadow-[0_1px_2px_rgba(15,23,42,.04),0_12px_32px_-12px_rgba(15,23,42,.12)] sm:p-9">
           <p className="flex items-center justify-center gap-2 text-[11px] font-semibold tracking-[0.16em] text-muted uppercase">
             <span

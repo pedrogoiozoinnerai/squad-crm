@@ -23,7 +23,9 @@
     "verificar:meetsquad": "tsx scripts/verificar-meetsquad.ts",
     "links:faltantes": "tsx scripts/gerar-links-faltantes.ts",
     "senha": "tsx scripts/definir-senha.ts",
-    "verificar:jornada": "tsx scripts/verificar-jornada.ts"
+    "verificar:jornada": "tsx scripts/verificar-jornada.ts",
+    "agenda:gerar": "NODE_OPTIONS=--conditions=react-server tsx scripts/gerar-agenda-producao.ts",
+    "sala:teste": "tsx scripts/sala-de-teste.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
@@ -49,6 +51,7 @@
     "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
+    "server-only": "^0.0.1",
     "tailwindcss": "^4",
     "tsx": "^4.23.13",
     "typescript": "^5"

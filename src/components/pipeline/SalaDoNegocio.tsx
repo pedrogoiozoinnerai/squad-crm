@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import { LinkDaSala } from "@/components/sala/LinkDaSala";
 
 /**
@@ -23,9 +25,24 @@ export function SalaDoNegocio({
   comecaEm: Date;
   terminaEm: Date;
 }) {
-  const agora = Date.now();
+  // O relógio corre num efeito, e não em `Date.now()` na renderização.
+  //
+  // Não é só a regra de pureza do React: lido na renderização, o instante
+  // congela no primeiro desenho. O negócio aberto às 13:50 com reunião às
+  // 14:00 nunca mostrava o link — a janela abria dez minutos depois, e nada
+  // mandava a tela desenhar de novo.
+  const [agora, setAgora] = useState<number | null>(null);
+  useEffect(() => {
+    const tique = () => setAgora(Date.now());
+    tique();
+    const id = setInterval(tique, 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   const naJanela =
-    agora >= comecaEm.getTime() - 30 * 60_000 && agora <= terminaEm.getTime() + 120 * 60_000;
+    agora !== null &&
+    agora >= comecaEm.getTime() - 30 * 60_000 &&
+    agora <= terminaEm.getTime() + 120 * 60_000;
 
   if (!naJanela) return null;
 

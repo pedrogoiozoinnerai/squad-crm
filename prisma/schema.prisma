@@ -563,6 +563,7 @@ model Meeting {
   roomEvents RoomEvent[]
   presences  Presence[]
   attendees  MeetingAttendee[]
+  mensagens  RoomMessage[]
 
   @@unique([templateId, startsAt])
   @@index([type, status, startsAt])
@@ -750,6 +751,36 @@ model RoomEvent {
   @@index([meetingId])
   @@index([type, at])
   @@index([createdAt])
+}
+
+/// Uma mensagem do chat da sala.
+///
+/// O chat nasceu só no canal de dados do LiveKit, e o canal de dados não tem
+/// memória: fechar o painel desmontava a lista, recarregar a página zerava a
+/// conversa, e quem entrava no meio da sessão via um chat vazio enquanto as
+/// outras trinta pessoas conversavam. Numa sessão de apresentação, o chat é
+/// onde a objeção aparece — perder isso é perder a objeção.
+///
+/// O canal de dados CONTINUA sendo por onde a mensagem chega (é instantâneo e
+/// não depende de nós); isto aqui é a memória ao lado. Quem manda escreve nos
+/// dois, e quem entra lê o histórico daqui antes de começar a ouvir o canal.
+model RoomMessage {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  meetingId String
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  /// A mesma identidade do LiveKit (`u_…`, `l_…`, `g_…`) — é ela que liga a
+  /// mensagem a `Presence` e ao roster, sem depender do nome digitado.
+  identity String
+  /// Como a pessoa aparecia na sala quando escreveu. Guardado junto, e não
+  /// buscado depois: um convidado não existe em lugar nenhum além da sala.
+  autor    String
+
+  texto String
+
+  @@index([meetingId, createdAt])
 }
 
 /// Presença consolidada de um participante numa reunião. Recalculável: apagar

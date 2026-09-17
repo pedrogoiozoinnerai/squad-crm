@@ -38,11 +38,19 @@ export type Regra = {
  * `token` — quem entra numa sala pede um token por entrada; uma queda de
  * conexão pode pedir de novo. 20 por minuto cobre reconexão e barra quem
  * estiver varrendo convites.
+ *
+ * `mensagens` — o chat da sala. Balde PRÓPRIO, e não o de `token`, por dois
+ * motivos que só apareceram quando o chat passou a gravar: o teto de 20 é de
+ * quem ENTRA numa sala, e digitar depressa numa sessão gastaria a cota de
+ * entrar — quem conversou muito não conseguiria voltar depois de uma queda de
+ * conexão. E 20 por minuto é pouco para conversa: 60 cobre quem digita rápido e
+ * uma sala inteira atrás do mesmo IP de escritório, e ainda corta um laço.
  */
 export const REGRAS = {
   disponibilidade: { teto: 30, janelaSegundos: 60 },
   reservar: { teto: 10, janelaSegundos: 60 },
   token: { teto: 20, janelaSegundos: 60 },
+  mensagens: { teto: 60, janelaSegundos: 60 },
 } as const satisfies Record<string, Regra>;
 
 export type NomeDaRegra = keyof typeof REGRAS;
