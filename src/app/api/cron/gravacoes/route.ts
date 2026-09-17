@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { armazenamentoConfigurado } from "@/lib/armazenamento";
+import { deepgramConfigurado, pedirTranscricoes } from "@/lib/deepgram";
 import { env } from "@/lib/env";
 import { conciliarGravacoes } from "@/lib/gravacoes-servidor";
 import { livekitConfigurado } from "@/lib/livekit-servidor";
@@ -39,13 +40,21 @@ export async function GET(request: NextRequest) {
 
   try {
     const r = await conciliarGravacoes();
+
+    // A transcrição vem DEPOIS da conciliação, na mesma execução: uma gravação
+    // que acabou de ser descoberta pelo `ListEgress` já sai transcrevendo, em
+    // vez de esperar a hora seguinte. Sem chave da Deepgram isto devolve zeros
+    // e não fala com ninguém.
+    const t = deepgramConfigurado()
+      ? await pedirTranscricoes()
+      : { semeados: 0, pedidos: 0, falhas: 0, esquecidos: 0 };
     // `semGravacao` é o número que denuncia o webhook mal cadastrado: calls que
     // aconteceram, com gente dentro, e das quais o LiveKit não conhece egress
     // nenhum. Ele merece log mesmo quando nada mudou.
-    if (r.criadas || r.atualizadas || r.semGravacao || r.falhas) {
-      console.log("[cron/gravacoes]", JSON.stringify(r));
+    if (r.criadas || r.atualizadas || r.semGravacao || r.falhas || t.pedidos || t.falhas || t.esquecidos) {
+      console.log("[cron/gravacoes]", JSON.stringify({ ...r, transcricao: t }));
     }
-    return NextResponse.json({ ok: true, ...r });
+    return NextResponse.json({ ok: true, ...r, transcricao: t });
   } catch (erro) {
     console.error("[cron/gravacoes] falhou:", erro);
     return NextResponse.json(

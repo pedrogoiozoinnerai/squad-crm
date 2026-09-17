@@ -31,6 +31,7 @@ import {
   taxaDaSessao,
 } from "@/lib/presenca";
 import type { AbaDaSessao, SessionDetail } from "@/lib/queries";
+import { lerSegmentos, medirFalantes, provavelCondutor } from "@/lib/transcricao";
 
 const STATUS = {
   SCHEDULED: { text: "Agendada", tone: "bg-sky-50 text-sky-700" },
@@ -470,6 +471,7 @@ function AbaGravacao({
   gravacao: SessionDetail["gravacoes"][number] | null;
   ligada: boolean;
 }) {
+  const segmentos = lerSegmentos(gravacao?.transcript?.segmentos);
   if (!gravacao) {
     return (
       <Vazio>
@@ -500,7 +502,12 @@ function AbaGravacao({
 
   return (
     <div className="flex flex-col gap-2">
-      <Gravacao recordingId={gravacao.id} duracaoSegundos={gravacao.duracaoSegundos} />
+      <Gravacao
+        recordingId={gravacao.id}
+        duracaoSegundos={gravacao.duracaoSegundos}
+        segmentos={segmentos}
+        condutor={provavelCondutor(medirFalantes(segmentos))}
+      />
       <p className="text-[11px] text-muted">
         {gravacao.duracaoSegundos ? `${Math.round(gravacao.duracaoSegundos / 60)} min` : "duração desconhecida"}
         {gravacao.bytes ? ` · ${(gravacao.bytes / 1024 ** 3).toFixed(2)} GB` : ""}

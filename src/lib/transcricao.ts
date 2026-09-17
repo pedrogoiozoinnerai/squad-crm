@@ -176,3 +176,38 @@ export function parametrosDaDeepgram(opcoes: {
   });
   return p.toString();
 }
+
+/**
+ * Os trechos de volta do banco.
+ *
+ * `segmentos` é `jsonb`, então o que sai do Prisma é `unknown` — e o que entrou
+ * foi gravado por uma versão anterior deste código, talvez com outra forma.
+ * Validar na leitura é o que impede um `undefined.toFixed()` derrubar a página
+ * inteira de uma call por causa de um campo que mudou de nome há três meses.
+ */
+export function lerSegmentos(bruto: unknown): Segmento[] {
+  if (!Array.isArray(bruto)) return [];
+  const lidos: Segmento[] = [];
+  for (const cru of bruto) {
+    const s = objeto(cru);
+    const conteudo = s && texto(s.texto);
+    if (!s || !conteudo) continue;
+    lidos.push({
+      inicio: num(s.inicio) ?? 0,
+      fim: num(s.fim) ?? 0,
+      falante: num(s.falante),
+      texto: conteudo,
+    });
+  }
+  return lidos;
+}
+
+/** "12:05" — o instante do trecho dentro da gravação. */
+export function carimboDoTrecho(segundos: number): string {
+  const total = Math.max(0, Math.floor(segundos));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const dois = (n: number) => String(n).padStart(2, "0");
+  return h > 0 ? `${h}:${dois(m)}:${dois(s)}` : `${m}:${dois(s)}`;
+}

@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  carimboDoTrecho,
   lerRespostaDeepgram,
+  lerSegmentos,
   medirFalantes,
   MODELO_PADRAO,
   parametrosDaDeepgram,
@@ -166,5 +168,55 @@ describe("o pedido à Deepgram", () => {
     // parâmetro — não uma edição no meio da rota.
     const p = new URLSearchParams(parametrosDaDeepgram({ callback: "x", modelo: "nova-2" }));
     assert.equal(p.get("model"), "nova-2");
+  });
+});
+
+describe("os trechos de volta do banco", () => {
+  it("lê o que este mesmo código gravou", () => {
+    const ida = lerRespostaDeepgram(RESPOSTA)!.segmentos;
+    assert.deepEqual(lerSegmentos(JSON.parse(JSON.stringify(ida))), ida);
+  });
+
+  it("jsonb de outra forma não derruba a página da call", () => {
+    // `segmentos` é jsonb: o que está lá foi gravado por uma versão anterior
+    // deste código, talvez com outro nome de campo. Um `undefined.toFixed()`
+    // na renderização levaria a página inteira junto — inclusive a presença,
+    // que não tem nada a ver com a transcrição.
+    assert.deepEqual(lerSegmentos(null), []);
+    assert.deepEqual(lerSegmentos({ trechos: [] }), []);
+    assert.deepEqual(lerSegmentos([{ start: 0, end: 1, text: "forma antiga" }]), []);
+  });
+
+  it("aproveita o que der, descarta o resto", () => {
+    const lidos = lerSegmentos([
+      { inicio: 5, fim: 9, falante: 0, texto: "vale" },
+      { inicio: 9, fim: 10, texto: "" },
+      { inicio: "x", fim: null, falante: "?", texto: "sem números" },
+    ]);
+    assert.equal(lidos.length, 2);
+    assert.deepEqual(lidos[1], { inicio: 0, fim: 0, falante: null, texto: "sem números" });
+  });
+});
+
+describe("o carimbo do trecho", () => {
+  it("minuto e segundo", () => {
+    assert.equal(carimboDoTrecho(0), "0:00");
+    assert.equal(carimboDoTrecho(65), "1:05");
+    assert.equal(carimboDoTrecho(599), "9:59");
+  });
+
+  it("passa de uma hora sem virar 0:00", () => {
+    // Mentoria de duas horas existe, e um carimbo que reinicia mandaria quem
+    // clica para o começo do vídeo.
+    assert.equal(carimboDoTrecho(3600), "1:00:00");
+    assert.equal(carimboDoTrecho(3725), "1:02:05");
+  });
+
+  it("fração de segundo não vira decimal na tela", () => {
+    assert.equal(carimboDoTrecho(12.87), "0:12");
+  });
+
+  it("negativo não existe", () => {
+    assert.equal(carimboDoTrecho(-5), "0:00");
   });
 });
