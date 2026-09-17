@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, CalendarCheck, CalendarPlus, Check, Link2, Video } from "lucide-react";
 
 import { Contagem } from "@/components/sala/Contagem";
+import { ABRE_ANTES_MIN } from "@/lib/sala";
 
 export type DadosDoConvite = {
   token: string;
@@ -13,6 +14,9 @@ export type DadosDoConvite = {
   donoNome: string;
   quando: string;
   horario: string;
+  /// Quando a sessão começa. É o que a contagem mostra.
+  comecaEm: string;
+  /// Quando a sala abre (30 min antes). Só troca a tela para o botão.
   abreEm: string;
   situacao: "esperando" | "aberta" | "encerrada" | "cancelada";
 };
@@ -155,10 +159,16 @@ export function EntradaDoConvite({
             {situacao === "esperando" && (
               <div className="mt-5 border-t border-line pt-5">
                 <Contagem
+                  comecaEm={new Date(convite.comecaEm)}
                   abreEm={new Date(convite.abreEm)}
                   agoraServidor={new Date(agoraServidor)}
                   aoAbrir={abrir}
                 />
+                {/* Sem esta linha, o botão aparecendo com a contagem ainda
+                    correndo parece defeito. Com ela, é cortesia. */}
+                <p className="mt-3 text-center text-xs text-muted">
+                  A sala abre {ABRE_ANTES_MIN} minutos antes — o botão de entrar aparece aqui.
+                </p>
               </div>
             )}
           </section>
