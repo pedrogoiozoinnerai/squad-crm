@@ -6,6 +6,7 @@ import { CalendarClock, Plus } from "lucide-react";
 import { desativarSerie, salvarSerie } from "@/app/actions/sessoes";
 import { Field, SubmitRow } from "@/components/ui/Field";
 import { FormFeedback } from "@/components/ui/FormFeedback";
+import { Acao } from "@/components/ui/Acao";
 import type { FormState } from "@/lib/guard";
 
 export type SerieRow = {
@@ -201,7 +202,7 @@ export function SerieList({
             </Field>
           </div>
 
-          <FormFeedback state={estado} />
+          <FormFeedback state={estado} sucesso="Série salva." />
           <SubmitRow>
             <button
               type="button"
@@ -260,12 +261,12 @@ export function SerieList({
                 Editar
               </button>
 
-              <form action={desativarSerie}>
+              <Acao action={desativarSerie} mensagem="Não deu para desativar a série.">
                 <input type="hidden" name="id" value={s.id} />
                 <button type="submit" className="btn-ghost px-3 py-1.5 text-xs">
                   {s.active ? "Desligar" : "Religar"}
                 </button>
-              </form>
+              </Acao>
             </li>
           ))}
         </ul>

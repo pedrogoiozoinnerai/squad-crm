@@ -16,6 +16,7 @@ import { addNote } from "@/app/actions/notes";
 import { createTask } from "@/app/actions/tasks";
 import { FormularioDeReuniao } from "@/components/reunioes/FormularioDeReuniao";
 import { Field } from "@/components/ui/Field";
+import { Acao } from "@/components/ui/Acao";
 import { FormFeedback } from "@/components/ui/FormFeedback";
 import type { FormState } from "@/lib/guard";
 import { linkWhatsapp } from "@/lib/mensagem";
@@ -323,20 +324,20 @@ function TaskRow({ task, agora }: { task: PanelTask; agora: Date }) {
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-line pt-2.5">
-          <form action={toggleTask}>
+          <Acao action={toggleTask} mensagem="Não deu para mudar a tarefa.">
             <input type="hidden" name="taskId" value={task.id} />
             <button type="submit" className="chip text-muted transition hover:text-waz-20">
               <CheckCircle2 className="size-3" />
               {done ? "Reabrir" : "Concluir"}
             </button>
-          </form>
-          <form action={deleteTask}>
+          </Acao>
+          <Acao action={deleteTask} mensagem="Não deu para excluir a tarefa.">
             <input type="hidden" name="taskId" value={task.id} />
             <button type="submit" className="chip text-red-700 transition hover:bg-red-50">
               <Trash2 className="size-3" />
               Excluir
             </button>
-          </form>
+          </Acao>
         </div>
       </div>
     </article>

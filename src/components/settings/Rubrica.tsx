@@ -5,6 +5,7 @@ import { CheckCircle2, ScrollText } from "lucide-react";
 
 import { alternarRubrica, publicarRubrica } from "@/app/actions/sessoes";
 import { FormFeedback } from "@/components/ui/FormFeedback";
+import { Acao } from "@/components/ui/Acao";
 import { TZ } from "@/lib/dates";
 import type { FormState } from "@/lib/guard";
 
@@ -75,7 +76,7 @@ export function Rubrica({ versoes, analisePronta }: { versoes: RubricaRow[]; ana
             }
             className="field resize-y font-mono text-base leading-relaxed sm:text-[13px]"
           />
-          <FormFeedback state={estado} />
+          <FormFeedback state={estado} sucesso="Rubrica publicada." />
           <div className="flex items-center justify-between gap-3">
             <p className="text-[11px] text-muted">
               Salvar publica a <strong>versão {(versoes[0]?.versao ?? 0) + 1}</strong> e desliga a
@@ -120,12 +121,12 @@ export function Rubrica({ versoes, analisePronta }: { versoes: RubricaRow[]; ana
                     Em vigor
                   </span>
                 ) : (
-                  <form action={alternarRubrica}>
+                  <Acao action={alternarRubrica} mensagem="Não deu para mudar a rubrica em uso.">
                     <input type="hidden" name="id" value={v.id} />
                     <button type="submit" className="btn-ghost text-xs">
                       Voltar a esta
                     </button>
-                  </form>
+                  </Acao>
                 )}
               </li>
             ))}

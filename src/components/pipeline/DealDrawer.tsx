@@ -5,6 +5,7 @@ import { DealPanels } from "@/components/pipeline/DealPanels";
 import { DealSidePanel } from "@/components/pipeline/DealSidePanel";
 import { StageStepper } from "@/components/pipeline/StageStepper";
 import { Drawer } from "@/components/ui/Drawer";
+import { Acao } from "@/components/ui/Acao";
 import { Copiavel } from "@/components/ui/Copiavel";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import type { SessionUser } from "@/lib/auth";
@@ -99,7 +100,7 @@ export async function DealDrawer({
 
           {isOpen ? (
             <>
-              <form action={closeDeal} className="flex items-center gap-1.5">
+              <Acao action={closeDeal} mensagem="Não deu para fechar o negócio." className="flex items-center gap-1.5">
                 <input type="hidden" name="id" value={deal.id} />
                 <input type="hidden" name="outcome" value="lost" />
                 <select
@@ -125,9 +126,9 @@ export async function DealDrawer({
                   <X className="size-3.5" />
                   Perdido
                 </button>
-              </form>
+              </Acao>
 
-              <form action={closeDeal}>
+              <Acao action={closeDeal} mensagem="Não deu para fechar o negócio.">
                 <input type="hidden" name="id" value={deal.id} />
                 <input type="hidden" name="outcome" value="won" />
                 <button
@@ -143,16 +144,16 @@ export async function DealDrawer({
                   <Trophy className="size-3.5" />
                   Ganho
                 </button>
-              </form>
+              </Acao>
             </>
           ) : (
-            <form action={reopenDeal}>
+            <Acao action={reopenDeal} mensagem="Não deu para reabrir o negócio.">
               <input type="hidden" name="id" value={deal.id} />
               <button type="submit" className="btn-ghost px-3 py-2 text-xs">
                 <Undo2 className="size-3.5" />
                 Reabrir
               </button>
-            </form>
+            </Acao>
           )}
         </>
       }

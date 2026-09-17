@@ -5,6 +5,7 @@ import { CalendarPlus, Loader2, MessageSquareText, Plus } from "lucide-react";
 
 import { alternarTemplate, criarTemplate, salvarTemplate } from "@/app/actions/settings";
 import { Field } from "@/components/ui/Field";
+import { Acao } from "@/components/ui/Acao";
 import { FormFeedback } from "@/components/ui/FormFeedback";
 import type { FormState } from "@/lib/guard";
 
@@ -146,7 +147,7 @@ export function TaskTemplateList({ templates }: { templates: TemplateRow[] }) {
                 </span>
 
                 <div className="flex shrink-0 items-center gap-1.5">
-                  <form action={alternarTemplate}>
+                  <Acao action={alternarTemplate} mensagem="Não deu para mudar o status do modelo.">
                     <input type="hidden" name="id" value={template.id} />
                     <button
                       type="submit"
@@ -163,7 +164,7 @@ export function TaskTemplateList({ templates }: { templates: TemplateRow[] }) {
                     >
                       {template.active ? "Ativo" : "Inativo"}
                     </button>
-                  </form>
+                  </Acao>
 
                   <button
                     type="button"

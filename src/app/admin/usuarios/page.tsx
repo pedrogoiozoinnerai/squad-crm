@@ -1,5 +1,6 @@
 import { liberarCadastro, revogarCadastro, setUserRole, toggleUserActive } from "@/app/actions/users";
 import { RoleSelect } from "@/components/admin/RoleSelect";
+import { Acao } from "@/components/ui/Acao";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { allowedDomain, requireUser } from "@/lib/auth";
 import { getUsers } from "@/lib/queries";
@@ -15,7 +16,11 @@ export default async function UsersPage() {
         subtitle={`Contas do time — cadastro só para e-mails @${allowedDomain()} liberados aqui`}
       />
 
-      <form action={liberarCadastro} className="card mb-4 flex flex-wrap items-end gap-3 p-4">
+      <Acao
+        action={liberarCadastro}
+        mensagem="Não deu para liberar o cadastro."
+        className="card mb-4 flex flex-wrap items-end gap-3 p-4"
+      >
         <div className="flex-1 min-w-[240px]">
           <label htmlFor="email-convite" className="mb-1 block text-xs font-semibold text-muted">
             Liberar cadastro
@@ -37,7 +42,7 @@ export default async function UsersPage() {
           {users.filter((u) => u.aAssumir).length} contas vindas do HubSpot só podem ser
           assumidas por quem você liberar aqui.
         </p>
-      </form>
+      </Acao>
 
       <div className="card overflow-x-auto">
         <table className="w-full min-w-[820px] text-sm">
@@ -68,10 +73,10 @@ export default async function UsersPage() {
                   </td>
                   <td className="px-4 py-3 text-muted">{user.email}</td>
                   <td className="px-4 py-3">
-                    <form action={setUserRole}>
+                    <Acao action={setUserRole} mensagem="Não deu para mudar o nível desta conta.">
                       <input type="hidden" name="userId" value={user.id} />
                       <RoleSelect value={user.role} />
-                    </form>
+                    </Acao>
                   </td>
                   <td className="px-4 py-3 text-muted">{user._count.leads}</td>
                   <td className="px-4 py-3 text-muted">{user._count.deals}</td>
@@ -80,23 +85,23 @@ export default async function UsersPage() {
                     {!user.aAssumir ? (
                       <span className="chip bg-waz-95 text-waz-20">Com senha</span>
                     ) : user.liberado ? (
-                      <form action={revogarCadastro}>
+                      <Acao action={revogarCadastro} mensagem="Não deu para revogar a liberação.">
                         <input type="hidden" name="email" value={user.email} />
                         <button type="submit" className="chip bg-sky-50 text-sky-700 hover:bg-sky-100">
                           Liberado · revogar
                         </button>
-                      </form>
+                      </Acao>
                     ) : (
-                      <form action={liberarCadastro}>
+                      <Acao action={liberarCadastro} mensagem="Não deu para liberar o cadastro.">
                         <input type="hidden" name="email" value={user.email} />
                         <button type="submit" className="chip bg-surface-2 text-muted hover:bg-line">
                           Liberar cadastro
                         </button>
-                      </form>
+                      </Acao>
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <form action={toggleUserActive}>
+                    <Acao action={toggleUserActive} mensagem="Não deu para mudar o status desta conta.">
                       <input type="hidden" name="userId" value={user.id} />
                       <button
                         type="submit"
@@ -109,7 +114,7 @@ export default async function UsersPage() {
                       >
                         {user.active ? "Ativo" : "Inativo"}
                       </button>
-                    </form>
+                    </Acao>
                   </td>
                 </tr>
               );

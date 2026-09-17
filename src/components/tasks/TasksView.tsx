@@ -3,6 +3,7 @@ import { Check, Circle, MessageCircle } from "lucide-react";
 import { toggleTask } from "@/app/actions/tasks";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { StatBar } from "@/components/ui/Stat";
+import { Acao } from "@/components/ui/Acao";
 import { linkWhatsapp, renderizarMensagem } from "@/lib/mensagem";
 import { TZ } from "@/lib/dates";
 
@@ -138,7 +139,7 @@ export function TasksView({
                   className={`border-b border-line last:border-b-0 transition hover:bg-surface-2/50 ${done ? "opacity-55" : ""}`}
                 >
                   <td className="px-4 py-3">
-                    <form action={toggleTask}>
+                    <Acao action={toggleTask} mensagem="Não deu para concluir a tarefa.">
                       <input type="hidden" name="taskId" value={task.id} />
                       <button
                         type="submit"
@@ -151,7 +152,7 @@ export function TasksView({
                       >
                         {done ? <Check className="size-3.5" /> : <Circle className="size-3" />}
                       </button>
-                    </form>
+                    </Acao>
                   </td>
                   <td className="px-4 py-3">
                     <span className={`font-medium ${done ? "line-through" : ""}`}>

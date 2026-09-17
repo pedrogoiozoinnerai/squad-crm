@@ -268,7 +268,7 @@ export function DealSidePanel({
           </label>
         </div>
 
-        <FormFeedback state={state} />
+        <FormFeedback state={state} sucesso="Alterações salvas." />
 
         <button type="submit" disabled={pending || locked} className="btn-primary mt-4 w-full">
           {pending && <Loader2 className="size-4 animate-spin" />}
