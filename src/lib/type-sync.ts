@@ -31,6 +31,8 @@ export type ResultadoSync = {
   reunioesCanceladas: number;
   reunioesRemarcadas: number;
   tarefasCriadas: number;
+  /// Leads que falharam. Um lead ruim não pode mais descartar a página inteira.
+  falhas: number;
 };
 
 const vazio = (): ResultadoSync => ({
@@ -43,6 +45,7 @@ const vazio = (): ResultadoSync => ({
   reunioesCanceladas: 0,
   reunioesRemarcadas: 0,
   tarefasCriadas: 0,
+  falhas: 0,
 });
 
 /**
@@ -106,15 +109,29 @@ export async function sincronizarFunil(agora = new Date()): Promise<ResultadoSyn
     return vendedores[posicao++ % vendedores.length].id;
   };
 
+  // As linhas vêm ordenadas por `updatedAt` crescente, e é isso que permite
+  // parar a marca no último que deu certo: tudo antes dele está reconciliado,
+  // tudo a partir dele será relido na execução seguinte.
+  //
+  // Antes, uma exceção em QUALQUER lead subia até a rota do cron, que respondia
+  // 500 — e como a marca só avançava no fim, ela congelava. Um lead problemático
+  // parava o espelhamento do funil inteiro, para sempre, e o único sintoma era
+  // um 500 num log que ninguém abre.
+  const reconciliados: (string | null)[] = [];
   for (const linha of linhas) {
-    await sincronizarUm(linha, { r, agora, primeiraEtapaId: primeiraEtapa.id, proximoDono });
+    try {
+      await sincronizarUm(linha, { r, agora, primeiraEtapaId: primeiraEtapa.id, proximoDono });
+      reconciliados.push(linha.updatedAt);
+    } catch (erro) {
+      r.falhas++;
+      console.error(`[type-sync] lead ${linha.id} não reconciliou:`, erro);
+      // A marca PARA aqui. Avançar por cima puliria este lead para sempre —
+      // que é exatamente o defeito que a marca d'água existe para impedir.
+      break;
+    }
   }
 
-  // A marca só avança DEPOIS de a página inteira ser reconciliada. Avançar por
-  // lead deixaria uma falha no meio marcando como visto o que não foi
-  // processado — e aí o lead some de vez, que é justamente o defeito que esta
-  // marca existe para consertar.
-  const ultima = proximaMarca(linhas.map((l) => l.updatedAt));
+  const ultima = proximaMarca(reconciliados);
 
   if (ultima) {
     await prisma.config.update({
@@ -137,8 +154,15 @@ async function sincronizarUm(
   const cancelado = Boolean(linha.calCancelledAt);
   const temAgenda = agendadoEm !== null && !Number.isNaN(agendadoEm.getTime()) && !linha.semAgendamento;
 
-  const existente = await prisma.lead.findUnique({
-    where: { typeLeadId: linha.id },
+  // Procura pelas DUAS pontes, não só por uma.
+  //
+  // `typeLeadId` é o caminho normal. Mas a reserva de vaga
+  // (`api/agenda/reservar`) grava o lead por `typeSessionId` e aceita
+  // `typeLeadId` como opcional — então existe um lead com sessão e sem id. Aí
+  // esta busca não achava nada, o `create` abaixo tentava gravar um
+  // `typeSessionId` que já existe (é `@unique`), e o P2002 subia até o cron.
+  const existente = await prisma.lead.findFirst({
+    where: { OR: [{ typeLeadId: linha.id }, { typeSessionId: linha.sessionId }] },
     include: { deals: { select: { id: true, ownerId: true }, orderBy: { createdAt: "asc" }, take: 1 } },
   });
 
@@ -160,7 +184,13 @@ async function sincronizarUm(
   };
 
   const lead = existente
-    ? await prisma.lead.update({ where: { id: existente.id }, data: dados })
+    ? await prisma.lead.update({
+        where: { id: existente.id },
+        // Quando o lead foi encontrado pela sessão, a ponte do id ainda está
+        // vazia: preenche agora, para a próxima passagem achar pelo caminho
+        // normal e este remendo nunca mais ser necessário.
+        data: { ...dados, typeLeadId: existente.typeLeadId ?? linha.id },
+      })
     : await prisma.lead.create({
         data: {
           ...dados,

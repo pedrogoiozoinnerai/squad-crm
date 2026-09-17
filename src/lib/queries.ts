@@ -2,7 +2,9 @@ import "server-only";
 
 import { addDays } from "date-fns";
 
-import { diaCivil, instanteLocal, weekStart } from "@/lib/dates";
+import { diaCivil, inicioDoDia, inicioDoMes, instanteLocal, weekStart } from "@/lib/dates";
+import { statusDeNegocio } from "@/lib/forms";
+import { fimDoMes } from "@/lib/horizonte";
 
 import { ownerScope, type SessionUser } from "@/lib/auth";
 import { ehQualificado, taxaDaSessao } from "@/lib/presenca";
@@ -129,8 +131,11 @@ export type FiltroPipeline = {
  * não aparece em lista de atrasados nem em agenda, e envelhece calado.
  */
 function recorteDePrazo(prazo: string | undefined, agora: Date) {
-  const hoje = new Date(agora);
-  hoje.setHours(0, 0, 0, 0);
+  // Meia-noite EM SÃO PAULO, não no relógio de quem executa. Com
+  // `setHours(0,0,0,0)` a Vercel (UTC) produzia 21:00 de ontem, e o teto
+  // `addDays(hoje, 1)` caía às 21:00 de hoje: a tarefa que vence às 23:00
+  // sumia do filtro "hoje" e também do "semana" no último dia da janela.
+  const hoje = inicioDoDia(agora);
   const pendente = { status: "PENDING" as const };
 
   switch (prazo) {
@@ -491,7 +496,7 @@ function filtroDeals(user: SessionUser, filters: FiltroDeals, agora = new Date()
     ...ownerScope(user),
     ...(closer ? { ownerId: closer } : {}),
     ...(filters.status && filters.status !== "all"
-      ? { status: filters.status as "OPEN" | "WON" | "LOST" }
+      ? { status: statusDeNegocio(filters.status) }
       : {}),
     ...recorteDePrazo(filters.prazo, agora),
     ...(q
@@ -645,7 +650,11 @@ export async function getDashboard(user: SessionUser) {
   const scope = ownerScope(user);
 
   const agora = new Date();
-  const inicioMes = new Date(agora.getFullYear(), agora.getMonth(), 1);
+  // `new Date(ano, getMonth(), 1)` lê o relógio do processo: na Vercel, nas
+  // três últimas horas de todo mês, já é o mês seguinte — e o painel zerava
+  // "ganho no mês" para quem ainda estava no dia 31. `lib/horizonte` já
+  // documentava exatamente isso; aqui a regra não estava sendo seguida.
+  const inicioMes = inicioDoMes(agora);
   const inicioSemana = weekStart(agora);
   const fimSemana = addDays(inicioSemana, 7);
 
@@ -724,7 +733,10 @@ export async function getDashboard(user: SessionUser) {
   const { pipelineBruto, pipelinePonderado, previstoMes } = await somasDoPipeline(
     scope.ownerId,
     inicioMes,
-    addDays(inicioMes, 31),
+    // `addDays(inicioMes, 31)` não é o fim do mês: em fevereiro a janela ia
+    // até 04/03, e nos meses de 30 dias invadia o dia 1º do seguinte. O
+    // `fimDoMes` acerta bissexto de graça.
+    fimDoMes(agora),
   );
 
   // Nomes do RANKING, não da lista de atribuição: aqui entram também contas
@@ -973,7 +985,13 @@ export async function getParticipants(
         },
       },
       meeting: {
-        select: { id: true, startsAt: true, owner: { select: { name: true } } },
+        // `endsAt` e `status` entram porque a tela precisa de `situacaoDaSessao`:
+        // sem eles ela só sabia "começou ou não", e marcava todo mundo de
+        // Ausente enquanto a call ainda estava rolando.
+        select: {
+          id: true, startsAt: true, endsAt: true, status: true,
+          owner: { select: { name: true } },
+        },
       },
     },
     orderBy: { meeting: { startsAt: "desc" } },
@@ -986,7 +1004,11 @@ export async function getParticipants(
 /** Visão do time: quem está onde, com o que trava a operação hoje. */
 export async function getTeamOverview() {
   const agora = new Date();
-  const inicioMes = new Date(agora.getFullYear(), agora.getMonth(), 1);
+  // `new Date(ano, getMonth(), 1)` lê o relógio do processo: na Vercel, nas
+  // três últimas horas de todo mês, já é o mês seguinte — e o painel zerava
+  // "ganho no mês" para quem ainda estava no dia 31. `lib/horizonte` já
+  // documentava exatamente isso; aqui a regra não estava sendo seguida.
+  const inicioMes = inicioDoMes(agora);
   const inicioSemana = weekStart(agora);
 
   const [closers, ganhos, abertos, tarefas, reunioes] = await Promise.all([
@@ -1013,7 +1035,13 @@ export async function getTeamOverview() {
     }),
     prisma.meeting.groupBy({
       by: ["ownerId"],
-      where: { startsAt: { gte: inicioSemana }, status: { not: "CANCELED" } },
+      // O `lt` faltava, e o campo chama-se `reunioesSemana`: sem ele a conta
+      // incluía TODA sessão futura do mês. O painel do líder mostrava ~78 por
+      // closer contra ~13 no dashboard do mesmo closer, para a mesma pergunta.
+      where: {
+        startsAt: { gte: inicioSemana, lt: addDays(inicioSemana, 7) },
+        status: { not: "CANCELED" },
+      },
       _count: true,
     }),
   ]);

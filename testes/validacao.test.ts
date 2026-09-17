@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { moneyCents } from "../src/lib/forms";
+import { moneyCents, statusDeNegocio } from "../src/lib/forms";
 
 /**
  * As regras que guardam o número da diretoria.
@@ -42,5 +42,27 @@ describe("valor do negócio", () => {
     assert.equal(moneyCents("" as never), null);
     assert.equal(moneyCents("abc" as never), null);
     assert.equal(moneyCents("0" as never), 0);
+  });
+});
+
+describe("o status que vem da URL", () => {
+  // `?status=open` — minúsculo, que é o que alguém digita — passava por um
+  // `as "OPEN"|"WON"|"LOST"` e virava `PrismaClientValidationError`: a tela de
+  // Negócios trocava por "algo quebrou" e a exportação respondia 500.
+  it("aceita os três estados", () => {
+    for (const s of ["OPEN", "WON", "LOST"]) assert.equal(statusDeNegocio(s), s);
+  });
+
+  it("aceita minúsculo e espaço, que é o que a pessoa digita", () => {
+    assert.equal(statusDeNegocio("open"), "OPEN");
+    assert.equal(statusDeNegocio("  won  "), "WON");
+  });
+
+  it("o desconhecido vira 'sem filtro', não exceção", () => {
+    // Um recorte que ninguém reconhece não deve derrubar a página — deve não
+    // filtrar. Era exatamente o que o `as` impedia.
+    for (const s of ["x", "all", "", "DROP TABLE", null, undefined]) {
+      assert.equal(statusDeNegocio(s), undefined, `${s} passou`);
+    }
   });
 });
