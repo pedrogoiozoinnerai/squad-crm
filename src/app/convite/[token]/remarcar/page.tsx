@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
-import { AlertCircle, ArrowLeft, CalendarClock } from "lucide-react";
+import { ArrowLeft, CalendarClock } from "lucide-react";
 
 import { remarcarSessao } from "@/app/convite/[token]/remarcar/acoes";
+import { CalendarioDeSessoes, diaQueAbre } from "@/components/sala/CalendarioDeSessoes";
 import { chaveDoDia, hhmm, TZ } from "@/lib/dates";
 import { env } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
@@ -16,8 +17,13 @@ import { sessoesComVaga } from "@/lib/sessoes";
  * erro e sumia: não aparecia E deixava a vaga presa até a hora da sessão,
  * bloqueando alguém que apareceria.
  *
- * Tudo em `<form>`, sem estado no cliente: é a tela de um lead num celular
- * qualquer, e ela tem de funcionar mesmo que nenhum JavaScript carregue.
+ * A escolha é feita no MESMO calendário do funil (`CalendarioDeSessoes`), e não
+ * mais numa lista corrida de todos os dias: quem acabou de marcar num calendário
+ * de mês volta para trocar e encontra a tela que já conhece.
+ *
+ * Tudo em `<form>` e em links, sem estado no cliente: é a tela de um lead num
+ * celular qualquer, e ela tem de funcionar mesmo que nenhum JavaScript carregue.
+ * O dia e o mês escolhidos viajam pela URL (`?dia=`, `?mes=`) pelo mesmo motivo.
  */
 export const dynamic = "force-dynamic";
 
@@ -28,10 +34,11 @@ const fmtDia = new Intl.DateTimeFormat("pt-BR", {
   month: "long",
 });
 
+const umSo = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+
 export default async function RemarcarPage(props: PageProps<"/convite/[token]/remarcar">) {
   const { token } = await props.params;
-  const { r } = await props.searchParams;
-  const resultado = Array.isArray(r) ? r[0] : r;
+  const { r, dia, mes } = await props.searchParams;
 
   const inscricao = await prisma.meetingAttendee.findUnique({
     where: { inviteToken: token },
@@ -44,17 +51,18 @@ export default async function RemarcarPage(props: PageProps<"/convite/[token]/re
   });
   if (!inscricao) notFound();
 
+  const agora = new Date();
   const marca = env("NEXT_PUBLIC_BRAND_NAME") ?? "Squad.com";
   const recusa = motivoParaNaoRemarcar(inscricao);
-  const opcoes = recusa ? [] : alternativas(await sessoesComVaga(), inscricao);
+  const opcoes = recusa ? [] : alternativas(await sessoesComVaga(agora), inscricao);
 
-  // Agrupa por dia civil de São Paulo: uma lista corrida de 150 horários é
-  // ilegível, e a pessoa pensa em "quinta à tarde", não no horário 87.
-  const porDia = new Map<string, typeof opcoes>();
-  for (const s of opcoes) {
-    const chave = chaveDoDia(s.inicioEm);
-    porDia.set(chave, [...(porDia.get(chave) ?? []), s]);
-  }
+  // O dia em que a pessoa já está — é nele que o calendário abre.
+  const diaDaSessao = inscricao.meeting ? chaveDoDia(inscricao.meeting.startsAt) : undefined;
+
+  // Quando o dia dela não tem outro horário, o calendário cai noutro dia. Isso
+  // é dito aqui em cima, junto do horário atual, e não dentro do calendário: o
+  // formulário é o mesmo do funil, e nada pode ser acrescentado lá dentro.
+  const { caiuNoutroDia } = diaQueAbre(opcoes, diaDaSessao);
 
   return (
     <main className="mx-auto w-full max-w-[560px] px-4 py-10">
@@ -66,7 +74,7 @@ export default async function RemarcarPage(props: PageProps<"/convite/[token]/re
         Voltar
       </a>
 
-      <div className="card p-6 sm:p-8">
+      <div className="card mb-4 p-6 sm:p-8">
         <p className="flex items-center gap-2 text-[11px] font-semibold tracking-[0.16em] text-muted uppercase">
           <CalendarClock className="size-3.5" />
           Trocar de horário
@@ -86,50 +94,38 @@ export default async function RemarcarPage(props: PageProps<"/convite/[token]/re
           </p>
         )}
 
-        <Aviso resultado={resultado} />
+        {caiuNoutroDia && !recusa && opcoes.length > 0 && (
+          <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2.5 text-sm text-muted">
+            Não há outro horário nesse dia — o calendário abre no mais próximo.
+          </p>
+        )}
 
-        {recusa ? (
-          <p className="mt-6 rounded-xl bg-surface-2 px-4 py-3 text-sm">{recusa}</p>
-        ) : porDia.size === 0 ? (
+        {recusa && <p className="mt-6 rounded-xl bg-surface-2 px-4 py-3 text-sm">{recusa}</p>}
+
+        {!recusa && opcoes.length === 0 && (
           <p className="mt-6 rounded-xl bg-surface-2 px-4 py-3 text-sm">
             Não há outro horário aberto no momento. Sua vaga atual continua garantida —
             volte mais tarde ou fale com quem te enviou o convite.
           </p>
-        ) : (
-          <div className="mt-6 space-y-6">
-            {[...porDia.entries()].map(([dia, sessoes]) => (
-              <section key={dia}>
-                <h2 className="text-[11px] font-semibold tracking-[0.14em] text-muted uppercase">
-                  {fmtDia.format(sessoes[0].inicioEm)}
-                </h2>
-                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {sessoes.map((s) => (
-                    // Um `<form>` por horário: cada botão é um envio completo,
-                    // então a tela funciona sem nenhum JavaScript.
-                    <form key={s.id} action={remarcarSessao}>
-                      <input type="hidden" name="token" value={token} />
-                      <input type="hidden" name="meetingId" value={s.id} />
-                      <button
-                        type="submit"
-                        className="w-full rounded-xl border border-line bg-surface px-3 py-3 text-center transition hover:border-foreground hover:bg-surface-2"
-                      >
-                        <span className="block text-base font-semibold">{hhmm(s.inicioEm)}</span>
-                        <span className="mt-0.5 block text-[11px] text-muted">
-                          {s.vagas === 1 ? "última vaga" : `${s.vagas} vagas`}
-                        </span>
-                      </button>
-                    </form>
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
         )}
-
-        <p className="mt-7 text-center text-xs text-muted">
-          Horários de Brasília · {marca}
-        </p>
       </div>
+
+      {opcoes.length > 0 && (
+        <CalendarioDeSessoes
+          sessoes={opcoes}
+          base={`/convite/${token}/remarcar`}
+          marca={marca}
+          diaPreferido={diaDaSessao}
+          diaPedido={umSo(dia)}
+          mesPedido={umSo(mes)}
+          agora={agora}
+          acao={remarcarSessao}
+          camposOcultos={{ token }}
+          aviso={<Aviso resultado={umSo(r)} />}
+        />
+      )}
+
+      <p className="mt-6 text-center text-xs text-muted">Horários de Brasília · {marca}</p>
     </main>
   );
 }
@@ -152,11 +148,7 @@ function Aviso({ resultado }: { resultado?: string }) {
   if (!texto) return null;
 
   return (
-    <p
-      role="alert"
-      className="mt-5 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
-    >
-      <AlertCircle className="mt-0.5 size-4 shrink-0" />
+    <p role="alert" className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
       {texto}
     </p>
   );

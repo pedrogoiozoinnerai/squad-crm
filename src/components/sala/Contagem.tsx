@@ -3,7 +3,17 @@
 import { useEffect, useState } from "react";
 
 /**
- * A contagem regressiva até a sala abrir.
+ * Quanto falta para a reunião começar.
+ *
+ * Contava até a sala ABRIR, sob o rótulo "Começa em" — e os dois instantes são
+ * diferentes por 30 minutos. Quem agendava às 09:54 para as 11:00 lia "faltam
+ * 35 minutos", que é quando a sala abre (10:30), não quando a sessão começa. A
+ * pessoa acreditava no número maior da tela, e ou chegava cedo demais achando
+ * que era a hora, ou concluía que o horário estava errado.
+ *
+ * Agora são dois instantes declarados: `comecaEm` é o que a contagem mostra, e
+ * `abreEm` é só o gatilho que troca a tela para o botão de entrar. A contagem
+ * some antes de zerar, quando a sala abre — e o texto ao lado diz isso.
  *
  * O instante de referência vem do SERVIDOR (`agoraServidor`): o relógio da
  * máquina do lead pode estar minutos adiantado, e aí a sala "abriria" antes da
@@ -12,16 +22,18 @@ import { useEffect, useState } from "react";
  * relógio do servidor.
  */
 export function Contagem({
+  comecaEm,
   abreEm,
   agoraServidor,
   aoAbrir,
 }: {
+  comecaEm: Date;
   abreEm: Date;
   agoraServidor: Date;
   aoAbrir: () => void;
 }) {
   const [restante, setRestante] = useState(() =>
-    Math.max(0, abreEm.getTime() - agoraServidor.getTime()),
+    Math.max(0, comecaEm.getTime() - agoraServidor.getTime()),
   );
 
   useEffect(() => {
@@ -30,13 +42,12 @@ export function Contagem({
 
     const id = setInterval(() => {
       const agora = base + (Date.now() - carregouEm);
-      const falta = Math.max(0, abreEm.getTime() - agora);
-      setRestante(falta);
-      if (falta === 0) aoAbrir();
+      setRestante(Math.max(0, comecaEm.getTime() - agora));
+      if (agora >= abreEm.getTime()) aoAbrir();
     }, 1000);
 
     return () => clearInterval(id);
-  }, [abreEm, agoraServidor, aoAbrir]);
+  }, [comecaEm, abreEm, agoraServidor, aoAbrir]);
 
   const total = Math.floor(restante / 1000);
   const partes = [

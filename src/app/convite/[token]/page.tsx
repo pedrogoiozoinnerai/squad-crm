@@ -72,6 +72,7 @@ export default async function ConvitePage(props: PageProps<"/convite/[token]">) 
         // "terça-feira, 15 de setembro" → "Terça, 15 de setembro"
         quando: quando.charAt(0).toUpperCase() + quando.slice(1).replace("-feira", ""),
         horario: hora.format(meeting.startsAt),
+        comecaEm: meeting.startsAt.toISOString(),
         abreEm: janelaDaSala(meeting).abreEm.toISOString(),
         situacao: situacaoDaSala(meeting, agora),
       }}
