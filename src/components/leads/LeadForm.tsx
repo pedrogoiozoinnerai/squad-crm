@@ -122,7 +122,7 @@ export function LeadForm({
         <textarea name="notes" rows={3} defaultValue={lead?.notes ?? ""} className="field resize-y" />
       </Field>
 
-      <FormFeedback state={state} closeHref={closeHref} />
+      <FormFeedback state={state} closeHref={closeHref} sucesso="Alterações salvas." />
 
       <SubmitRow>
         <button type="submit" disabled={pending} className="btn-primary">

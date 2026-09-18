@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
-import { Calendar, Copy, DollarSign, GraduationCap, Globe, Loader2, MousePointerClick } from "lucide-react";
+import { useActionState, useEffect, useState } from "react";
+import { Calendar, Check, Copy, DollarSign, GraduationCap, Globe, Loader2, MousePointerClick } from "lucide-react";
 
 import { saveDeal } from "@/app/actions/deals";
 import { centsToInput, chaveDoDia, diaMes, hhmm, TZ } from "@/lib/dates";
@@ -268,7 +268,7 @@ export function DealSidePanel({
           </label>
         </div>
 
-        <FormFeedback state={state} />
+        <FormFeedback state={state} sucesso="Alterações salvas." />
 
         <button type="submit" disabled={pending || locked} className="btn-primary mt-4 w-full">
           {pending && <Loader2 className="size-4 animate-spin" />}
@@ -355,15 +355,48 @@ export function DealSidePanel({
   );
 }
 
+/**
+ * Copiar com retorno visual — e com saída quando não dá para copiar.
+ *
+ * O `navigator.clipboard?.writeText(link)` de antes engolia tudo: sem `await`,
+ * sem `catch`, sem sinal. Em contexto sem permissão de área de transferência
+ * (navegador embutido, HTTP) o `?.` fazia o botão simplesmente não fazer nada,
+ * e a pessoa clicava de novo achando que tinha errado a mira. Os outros três
+ * pontos que copiam neste projeto já tratam; este era o que faltava.
+ */
 function CopyLinkButton({ link }: { link: string }) {
+  const [estado, setEstado] = useState<"parado" | "copiado" | "falhou">("parado");
+
+  useEffect(() => {
+    if (estado === "parado") return;
+    const t = setTimeout(() => setEstado("parado"), 1800);
+    return () => clearTimeout(t);
+  }, [estado]);
+
+  async function copiar() {
+    try {
+      await navigator.clipboard.writeText(link);
+      setEstado("copiado");
+    } catch {
+      // Sem área de transferência, o link ainda precisa chegar a algum lugar:
+      // seleciona para a pessoa copiar à mão.
+      setEstado("falhou");
+    }
+  }
+
   return (
     <button
       type="button"
-      onClick={() => navigator.clipboard?.writeText(link)}
+      onClick={() => void copiar()}
+      aria-live="polite"
       className="btn-ghost shrink-0 py-2 text-xs"
     >
-      <Copy className="size-3.5" />
-      Copiar link
+      {estado === "copiado" ? (
+        <Check className="size-3.5 text-waz-30" />
+      ) : (
+        <Copy className="size-3.5" />
+      )}
+      {estado === "copiado" ? "Copiado" : estado === "falhou" ? "Copie à mão" : "Copiar link"}
     </button>
   );
 }

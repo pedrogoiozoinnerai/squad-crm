@@ -20,6 +20,32 @@ export function weekStart(date = new Date(), offset = 0, tz = TZ) {
 }
 
 /**
+ * Meia-noite do dia que contém `instante`, **no fuso** — não no do processo.
+ *
+ * Existe porque `new Date(x); d.setHours(0,0,0,0)` foi usado como "hoje" em
+ * filtro de prazo, e na Vercel (UTC) isso é 21:00 de ontem em São Paulo. O
+ * sintoma era o vendedor filtrar "o que tenho para hoje" e não ver as tarefas
+ * que vencem à noite.
+ */
+export function inicioDoDia(instante: Date, tz = TZ) {
+  const { ano, mes, dia } = diaCivil(instante, tz);
+  return instanteLocal(new Date(Date.UTC(ano, mes - 1, dia)), "00:00", tz);
+}
+
+/**
+ * Meia-noite do dia 1º do mês que contém `instante`, no fuso.
+ *
+ * O par de `fimDoMes` (em `lib/horizonte`), e pelo mesmo motivo que ele existe:
+ * `new Date(ano, getMonth(), 1)` lê o relógio de quem executa, e nas três
+ * últimas horas de todo mês a Vercel já está no mês seguinte — o painel zerava
+ * "ganho no mês" para quem ainda estava no dia 31.
+ */
+export function inicioDoMes(instante: Date, tz = TZ) {
+  const { ano, mes } = diaCivil(instante, tz);
+  return instanteLocal(new Date(Date.UTC(ano, mes - 1, 1)), "00:00", tz);
+}
+
+/**
  * Os sete dias da semana, como instantes de meia-noite local.
  *
  * Soma dias de CALENDÁRIO, não 24 horas: na virada do horário de verão um dia

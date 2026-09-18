@@ -439,6 +439,7 @@ function Roster({
                       href={whatsapp}
                       target="_blank"
                       rel="noopener noreferrer"
+                      aria-label="Abrir conversa no WhatsApp"
                       title="Abrir conversa no WhatsApp"
                       className="btn-ghost px-2 py-1.5 text-xs"
                     >
@@ -446,7 +447,8 @@ function Roster({
                     </a>
                   )}
                   {doDono && p.lead.phone && (
-                    <a href={`tel:${p.lead.phone}`} title="Ligar" className="btn-ghost px-2 py-1.5 text-xs">
+                    <a href={`tel:${p.lead.phone}`} aria-label="Ligar"
+                      title="Ligar" className="btn-ghost px-2 py-1.5 text-xs">
                       <Phone className="size-3.5" />
                     </a>
                   )}
@@ -456,6 +458,7 @@ function Roster({
                       sendo de quem é. */}
                   <Link
                     href={`/${space}/leads?lead=${p.lead.id}`}
+                    aria-label="Abrir lead"
                     title="Abrir lead"
                     className="btn-ghost px-2 py-1.5 text-xs"
                   >

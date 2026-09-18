@@ -96,7 +96,7 @@ export function Retencao({
           auditoria depois que o arquivo for embora.
         </p>
 
-        <FormFeedback state={estado} />
+        <FormFeedback state={estado} sucesso="Prazo de retenção salvo." />
         <SubmitRow>
           <button type="submit" disabled={salvando} className="btn-primary">
             {salvando ? "Salvando…" : "Salvar prazos"}

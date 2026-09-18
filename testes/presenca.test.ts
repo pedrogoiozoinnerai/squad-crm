@@ -3,11 +3,12 @@ import { readdirSync, readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import {
+  REGRA_PADRAO,
   atingiuPresenca,
   consolidar,
-  REGRA_PADRAO,
-  veredicto,
+  tetoDaPresenca,
   type EventoBruto,
+  veredicto,
 } from "../src/lib/presenca";
 
 const T = (minuto: number) => new Date(`2026-09-15T14:${String(minuto).padStart(2, "0")}:00Z`);
@@ -251,5 +252,60 @@ describe("quantas vezes entrou", () => {
     assert.equal(p.joinCount, 1);
     assert.equal(p.seconds, 1200);
     assert.equal(p.leftAt?.getTime(), em(20).getTime());
+  });
+});
+
+describe("a sala esquecida não fabrica presença", () => {
+  // A "All Hands" de 45 minutos ficou aberta DEZ HORAS, com 300 ciclos de
+  // entrar e sair, e duas pessoas acumularam 322 e 366 minutos. `seconds`
+  // decide `attended`, que decide a taxa de presença e o `Deal.attendance` —
+  // então uma aba esquecida reconectando fabricava presença de verdade.
+  //
+  // `M` em vez do `T` do topo: aquele só monta minutos de dois dígitos, e os
+  // casos que importam aqui passam de uma hora.
+  const M = (minuto: number) => new Date(T(0).getTime() + minuto * 60_000);
+  const ev = (tipo: "participant_joined" | "participant_left", minuto: number): EventoBruto => ({
+    type: tipo, at: M(minuto), identity: "l_1", name: null,
+  });
+  const entra = (minuto: number) => ev("participant_joined", minuto);
+  const sai = (minuto: number) => ev("participant_left", minuto);
+
+  const FIM = M(45);
+  const teto = tetoDaPresenca(FIM);
+
+  it("o teto é meia hora depois do fim, simétrico à abertura", () => {
+    assert.equal(teto.getTime() - FIM.getTime(), 30 * 60_000);
+  });
+
+  it("quem ficou até o fim conta inteiro", () => {
+    assert.equal(consolidar([entra(0), sai(45)], null, teto)[0].seconds, 45 * 60);
+  });
+
+  it("quem emendou meia hora ainda conta inteiro", () => {
+    assert.equal(consolidar([entra(0), sai(75)], null, teto)[0].seconds, 75 * 60);
+  });
+
+  it("a aba esquecida para de acumular no teto", () => {
+    // Dez horas na sala viram 75 minutos: os 45 marcados mais a folga.
+    assert.equal(consolidar([entra(0), sai(600)], null, teto)[0].seconds, 75 * 60);
+  });
+
+  it("quem entrou DEPOIS do teto conta zero, não negativo", () => {
+    assert.equal(consolidar([entra(120), sai(180)], null, teto)[0].seconds, 0);
+  });
+
+  it("o laço de reconexão não soma além do teto", () => {
+    const eventos: EventoBruto[] = [];
+    for (let i = 0; i < 30; i++) eventos.push(entra(i * 12), sai(i * 12 + 10));
+    const [p] = consolidar(eventos, null, teto);
+    assert.ok(p.seconds <= 75 * 60, `somou ${p.seconds}s, mais que o teto`);
+  });
+
+  it("quem ficou em aberto é fechado no teto, não no fim tardio da sala", () => {
+    assert.equal(consolidar([entra(0)], M(600), teto)[0].seconds, 75 * 60);
+  });
+
+  it("sem teto, o comportamento antigo continua", () => {
+    assert.equal(consolidar([entra(0), sai(600)], null)[0].seconds, 600 * 60);
   });
 });

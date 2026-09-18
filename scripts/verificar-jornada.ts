@@ -48,6 +48,23 @@ async function json(r: Response) {
   }
 }
 
+const cabecalhoDoCron: Record<string, string> = process.env.CRON_SECRET
+  ? { authorization: `Bearer ${process.env.CRON_SECRET}` }
+  : {};
+
+/** Recua a marca para o sync ter o que ler — senão a passagem é vazia e verde. */
+async function recuarMarca() {
+  await db.query(
+    `update "${SCHEMA}"."Config" set "funilSincronizadoAte" = now() - interval '10 minutes'`,
+  );
+}
+
+async function marcaDagua(): Promise<string | null> {
+  const r = await db.query(`select "funilSincronizadoAte" m from "${SCHEMA}"."Config"`);
+  const v = r.rows[0]?.m;
+  return v instanceof Date ? v.toISOString() : (v ?? null);
+}
+
 async function main() {
   console.log(`Jornada do lead\n  funil: ${FUNIL}\n  crm:   ${CRM}`);
   await db.connect();
@@ -353,9 +370,6 @@ async function main() {
     );
 
   const antesDoSync = await contarReunioes();
-  const cabecalhoDoCron: Record<string, string> = process.env.CRON_SECRET
-    ? { authorization: `Bearer ${process.env.CRON_SECRET}` }
-    : {};
 
   let lidosNoTotal = 0;
   for (let i = 0; i < 3; i++) {
@@ -376,6 +390,74 @@ async function main() {
     depoisDoSync === antesDoSync,
     "e mesmo assim não criou reunião nenhuma",
     `${antesDoSync} → ${depoisDoSync}`,
+  );
+
+  // ── 8.6. A reunião que o SYNC cria nasce com link ─────────────────────────
+  //
+  // A do passo 4 nasce pela nossa agenda, e essa sempre teve `guestToken`. A
+  // que o sync cria é outro caminho — o lead que agendou pelo Cal — e era o
+  // ÚNICO dos três que não gerava o token. Medi 15 reuniões futuras sem link em
+  // produção, todas 1:1 com lead: o vendedor via a reunião na agenda e não
+  // tinha o que mandar. Um passo verde no 9 não cobria isto, porque o 9 olha a
+  // reunião do outro caminho.
+  etapa("8.6. A reunião criada pelo sync tem link");
+
+  const uidDoCal = `jornada-cal-${sessionId}`;
+  await db.query(
+    `update "${SCHEMA_FUNIL}"."Lead"
+        set "crmMeetingId" = null,
+            "calBookingUid" = $2,
+            "scheduledAt" = now() + interval '3 days',
+            "updatedAt" = now()
+      where "sessionId" = $1`,
+    [sessionId, uidDoCal],
+  );
+  await recuarMarca();
+  await fetch(`${CRM}/api/cron/type`, { headers: cabecalhoDoCron }).then(json);
+
+  const pelaSync = await db.query(
+    `select id, "guestToken" is not null tem_link, type::text tipo
+       from "${SCHEMA}"."Meeting" where "calBookingUid" = $1`,
+    [uidDoCal],
+  );
+  if (confere(pelaSync.rowCount === 1, "o sync criou a reunião do Cal")) {
+    confere(pelaSync.rows[0].tem_link === true, "e ela nasceu com link de convite");
+  }
+
+  // ── 8.7. Um lead sem `typeLeadId` não trava o funil inteiro ───────────────
+  //
+  // `typeLeadId` é OPCIONAL no corpo da reserva. Sem ele, o sync procurava só
+  // por esse campo, não achava nada, e o `create` batia no único de
+  // `typeSessionId` — P2002, 500 no cron, e a marca d'água congelada. Não é o
+  // lead que para: é o espelhamento do funil inteiro, para sempre, e o único
+  // sintoma é um 500 num log que ninguém abre.
+  etapa("8.7. Lead com sessão e sem id não congela a marca d'água");
+
+  await db.query(`update "${SCHEMA}"."Lead" set "typeLeadId" = null where id = $1`, [leadCrmId]);
+  await db.query(`update "${SCHEMA_FUNIL}"."Lead" set "updatedAt" = now() where "sessionId" = $1`, [
+    sessionId,
+  ]);
+  const marcaAntes = await marcaDagua();
+  await recuarMarca();
+
+  const respostaDoCron = await fetch(`${CRM}/api/cron/type`, { headers: cabecalhoDoCron });
+  const corpoDoCron = await json(respostaDoCron);
+  confere(respostaDoCron.ok, "o cron não devolve 500", `HTTP ${respostaDoCron.status}`);
+  confere(Number(corpoDoCron?.falhas ?? 0) === 0, "nenhum lead falhou ao reconciliar");
+
+  const remendado = await db.query(
+    `select count(*)::int n, bool_or("typeLeadId" is not null) com_id
+       from "${SCHEMA}"."Lead" where "typeSessionId" = $1`,
+    [sessionId],
+  );
+  confere(remendado.rows[0].n === 1, "não nasceu um lead duplicado", `${remendado.rows[0].n}`);
+  confere(remendado.rows[0].com_id === true, "a ponte do id foi preenchida na passagem");
+
+  const marcaDepois = await marcaDagua();
+  confere(
+    marcaDepois !== null && marcaDepois !== marcaAntes,
+    "a marca d'água andou",
+    marcaDepois ? String(marcaDepois) : "NULA",
   );
 
   // ── 9. O vendedor, no CRM ─────────────────────────────────────────────────
@@ -399,6 +481,7 @@ async function main() {
   console.log("\n— limpando —");
   await db.query(`delete from "${SCHEMA}"."MeetingAttendee" where "leadId"=$1`, [leadCrmId]);
   await db.query(`delete from "${SCHEMA}"."Activity" where "leadId"=$1`, [leadCrmId]);
+  await db.query(`delete from "${SCHEMA}"."Meeting" where "leadId"=$1`, [leadCrmId]);
   await db.query(`delete from "${SCHEMA}"."Deal" where "leadId"=$1`, [leadCrmId]);
   await db.query(`delete from "${SCHEMA}"."Lead" where id=$1`, [leadCrmId]);
   await db.query(`delete from "${SCHEMA_FUNIL}"."LeadEvent" where "leadId" in (select id from "${SCHEMA_FUNIL}"."Lead" where "sessionId"=$1)`, [sessionId]);

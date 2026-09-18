@@ -34,8 +34,74 @@ function createClient() {
   // Runtime usa a URL do pooler (6543). `max: 1` porque cada instância
   // serverless é um processo próprio: pool grande ali multiplica conexões
   // em vez de reaproveitá-las.
-  const adapter = new PrismaPg({ connectionString, max: 1 }, { schema: DB_SCHEMA });
+  const adapter = new PrismaPg(
+    {
+      connectionString,
+      max: 1,
+      // `keepAlive` é o que reduz a causa em vez de remediar o sintoma: sem
+      // ele o socket fica parado e o pooler o considera ocioso; o TCP
+      // keepalive mantém a conexão viva do outro lado. Não elimina o caso —
+      // uma função congelada não manda keepalive nenhum —, mas tira da conta
+      // as pausas curtas, que são a maioria.
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10_000,
+    },
+    { schema: DB_SCHEMA },
+  );
   return new PrismaClient({ adapter });
+}
+
+/**
+ * A conexão caiu antes da instrução rodar?
+ *
+ * O sintoma tem nome em produção: `Connection closed.`, uma das duas únicas
+ * assinaturas do `ErrorLog`. A função serverless congela entre invocações com o
+ * socket aberto, o pooler derruba a conexão ociosa, e a função descongela em
+ * cima de um socket morto. O `idleTimeoutMillis` do `pg` não ajuda porque
+ * **timer não roda em função congelada**.
+ */
+function ehQuedaDeConexao(erro: unknown): boolean {
+  const mensagem = erro instanceof Error ? erro.message : String(erro);
+  return /Connection closed|Connection terminated|ECONNRESET|EPIPE|server closed the connection/i.test(
+    mensagem,
+  );
+}
+
+/**
+ * As operações que dá para repetir sem pensar duas vezes.
+ *
+ * **Só leitura, de propósito.** Repetir uma escrita exigiria provar que a
+ * instrução não chegou ao servidor, e o erro que chega aqui não carrega essa
+ * informação — `Connection terminated` tanto pode ser o socket morto antes de
+ * enviar quanto o servidor caindo no meio de um `INSERT`. Repetir o segundo
+ * caso duplicaria negócio, tarefa ou inscrição. Entre um 500 e um registro
+ * duplicado em silêncio, o 500 é o erro mais barato.
+ */
+const REPETIVEIS = new Set([
+  "findMany", "findUnique", "findFirst", "findUniqueOrThrow", "findFirstOrThrow",
+  "count", "aggregate", "groupBy",
+]);
+
+function comRepeticao<T extends object>(modelo: T): T {
+  return new Proxy(modelo, {
+    get(alvo, operacao) {
+      const original = Reflect.get(alvo, operacao);
+      if (typeof original !== "function" || typeof operacao !== "string") return original;
+      if (!REPETIVEIS.has(operacao)) return original.bind(alvo);
+
+      return async (...args: unknown[]) => {
+        try {
+          return await original.apply(alvo, args);
+        } catch (erro) {
+          if (!ehQuedaDeConexao(erro)) throw erro;
+          // Uma vez só. Se a segunda também cair, o problema não é o socket
+          // ocioso — é o banco —, e insistir só atrasa a mensagem de erro.
+          console.warn(`[prisma] conexão caiu em ${operacao}; repetindo uma vez.`);
+          return await original.apply(alvo, args);
+        }
+      };
+    },
+  });
 }
 
 /** Lido pela rota de saúde: o aviso some do log, o sintoma não. */
@@ -63,7 +129,14 @@ function getClient(): PrismaClient {
  */
 export const prisma = new Proxy({} as PrismaClient, {
   get(_target, prop) {
-    const value = Reflect.get(getClient(), prop);
-    return typeof value === "function" ? value.bind(getClient()) : value;
+    const cliente = getClient();
+    const value = Reflect.get(cliente, prop);
+    if (typeof value === "function") return value.bind(cliente);
+    // Os acessadores de modelo (`prisma.lead`, `prisma.deal`…) ganham a
+    // repetição; `$transaction` e `$queryRawUnsafe` não, porque escrevem.
+    if (value && typeof value === "object" && typeof prop === "string" && !prop.startsWith("$")) {
+      return comRepeticao(value as object);
+    }
+    return value;
   },
 });

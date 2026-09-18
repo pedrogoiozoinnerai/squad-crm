@@ -4,6 +4,7 @@ import { Percent, Search, Sparkles, UserCheck, Users } from "lucide-react";
 import { tempoNaSala } from "@/components/sessions/SessionsView";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
+import { situacaoDaSessao } from "@/lib/presenca";
 import { TZ, hhmm } from "@/lib/dates";
 
 type Row = {
@@ -22,6 +23,8 @@ type Row = {
   meeting: {
     id: string;
     startsAt: Date;
+    endsAt: Date;
+    status: string;
     owner: { name: string };
   };
 };
@@ -80,13 +83,19 @@ export function ParticipantsView({
   filters: Filters;
   now: Date;
 }) {
-  // A sessão só conta para a taxa de presença depois de ter acontecido.
-  const linhas = participants.map((p) => ({
-    ...p,
-    futura: p.meeting.startsAt > now,
-  }));
+  // A sessão só conta para a taxa de presença depois de TERMINAR.
+  //
+  // Antes eram dois estados (`startsAt > now`), e faltava o do meio: durante a
+  // call a sessão já entrava como realizada, então quem ainda não tinha
+  // acumulado o mínimo aparecia com chip vermelho de Ausente e a taxa do topo
+  // despencava. `situacaoDaSessao` é a mesma régua de `SessionsView` e
+  // `SessionPage` — esta tela era a única fora dela.
+  const linhas = participants.map((p) => {
+    const situacao = situacaoDaSessao(p.meeting, now);
+    return { ...p, situacao, futura: situacao === "futura" || situacao === "emAndamento" };
+  });
 
-  const realizadas = linhas.filter((l) => !l.futura);
+  const realizadas = linhas.filter((l) => l.situacao === "medida");
   const presentes = realizadas.filter((l) => l.attended).length;
   const taxa = realizadas.length ? Math.round((presentes / realizadas.length) * 100) : 0;
   const qualificados = realizadas.filter(

@@ -74,3 +74,28 @@ export function phone(value: FormDataEntryValue | null): string | null {
   if (digits.length < 10) return str;
   return `+${digits.startsWith("55") ? digits : `55${digits}`}`;
 }
+
+/// Os três estados de um negócio, como o schema os define.
+export const STATUS_DE_NEGOCIO = ["OPEN", "WON", "LOST"] as const;
+export type StatusDeNegocio = (typeof STATUS_DE_NEGOCIO)[number];
+
+/**
+ * O status pedido na URL, ou nenhum.
+ *
+ * Existe porque `filters.status as "OPEN" | "WON" | "LOST"` confiava no que
+ * vinha da query string. `?status=open` — minúsculo, que é o que alguém digita
+ * — virava `PrismaClientValidationError`: a tela de Negócios trocava por
+ * "algo quebrou" e a rota de exportação respondia 500. `prazo` e `ordem`, no
+ * mesmo arquivo, já eram validados por `switch` com `default`; só o `status`
+ * não era.
+ *
+ * Devolve `undefined` para valor desconhecido — que é o mesmo que "todos", e é
+ * o comportamento certo para um filtro: um recorte que ninguém reconhece não
+ * deve derrubar a página, deve não filtrar.
+ */
+export function statusDeNegocio(valor: string | null | undefined): StatusDeNegocio | undefined {
+  const limpo = (valor ?? "").trim().toUpperCase();
+  return (STATUS_DE_NEGOCIO as readonly string[]).includes(limpo)
+    ? (limpo as StatusDeNegocio)
+    : undefined;
+}

@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { instanteLocal, TZ } from "../src/lib/dates";
+import {
+  TZ,
+  inicioDoDia,
+  inicioDoMes,
+  instanteLocal,
+} from "../src/lib/dates";
+import { fimDoMes } from "../src/lib/horizonte";
 
 /** O dia de calendário como a coluna `date` guarda: 00:00 UTC. */
 const dia = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
@@ -86,5 +92,46 @@ describe("horário de verão", () => {
       instanteLocal(dia("2026-03-07"), "12:00", "America/New_York").toISOString(),
       "2026-03-07T17:00:00.000Z",
     );
+  });
+});
+
+describe("início do dia e do mês, no fuso e não no processo", () => {
+  // Estes dois nasceram de defeito medido em `queries.ts`: `setHours(0,0,0,0)`
+  // no filtro de prazo e `new Date(ano, getMonth(), 1)` no painel. Na Vercel,
+  // que roda em UTC, os dois liam o relógio errado — e o teste roda nos dois
+  // fusos justamente para prender isso.
+
+  it("meia-noite é a de São Paulo, não a do processo", () => {
+    // 17/09 às 23:30 em SP = 18/09 02:30 UTC. O dia civil ainda é 17.
+    const tardeDaNoite = new Date("2026-09-18T02:30:00Z");
+    assert.equal(inicioDoDia(tardeDaNoite).toISOString(), "2026-09-17T03:00:00.000Z");
+  });
+
+  it("e não muda conforme quem executa", () => {
+    const meioDia = new Date("2026-09-17T15:00:00Z");
+    assert.equal(inicioDoDia(meioDia).toISOString(), "2026-09-17T03:00:00.000Z");
+  });
+
+  it("o mês vira à meia-noite de São Paulo", () => {
+    // 30/09 às 22:00 em SP é 01/10 01:00 UTC: ainda é setembro para nós.
+    const ultimaNoite = new Date("2026-10-01T01:00:00Z");
+    assert.equal(inicioDoMes(ultimaNoite).toISOString(), "2026-09-01T03:00:00.000Z");
+  });
+
+  it("o primeiro instante do mês pertence ao próprio mês", () => {
+    const primeiro = new Date("2026-09-01T03:00:00Z");
+    assert.equal(inicioDoMes(primeiro).toISOString(), "2026-09-01T03:00:00.000Z");
+  });
+
+  it("fevereiro bissexto: o mês seguinte começa em março, não em 04/03", () => {
+    // O defeito era `addDays(inicioMes, 31)` como "fim do mês".
+    const fev = new Date("2028-02-15T15:00:00Z");
+    assert.equal(inicioDoMes(fev).toISOString(), "2028-02-01T03:00:00.000Z");
+    assert.equal(fimDoMes(fev).toISOString(), "2028-03-01T02:59:59.999Z");
+  });
+
+  it("janeiro vira dezembro para trás sem estourar o ano", () => {
+    const jan = new Date("2026-01-10T15:00:00Z");
+    assert.equal(inicioDoMes(jan).toISOString(), "2026-01-01T03:00:00.000Z");
   });
 });

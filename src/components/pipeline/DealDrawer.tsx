@@ -5,6 +5,7 @@ import { DealPanels } from "@/components/pipeline/DealPanels";
 import { DealSidePanel } from "@/components/pipeline/DealSidePanel";
 import { StageStepper } from "@/components/pipeline/StageStepper";
 import { Drawer } from "@/components/ui/Drawer";
+import { Acao } from "@/components/ui/Acao";
 import { Copiavel } from "@/components/ui/Copiavel";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import type { SessionUser } from "@/lib/auth";
@@ -25,6 +26,10 @@ export async function DealDrawer({
   user: SessionUser;
   closeHref: string;
 }) {
+  // Um relógio só, criado no servidor, que desce como prop. Os painéis liam
+  // `new Date()` no corpo e comparavam com `getDate()`: o instante do servidor
+  // divergia do da hidratação e "Hoje" piscava entre 21h e meia-noite.
+  const agora = new Date();
   const deal = await getDealDetail(user, dealId);
 
   if (!deal) {
@@ -95,7 +100,7 @@ export async function DealDrawer({
 
           {isOpen ? (
             <>
-              <form action={closeDeal} className="flex items-center gap-1.5">
+              <Acao action={closeDeal} mensagem="Não deu para fechar o negócio." className="flex items-center gap-1.5">
                 <input type="hidden" name="id" value={deal.id} />
                 <input type="hidden" name="outcome" value="lost" />
                 <select
@@ -121,9 +126,9 @@ export async function DealDrawer({
                   <X className="size-3.5" />
                   Perdido
                 </button>
-              </form>
+              </Acao>
 
-              <form action={closeDeal}>
+              <Acao action={closeDeal} mensagem="Não deu para fechar o negócio.">
                 <input type="hidden" name="id" value={deal.id} />
                 <input type="hidden" name="outcome" value="won" />
                 <button
@@ -139,16 +144,16 @@ export async function DealDrawer({
                   <Trophy className="size-3.5" />
                   Ganho
                 </button>
-              </form>
+              </Acao>
             </>
           ) : (
-            <form action={reopenDeal}>
+            <Acao action={reopenDeal} mensagem="Não deu para reabrir o negócio.">
               <input type="hidden" name="id" value={deal.id} />
               <button type="submit" className="btn-ghost px-3 py-2 text-xs">
                 <Undo2 className="size-3.5" />
                 Reabrir
               </button>
-            </form>
+            </Acao>
           )}
         </>
       }
@@ -177,6 +182,9 @@ export async function DealDrawer({
           leadName={deal.lead.name}
           leadPhone={deal.lead.phone}
           leadSegment={deal.lead.segment}
+          // Um relógio só por renderização, criado no servidor: é o que evita
+          // o instante do servidor divergir do da hidratação.
+          agora={agora}
           tasks={deal.tasks}
           activities={deal.activities}
           cases={cases}

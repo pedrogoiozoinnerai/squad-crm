@@ -5,6 +5,7 @@ import { setMeetingStatus } from "@/app/actions/meetings";
 import { LinkDaSala } from "@/components/sala/LinkDaSala";
 import { toggleTask } from "@/app/actions/tasks";
 import { PageHeader } from "@/components/shell/PageHeader";
+import { Acao } from "@/components/ui/Acao";
 import { NovaReuniao } from "@/components/reunioes/NovaReuniao";
 import { TZ, chaveDoDia, hhmm, horaLocal } from "@/lib/dates";
 
@@ -224,7 +225,11 @@ export function AgendaView({
                     {meeting.status === "SCHEDULED" && (
                       <div className="mt-2.5 flex gap-1.5">
                         {(["DONE", "NO_SHOW", "CANCELED"] as const).map((next) => (
-                          <form key={next} action={setMeetingStatus}>
+                          <Acao
+                            key={next}
+                            action={setMeetingStatus}
+                            mensagem="Não deu para mudar o status da reunião."
+                          >
                             <input type="hidden" name="id" value={meeting.id} />
                             <input type="hidden" name="status" value={next} />
                             <button
@@ -233,7 +238,7 @@ export function AgendaView({
                             >
                               {MEETING_STATUS[next].text}
                             </button>
-                          </form>
+                          </Acao>
                         ))}
                       </div>
                     )}
@@ -264,7 +269,7 @@ export function AgendaView({
                     key={task.id}
                     className={`flex items-center gap-3 rounded-xl bg-surface-2/60 p-3 ${done ? "opacity-55" : ""}`}
                   >
-                    <form action={toggleTask}>
+                    <Acao action={toggleTask} mensagem="Não deu para concluir a tarefa.">
                       <input type="hidden" name="taskId" value={task.id} />
                       <button
                         type="submit"
@@ -277,7 +282,7 @@ export function AgendaView({
                       >
                         <CheckCircle2 className="size-3.5" />
                       </button>
-                    </form>
+                    </Acao>
                     <span className="min-w-0 flex-1">
                       <span className={`block text-sm font-medium ${done ? "line-through" : ""}`}>
                         {task.subject}

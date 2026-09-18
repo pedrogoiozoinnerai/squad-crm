@@ -4,6 +4,7 @@ import { lerIdentidade, salaDaReuniao } from "@/lib/livekit";
 import {
   atingiuPresenca,
   consolidar,
+  tetoDaPresenca,
   veredicto,
   type PresencaConsolidada,
   type RegraDePresenca,
@@ -94,7 +95,14 @@ export async function reconciliarPresencas(
     relatorio.reunioes += 1;
 
     const encerrada = eventos.find((e) => e.type === "room_finished");
-    const consolidadas = consolidar(eventos, encerrada?.at ?? null);
+    // O teto: nada depois de `endsAt + 30 min` acumula. Sem ele, uma sala
+    // esquecida aberta a noite inteira vira presença — medimos 366 minutos
+    // numa call de 45.
+    const consolidadas = consolidar(
+      eventos,
+      encerrada?.at ?? null,
+      tetoDaPresenca(reuniao.endsAt),
+    );
     const duracaoSegundos = Math.max(
       0,
       Math.round((reuniao.endsAt.getTime() - reuniao.startsAt.getTime()) / 1000),

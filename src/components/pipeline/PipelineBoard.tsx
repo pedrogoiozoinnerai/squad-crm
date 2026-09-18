@@ -89,13 +89,26 @@ export function PipelineBoard({
       ),
   );
 
+  const [falha, setFalha] = useState<string | null>(null);
+
   function handleDrop(stageId: string, dealId: string, at: number) {
     setDragOver(null);
     lastDragAt.current = at;
     if (!dealId) return;
     startTransition(async () => {
       applyMove({ dealId, stageId });
-      await moveDeal({ dealId, stageId });
+      try {
+        await moveDeal({ dealId, stageId });
+        setFalha(null);
+      } catch (erro) {
+        // Sem este `catch`, a action lançava (negócio já fechado, por exemplo),
+        // o erro subia para o boundary e a PÁGINA INTEIRA virava "algo quebrou"
+        // — com o card ainda desenhado na coluna nova pelo `useOptimistic`, o
+        // que fazia parecer que tinha funcionado.
+        setFalha(erro instanceof Error ? erro.message : "Não foi possível mover este negócio.");
+        // Devolve o board à verdade do servidor: o otimista é descartado.
+        router.refresh();
+      }
     });
   }
 
@@ -104,6 +117,12 @@ export function PipelineBoard({
   }
 
   return (
+    <>
+      {falha && (
+        <p role="alert" className="mb-3 rounded-xl bg-red-50 px-4 py-2.5 text-sm text-red-700">
+          {falha}
+        </p>
+      )}
     <div className="flex gap-4 overflow-x-auto pb-4">
       {stages.map((stage) => {
         const items = board.filter((deal) => deal.stageId === stage.id);
@@ -309,5 +328,6 @@ export function PipelineBoard({
         );
       })}
     </div>
+    </>
   );
 }

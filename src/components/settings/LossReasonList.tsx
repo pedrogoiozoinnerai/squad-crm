@@ -11,6 +11,7 @@ import {
   salvarMotivo,
 } from "@/app/actions/settings";
 import { Field } from "@/components/ui/Field";
+import { Acao } from "@/components/ui/Acao";
 import { FormFeedback } from "@/components/ui/FormFeedback";
 import type { FormState } from "@/lib/guard";
 
@@ -83,7 +84,7 @@ export function LossReasonList({ reasons }: { reasons: LossReasonRow[] }) {
                   reason.active ? "" : "opacity-60"
                 }`}
               >
-                <form action={moverMotivo} className="flex shrink-0 flex-col gap-0.5">
+                <Acao action={moverMotivo} mensagem="Não deu para mudar o motivo de lugar." className="flex shrink-0 flex-col gap-0.5">
                   <input type="hidden" name="id" value={reason.id} />
                   <OrderButton value="up" disabled={i === 0} label={`Subir ${reason.name}`}>
                     <ArrowUp className="size-3" />
@@ -95,7 +96,7 @@ export function LossReasonList({ reasons }: { reasons: LossReasonRow[] }) {
                   >
                     <ArrowDown className="size-3" />
                   </OrderButton>
-                </form>
+                </Acao>
 
                 <p className="min-w-[9rem] flex-1 text-sm font-medium">{reason.name}</p>
 
@@ -110,7 +111,7 @@ export function LossReasonList({ reasons }: { reasons: LossReasonRow[] }) {
                 </span>
 
                 <div className="flex shrink-0 items-center gap-1.5">
-                  <form action={alternarMotivo}>
+                  <Acao action={alternarMotivo} mensagem="Não deu para mudar o status do motivo.">
                     <input type="hidden" name="id" value={reason.id} />
                     <button
                       type="submit"
@@ -127,7 +128,7 @@ export function LossReasonList({ reasons }: { reasons: LossReasonRow[] }) {
                     >
                       {reason.active ? "Ativo" : "Inativo"}
                     </button>
-                  </form>
+                  </Acao>
 
                   <button
                     type="button"
@@ -150,7 +151,7 @@ export function LossReasonList({ reasons }: { reasons: LossReasonRow[] }) {
                       Só desativar
                     </span>
                   ) : confirmando === reason.id ? (
-                    <form action={excluirMotivo} className="flex items-center gap-1.5">
+                    <Acao action={excluirMotivo} mensagem="Não deu para excluir o motivo." className="flex items-center gap-1.5">
                       <input type="hidden" name="id" value={reason.id} />
                       <button type="submit" className="chip bg-red-600 text-white hover:bg-red-700">
                         Confirmar
@@ -162,7 +163,7 @@ export function LossReasonList({ reasons }: { reasons: LossReasonRow[] }) {
                       >
                         Cancelar
                       </button>
-                    </form>
+                    </Acao>
                   ) : (
                     <button
                       type="button"

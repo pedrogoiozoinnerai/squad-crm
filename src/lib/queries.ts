@@ -2,7 +2,9 @@ import "server-only";
 
 import { addDays } from "date-fns";
 
-import { diaCivil, instanteLocal, weekStart } from "@/lib/dates";
+import { diaCivil, inicioDoDia, inicioDoMes, instanteLocal, weekStart } from "@/lib/dates";
+import { statusDeNegocio } from "@/lib/forms";
+import { fimDoMes } from "@/lib/horizonte";
 
 import { ownerScope, type SessionUser } from "@/lib/auth";
 import { ehQualificado, taxaDaSessao } from "@/lib/presenca";
@@ -42,7 +44,7 @@ async function somasDoPipeline(ownerId: string | undefined, inicioMes: Date, fim
 
 /** Reuniões da semana, já no escopo do usuário. */
 export async function getWeekMeetings(user: SessionUser, start: Date) {
-  return prisma.meeting.findMany({
+  const reunioes = await prisma.meeting.findMany({
     where: {
       ...ownerScope(user),
       startsAt: { gte: start, lt: addDays(start, 7) },
@@ -51,9 +53,24 @@ export async function getWeekMeetings(user: SessionUser, start: Date) {
     include: {
       lead: { select: { id: true, name: true, company: true, score: true } },
       owner: { select: { id: true, name: true } },
+      // Só a coluna que decide o número — não o lead inteiro de cada inscrito.
+      // Numa semana são ~78 sessões de até 20 pessoas; puxar o lead junto seria
+      // 1.560 registros completos para desenhar dois inteiros por cartão.
+      attendees: { select: { attended: true } },
+      _count: { select: { gravacoes: true } },
     },
     orderBy: { startsAt: "asc" },
   });
+
+  // Agendados e realizados por cartão: é o que o calendário do CRM de
+  // referência mostra, e é a pergunta que o gestor faz olhando a grade —
+  // "quantos marcaram com esse closer, e quantos apareceram".
+  return reunioes.map(({ attendees, _count, ...m }) => ({
+    ...m,
+    inscritos: attendees.length,
+    presentes: attendees.filter((a) => a.attended).length,
+    temGravacao: _count.gravacoes > 0,
+  }));
 }
 
 /**
@@ -66,9 +83,16 @@ export async function getWeekMeetings(user: SessionUser, start: Date) {
  */
 const POR_COLUNA = 60;
 
-/** As colunas da tela. `LOST` não tem coluna, mas conta no total. */
-const COLUNAS_LEAD = ["INCOMPLETE", "COMPLETE", "CONVERTED"] as const;
-const STATUS_LEAD = [...COLUNAS_LEAD, "LOST"] as const;
+/**
+ * As colunas da tela.
+ *
+ * `LOST` entrou. Antes ele contava no cabeçalho e não tinha coluna: o vendedor
+ * lia "Perdidos: 12" e não havia lugar nenhum onde ver os doze. Marcar um lead
+ * como perdido o fazia desaparecer da tela — sem caminho de volta para rever ou
+ * reabrir, e com um número em cima apontando para nada.
+ */
+const COLUNAS_LEAD = ["INCOMPLETE", "COMPLETE", "CONVERTED", "LOST"] as const;
+const STATUS_LEAD = COLUNAS_LEAD;
 
 export async function getLeads(user: SessionUser) {
   const escopo = ownerScope(user);
@@ -114,8 +138,11 @@ export type FiltroPipeline = {
  * não aparece em lista de atrasados nem em agenda, e envelhece calado.
  */
 function recorteDePrazo(prazo: string | undefined, agora: Date) {
-  const hoje = new Date(agora);
-  hoje.setHours(0, 0, 0, 0);
+  // Meia-noite EM SÃO PAULO, não no relógio de quem executa. Com
+  // `setHours(0,0,0,0)` a Vercel (UTC) produzia 21:00 de ontem, e o teto
+  // `addDays(hoje, 1)` caía às 21:00 de hoje: a tarefa que vence às 23:00
+  // sumia do filtro "hoje" e também do "semana" no último dia da janela.
+  const hoje = inicioDoDia(agora);
   const pendente = { status: "PENDING" as const };
 
   switch (prazo) {
@@ -476,7 +503,7 @@ function filtroDeals(user: SessionUser, filters: FiltroDeals, agora = new Date()
     ...ownerScope(user),
     ...(closer ? { ownerId: closer } : {}),
     ...(filters.status && filters.status !== "all"
-      ? { status: filters.status as "OPEN" | "WON" | "LOST" }
+      ? { status: statusDeNegocio(filters.status) }
       : {}),
     ...recorteDePrazo(filters.prazo, agora),
     ...(q
@@ -630,7 +657,11 @@ export async function getDashboard(user: SessionUser) {
   const scope = ownerScope(user);
 
   const agora = new Date();
-  const inicioMes = new Date(agora.getFullYear(), agora.getMonth(), 1);
+  // `new Date(ano, getMonth(), 1)` lê o relógio do processo: na Vercel, nas
+  // três últimas horas de todo mês, já é o mês seguinte — e o painel zerava
+  // "ganho no mês" para quem ainda estava no dia 31. `lib/horizonte` já
+  // documentava exatamente isso; aqui a regra não estava sendo seguida.
+  const inicioMes = inicioDoMes(agora);
   const inicioSemana = weekStart(agora);
   const fimSemana = addDays(inicioSemana, 7);
 
@@ -709,7 +740,10 @@ export async function getDashboard(user: SessionUser) {
   const { pipelineBruto, pipelinePonderado, previstoMes } = await somasDoPipeline(
     scope.ownerId,
     inicioMes,
-    addDays(inicioMes, 31),
+    // `addDays(inicioMes, 31)` não é o fim do mês: em fevereiro a janela ia
+    // até 04/03, e nos meses de 30 dias invadia o dia 1º do seguinte. O
+    // `fimDoMes` acerta bissexto de graça.
+    fimDoMes(agora),
   );
 
   // Nomes do RANKING, não da lista de atribuição: aqui entram também contas
@@ -958,7 +992,13 @@ export async function getParticipants(
         },
       },
       meeting: {
-        select: { id: true, startsAt: true, owner: { select: { name: true } } },
+        // `endsAt` e `status` entram porque a tela precisa de `situacaoDaSessao`:
+        // sem eles ela só sabia "começou ou não", e marcava todo mundo de
+        // Ausente enquanto a call ainda estava rolando.
+        select: {
+          id: true, startsAt: true, endsAt: true, status: true,
+          owner: { select: { name: true } },
+        },
       },
     },
     orderBy: { meeting: { startsAt: "desc" } },
@@ -971,10 +1011,14 @@ export async function getParticipants(
 /** Visão do time: quem está onde, com o que trava a operação hoje. */
 export async function getTeamOverview() {
   const agora = new Date();
-  const inicioMes = new Date(agora.getFullYear(), agora.getMonth(), 1);
+  // `new Date(ano, getMonth(), 1)` lê o relógio do processo: na Vercel, nas
+  // três últimas horas de todo mês, já é o mês seguinte — e o painel zerava
+  // "ganho no mês" para quem ainda estava no dia 31. `lib/horizonte` já
+  // documentava exatamente isso; aqui a regra não estava sendo seguida.
+  const inicioMes = inicioDoMes(agora);
   const inicioSemana = weekStart(agora);
 
-  const [closers, ganhos, abertos, tarefas, reunioes, instancias] = await Promise.all([
+  const [closers, ganhos, abertos, tarefas, reunioes] = await Promise.all([
     prisma.user.findMany({
       where: { active: true },
       select: { id: true, name: true, email: true, role: true },
@@ -998,17 +1042,21 @@ export async function getTeamOverview() {
     }),
     prisma.meeting.groupBy({
       by: ["ownerId"],
-      where: { startsAt: { gte: inicioSemana }, status: { not: "CANCELED" } },
+      // O `lt` faltava, e o campo chama-se `reunioesSemana`: sem ele a conta
+      // incluía TODA sessão futura do mês. O painel do líder mostrava ~78 por
+      // closer contra ~13 no dashboard do mesmo closer, para a mesma pergunta.
+      where: {
+        startsAt: { gte: inicioSemana, lt: addDays(inicioSemana, 7) },
+        status: { not: "CANCELED" },
+      },
       _count: true,
     }),
-    prisma.whatsappInstance.findMany({ select: { ownerId: true, status: true } }),
   ]);
 
   const linhas = closers.map((c) => {
     const g = ganhos.find((x) => x.ownerId === c.id);
     const a = abertos.find((x) => x.ownerId === c.id);
     const minhas = tarefas.filter((t) => t.ownerId === c.id);
-    const whats = instancias.find((w) => w.ownerId === c.id);
 
     return {
       id: c.id,
@@ -1022,7 +1070,6 @@ export async function getTeamOverview() {
       pendentes: minhas.length,
       atrasadas: minhas.filter((t) => t.dueAt && t.dueAt < agora).length,
       reunioesSemana: reunioes.find((m) => m.ownerId === c.id)?._count ?? 0,
-      whatsapp: whats?.status ?? null,
     };
   });
 
@@ -1031,14 +1078,13 @@ export async function getTeamOverview() {
     totalGanhoCents: linhas.reduce((s, l) => s + l.ganhoCents, 0),
     totalGanhos: linhas.reduce((s, l) => s + l.ganhos, 0),
     totalAtrasadas: linhas.reduce((s, l) => s + l.atrasadas, 0),
-    whatsappOff: linhas.filter((l) => l.whatsapp && l.whatsapp !== "connected").length,
   };
 }
 
 // ───────────────────── Configuração da operação ─────────────────────
 
 export async function getConfig() {
-  const [stages, lossReasons, templates, automations, cases, permissions, series, regra] = await Promise.all([
+  const [stages, lossReasons, templates, automations, cases, series, regra] = await Promise.all([
     prisma.stage.findMany({ orderBy: { order: "asc" }, include: { _count: { select: { deals: true } } } }),
     prisma.lossReason.findMany({ orderBy: { orderIndex: "asc" }, include: { _count: { select: { deals: true } } } }),
     prisma.taskTemplate.findMany({ orderBy: { name: "asc" }, include: { _count: { select: { tasks: true } } } }),
@@ -1046,7 +1092,6 @@ export async function getConfig() {
       include: { template: { select: { name: true } }, targetStage: { select: { name: true, color: true } } },
     }),
     prisma.case.findMany({ orderBy: { segment: "asc" } }),
-    prisma.rolePermission.findMany({ orderBy: { role: "asc" } }),
     prisma.sessionTemplate.findMany({
       orderBy: [{ active: "desc" }, { name: "asc" }],
       include: {
@@ -1059,7 +1104,7 @@ export async function getConfig() {
     prisma.config.upsert({ where: { id: "unica" }, update: {}, create: {} }),
   ]);
 
-  return { stages, lossReasons, templates, automations, cases, permissions, series, regra };
+  return { stages, lossReasons, templates, automations, cases, series, regra };
 }
 
 /**

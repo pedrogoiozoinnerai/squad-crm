@@ -40,7 +40,12 @@ export async function GET(request: NextRequest) {
     // Carona na execução que já roda de hora em hora: sem faxina, a tabela de
     // limite cresce uma linha por IP por minuto e nunca encolhe. Linha vencida
     // não afeta contagem nenhuma — só ocupa espaço.
-    const baldes = await limparBaldesVencidos().catch(() => 0);
+    const baldes = await limparBaldesVencidos().catch((erro) => {
+      // Sem o log, uma falha de banco virava `baldesLimpos: 0` num 200 —
+      // indistinguível de "não havia o que limpar".
+      console.error("[cron/sessoes] limpeza de baldes falhou:", erro);
+      return 0;
+    });
 
     return NextResponse.json({ ok: true, ...r, baldesLimpos: baldes });
   } catch (erro) {

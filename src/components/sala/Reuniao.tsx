@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { RoomEvent, Track, type Room } from "livekit-client";
-import { MessageSquare, Users, X } from "lucide-react";
+import { Circle, MessageSquare, Users, X } from "lucide-react";
 
 import { BarraDeControles } from "@/components/sala/BarraDeControles";
 import { Conversa } from "@/components/sala/Conversa";
@@ -11,6 +11,7 @@ import { Participantes } from "@/components/sala/Participantes";
 import { Quadro } from "@/components/sala/Quadro";
 import { useConversa, type Credencial } from "@/components/sala/useConversa";
 import { lerFalhaDaSala } from "@/lib/falhas-da-sala";
+import { fitaDeQuadros } from "@/lib/foco";
 import { useSala } from "@/components/sala/useSala";
 
 type Painel = "participantes" | "chat" | null;
@@ -21,6 +22,7 @@ export function Reuniao({
   host,
   meetingId,
   credencial,
+  gravada,
   aoSair,
 }: {
   sala: Room;
@@ -28,6 +30,10 @@ export function Reuniao({
   host: boolean;
   meetingId: string;
   credencial: Credencial;
+  /// Se esta sala está sendo gravada. Vinha cravado em `false`: `criarSala`
+  /// devolvia `gravando`, a rota de token descartava, e ninguém na call — nem
+  /// o lead, nem o closer — era avisado de que estava sendo gravado.
+  gravada: boolean;
   aoSair: () => void;
 }) {
   const { eu, todos, falando } = useSala(sala);
@@ -99,7 +105,10 @@ export function Reuniao({
   const compartilhando = Boolean(eu?.getTrackPublication(Track.Source.ScreenShare));
   const maoLevantada = eu?.attributes?.mao === "1";
   const travados = lerTrava(sala.metadata);
-  const outros = todos.filter((p) => p.identity !== falando?.identity);
+  // Quando o quadro grande mostra uma TELA, ninguém está grande: quem
+  // compartilha continua devendo um quadro de câmera na fita.
+  const telaNoGrande = Boolean(falando?.getTrackPublication(Track.Source.ScreenShare)?.track);
+  const outros = fitaDeQuadros(todos, falando, telaNoGrande);
 
   if (!eu) return null;
 
@@ -158,6 +167,13 @@ export function Reuniao({
         </Aba>
       </header>
 
+      {gravada && (
+        <p className="mx-3 mt-2 flex items-center gap-2 rounded-xl bg-surface-2 px-4 py-2 text-xs text-muted sm:mx-5">
+          <Circle className="size-3 shrink-0 fill-red-600 text-red-600" />
+          Esta reunião está sendo gravada.
+        </p>
+      )}
+
       {aviso && (
         <p role="alert" className="mx-3 mt-2 rounded-xl bg-amber-50 px-4 py-2 text-sm text-amber-900 sm:mx-5">
           {aviso}
@@ -177,7 +193,7 @@ export function Reuniao({
             <div className="flex shrink-0 gap-2 overflow-x-auto pb-1 lg:hidden">
               {outros.map((p) => (
                 <div key={p.identity} className="w-[132px] shrink-0 sm:w-[168px]">
-                  <Quadro participante={p} souEu={p.identity === eu.identity} />
+                  <Quadro participante={p} souEu={p.identity === eu.identity} fonte="camera" />
                 </div>
               ))}
             </div>
@@ -187,7 +203,12 @@ export function Reuniao({
         {outros.length > 0 && (
           <aside className="hidden w-[200px] shrink-0 space-y-3 overflow-y-auto pt-3 lg:block">
             {outros.map((p) => (
-              <Quadro key={p.identity} participante={p} souEu={p.identity === eu.identity} />
+              <Quadro
+                key={p.identity}
+                participante={p}
+                souEu={p.identity === eu.identity}
+                fonte="camera"
+              />
             ))}
           </aside>
         )}
@@ -239,7 +260,7 @@ export function Reuniao({
           compartilhando,
           maoLevantada,
           microfonesTravados: travados,
-          gravando: false,
+          gravando: gravada,
         }}
         acoes={{
           alternarMicrofone: () =>

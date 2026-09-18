@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Video } from "lucide-react";
+import { CheckCheck, ChevronLeft, ChevronRight, Layers, Users, Video } from "lucide-react";
 
 import { NovaReuniaoNaCelula } from "@/components/reunioes/NovaReuniaoNaCelula";
 import { PageHeader } from "@/components/shell/PageHeader";
-import { chaveDoDia, diaCivil, hhmm, horaLocal, isSameDay, TZ, WEEK_DAYS, weekDays } from "@/lib/dates";
-import type { Space } from "@/lib/nav";
+import { chaveDoDia, diaCivil, horaLocal, isSameDay, TZ, WEEK_DAYS, weekDays } from "@/lib/dates";
+import { corDoCloser, type Space } from "@/lib/nav";
+import { situacaoDaSessao } from "@/lib/presenca";
 
 type Meeting = {
   id: string;
@@ -15,16 +16,21 @@ type Meeting = {
   status: "SCHEDULED" | "DONE" | "NO_SHOW" | "CANCELED";
   lead: { id: string; name: string; company: string | null; score: string | null } | null;
   owner: { id: string; name: string };
+  /// Quantos marcaram com este closer neste horário.
+  inscritos: number;
+  /// Quantos apareceram de verdade — medido pela sala, não marcado à mão.
+  presentes: number;
+  temGravacao: boolean;
 };
+
+/// Quantos cartões cabem numa célula antes de virar "+N salas".
+///
+/// Dois. Com cinco closers no mesmo horário, empilhar todos faz a linha das
+/// 10:00 ter cinco vezes a altura das outras e a grade deixa de ser lida como
+/// grade. É o mesmo recolhimento que a referência usa.
+const POR_CELULA = 2;
 
 const HOURS = Array.from({ length: 15 }, (_, i) => i + 7); // 07:00 → 21:00
-
-const STATUS_STYLE: Record<Meeting["status"], string> = {
-  SCHEDULED: "border-waz-70 bg-waz-95 text-waz-10 hover:bg-waz-90",
-  DONE: "border-line bg-surface-2 text-muted",
-  NO_SHOW: "border-red-200 bg-red-50 text-red-700",
-  CANCELED: "border-line bg-surface-2 text-muted line-through",
-};
 
 /** "seg, 06/10" — o que o botão de marcar anuncia para leitor de tela. */
 function dia(d: Date) {
@@ -41,18 +47,21 @@ export function CalendarView({
   meetings,
   start,
   offset,
-  showOwner,
   owners,
+  agora,
 }: {
   space: Space;
   meetings: Meeting[];
   start: Date;
   offset: number;
-  showOwner: boolean;
+  /// O relógio vem da página, como nas outras telas. O componente criava o
+  /// próprio `new Date()` enquanto a página já criava outro para o `weekStart`:
+  /// dois relógios na mesma renderização.
+  agora: Date;
   owners?: { id: string; name: string }[];
 }) {
   const days = weekDays(start);
-  const today = new Date();
+  const today = agora;
 
   const label = `${days[0].toLocaleDateString("pt-BR", { timeZone: TZ, day: "2-digit", month: "short" })} – ${days[6].toLocaleDateString("pt-BR", { timeZone: TZ, day: "2-digit", month: "short", year: "numeric" })}`;
 
@@ -84,7 +93,13 @@ export function CalendarView({
         }
       />
 
-      <div className="card overflow-hidden">
+      {/* A grade rola de lado em vez de espremer.
+          Com sete colunas numa janela estreita cada cartão fica com ~78px, e o
+          nome do closer — que é o EIXO desta tela — trunca para "Mi…". Largura
+          mínima e rolagem horizontal preservam a informação; espremer a
+          destrói. */}
+      <div className="card overflow-x-auto">
+        <div className="min-w-[1000px]">
         <div className="grid grid-cols-[64px_repeat(7,minmax(0,1fr))] border-b border-line">
           <div className="border-r border-line px-2 py-3 text-center text-[11px] font-semibold text-muted">
             Hora
@@ -145,32 +160,91 @@ export function CalendarView({
                       owners={owners}
                     />
 
-                    {slot.map((meeting) => (
-                      <article
-                        key={meeting.id}
-                        className={`relative z-10 rounded-lg border px-2 py-1.5 text-left transition ${STATUS_STYLE[meeting.status]}`}
-                      >
-                        <p className="flex items-center gap-1 text-[11px] font-semibold">
-                          {meeting.type === "GROUP" && <Video className="size-3 shrink-0" />}
-                          {hhmm(meeting.startsAt)}
-                        </p>
-                        <p className="truncate text-xs font-medium">
-                          {meeting.lead?.name ?? meeting.title}
-                        </p>
-                        {showOwner && (
-                          <p className="truncate text-[10px] opacity-70">
-                            {meeting.owner.name}
-                          </p>
-                        )}
-                      </article>
+                    {slot.slice(0, POR_CELULA).map((meeting) => (
+                      <Cartao key={meeting.id} reuniao={meeting} agora={today} space={space} />
                     ))}
+
+                    {/* O resto recolhido, como na referência: a grade continua
+                        legível e o número diz que há mais ali. */}
+                    {slot.length > POR_CELULA && (
+                      <Link
+                        href={`/${space}/sessoes`}
+                        className="relative z-10 flex items-center gap-1 rounded-lg border border-dashed border-line px-2 py-1 text-[10px] text-muted transition hover:bg-surface-2"
+                      >
+                        <Layers className="size-3 shrink-0" />
+                        +{slot.length - POR_CELULA}{" "}
+                        {slot.length - POR_CELULA === 1 ? "sala" : "salas"}
+                      </Link>
+                    )}
                   </div>
                 );
               })}
             </div>
           ))}
         </div>
+        </div>
       </div>
     </>
+  );
+}
+
+/**
+ * Um cartão da grade: quem conduz, quantos marcaram e quantos vieram.
+ *
+ * A mudança em relação ao que havia antes é o que o cartão RESPONDE. Ele
+ * mostrava o nome do lead e o horário — informação que a própria célula já dá.
+ * Agora mostra o closer e os dois números que o gestor procura ao bater o olho
+ * na semana: **agendados** e **realizados**.
+ *
+ * Os realizados só aparecem depois que a sessão terminou. Antes disso o número
+ * seria zero e a grade acusaria o closer por uma call que ainda nem começou —
+ * é a mesma regra da tela de Sessões, e ela mora em `lib/presenca`.
+ */
+function Cartao({
+  reuniao,
+  agora,
+  space,
+}: {
+  reuniao: Meeting;
+  agora: Date;
+  space: Space;
+}) {
+  const cor = corDoCloser(reuniao.owner.id);
+  const situacao = situacaoDaSessao(reuniao, agora);
+  const medida = situacao === "medida";
+  const coletiva = reuniao.type === "GROUP";
+
+  return (
+    <Link
+      href={coletiva ? `/${space}/sessoes/${reuniao.id}` : `/${space}/leads?lead=${reuniao.lead?.id ?? ""}`}
+      className={`relative z-10 block rounded-lg border px-2 py-1.5 text-left transition hover:brightness-95 ${cor.fundo} ${cor.borda}`}
+    >
+      <p className="flex items-center gap-1.5">
+        <span className={`size-1.5 shrink-0 rounded-full ${cor.ponto}`} aria-hidden />
+        <span className="min-w-0 flex-1 truncate text-[11px] font-semibold">
+          {reuniao.owner.name}
+        </span>
+        {reuniao.temGravacao && (
+          <Video className="size-3 shrink-0 text-muted" aria-label="tem gravação" />
+        )}
+      </p>
+
+      <p className="mt-0.5 flex items-center gap-2 text-[10px] text-muted tabular-nums">
+        <span className="flex items-center gap-0.5" title={`${reuniao.inscritos} agendados`}>
+          <Users className="size-3 shrink-0" />
+          {reuniao.inscritos}
+        </span>
+        <span
+          className="flex items-center gap-0.5"
+          title={medida ? `${reuniao.presentes} realizados` : "ainda não aconteceu"}
+        >
+          <CheckCheck className="size-3 shrink-0" />
+          {medida ? reuniao.presentes : "—"}
+        </span>
+        {!coletiva && reuniao.lead && (
+          <span className="min-w-0 flex-1 truncate">{reuniao.lead.name}</span>
+        )}
+      </p>
+    </Link>
   );
 }

@@ -40,7 +40,41 @@ export type PresencaConsolidada = {
  * internet) ficaria com zero segundo, que é o inverso da verdade: normalmente
  * é quem ficou até o fim.
  */
-export function consolidar(eventos: EventoBruto[], fimDaSala: Date | null): PresencaConsolidada[] {
+/**
+ * Os segundos de um trecho de permanência, cortados no teto.
+ *
+ * O corte é no FIM, nunca no começo: quem entrou dentro da janela e ficou
+ * depois dela conta até o teto. Quem entrou já depois do teto conta zero — não
+ * negativo, que é o que uma subtração crua daria.
+ */
+function intervalo(de: Date, para: Date, teto: Date | null): number {
+  const fim = teto && para > teto ? teto : para;
+  return Math.max(0, Math.round((fim.getTime() - de.getTime()) / 1000));
+}
+
+/// Até quanto tempo depois do fim marcado ainda conta como presença.
+///
+/// Trinta minutos, simétrico à folga com que a sala ABRE — é a regra mais fácil
+/// de explicar para quem pergunta por que o número deu aquilo.
+///
+/// Existe porque a sala não tem teto de duração: a "All Hands" de 45 minutos
+/// ficou aberta dez horas, com 300 ciclos de entrar e sair, e duas pessoas
+/// acumularam 322 e 366 minutos. Isso não é presença — é uma aba esquecida
+/// reconectando. E `Presence.seconds` decide `attended`, que decide a taxa de
+/// presença e o `Deal.attendance`.
+export const FOLGA_DEPOIS_DO_FIM_MS = 30 * 60_000;
+
+/** O instante em que a reunião para de acumular presença. */
+export function tetoDaPresenca(fim: Date): Date {
+  return new Date(fim.getTime() + FOLGA_DEPOIS_DO_FIM_MS);
+}
+
+export function consolidar(
+  eventos: EventoBruto[],
+  fimDaSala: Date | null,
+  /// Nada depois disto conta. Sem teto, uma sala esquecida fabrica presença.
+  teto: Date | null = null,
+): PresencaConsolidada[] {
   const ordenados = [...eventos].sort((a, b) => a.at.getTime() - b.at.getTime());
 
   const porIdentidade = new Map<
@@ -84,7 +118,7 @@ export function consolidar(eventos: EventoBruto[], fimDaSala: Date | null): Pres
       // Saída sem entrada é evento fora de ordem ou de antes da janela: não
       // dá para medir nada, e contar daria tempo negativo.
       if (atual.aberto) {
-        atual.seconds += Math.max(0, Math.round((evento.at.getTime() - atual.aberto.getTime()) / 1000));
+        atual.seconds += intervalo(atual.aberto, evento.at, teto);
         atual.aberto = null;
       }
       atual.leftAt = evento.at;
@@ -103,7 +137,7 @@ export function consolidar(eventos: EventoBruto[], fimDaSala: Date | null): Pres
       // acabou, a reunião ainda está rolando — some o que já passou e deixa
       // `leftAt` nulo, que é a verdade.
       if (fimDaSala) {
-        seconds += Math.max(0, Math.round((fimDaSala.getTime() - dados.aberto.getTime()) / 1000));
+        seconds += intervalo(dados.aberto, fimDaSala, teto);
         leftAt = fimDaSala;
       }
     }
@@ -349,4 +383,30 @@ export function naSalaEm(
 /** Minutos de call até um instante. Negativo vira zero: chat antes de começar. */
 export function minutoDaCall(instante: Date, inicio: Date): number {
   return Math.max(0, Math.round((instante.getTime() - inicio.getTime()) / 60_000));
+}
+
+/**
+ * Quais salas no ar já passaram da hora de fechar.
+ *
+ * Separada da chamada ao LiveKit porque é a única parte que dá para conferir
+ * sem rede — e é a parte que erra: fechar cedo demais derruba uma call que
+ * emendou, fechar de menos é o laço de reconexão de dez horas que já
+ * aconteceu.
+ *
+ * `fimPorReuniao` não ter a reunião significa que ela sumiu do banco. Essa sala
+ * fecha: sem horário e sem dono, nenhum outro caminho fecharia.
+ */
+export function salasVencidas(
+  salas: { nome: string; meetingId: string | null }[],
+  fimPorReuniao: Map<string, Date>,
+  agora: Date,
+): string[] {
+  return salas
+    .filter(({ meetingId }) => {
+      if (!meetingId) return true;
+      const fim = fimPorReuniao.get(meetingId);
+      if (!fim) return true;
+      return agora > tetoDaPresenca(fim);
+    })
+    .map(({ nome }) => nome);
 }

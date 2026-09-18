@@ -6,6 +6,7 @@ import { CalendarClock, Plus } from "lucide-react";
 import { desativarSerie, salvarSerie } from "@/app/actions/sessoes";
 import { Field, SubmitRow } from "@/components/ui/Field";
 import { FormFeedback } from "@/components/ui/FormFeedback";
+import { Acao } from "@/components/ui/Acao";
 import type { FormState } from "@/lib/guard";
 
 export type SerieRow = {
@@ -99,8 +100,17 @@ export function SerieList({
         </button>
       </header>
 
+      {/* O `key` do formulário remonta ao trocar de série.
+          Sem ele, os `<select defaultValue>` de dono, duração e horizonte só
+          eram aplicados na primeira montagem: abrir "Editar" na série A e
+          depois na B mostrava os dados de A com o id de B — e Salvar gravava
+          A por cima de B. */}
       {(aberto || emEdicao) && (
-        <form action={acao} className="border-b border-line bg-surface-2/50 p-5">
+        <form
+          key={emEdicao?.id ?? "nova"}
+          action={acao}
+          className="border-b border-line bg-surface-2/50 p-5"
+        >
           {emEdicao && <input type="hidden" name="id" value={emEdicao.id} />}
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -192,7 +202,7 @@ export function SerieList({
             </Field>
           </div>
 
-          <FormFeedback state={estado} />
+          <FormFeedback state={estado} sucesso="Série salva." />
           <SubmitRow>
             <button
               type="button"
@@ -251,12 +261,12 @@ export function SerieList({
                 Editar
               </button>
 
-              <form action={desativarSerie}>
+              <Acao action={desativarSerie} mensagem="Não deu para desativar a série.">
                 <input type="hidden" name="id" value={s.id} />
                 <button type="submit" className="btn-ghost px-3 py-1.5 text-xs">
                   {s.active ? "Desligar" : "Religar"}
                 </button>
-              </form>
+              </Acao>
             </li>
           ))}
         </ul>

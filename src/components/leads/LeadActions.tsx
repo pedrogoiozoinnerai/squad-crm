@@ -8,6 +8,7 @@ import { addNote } from "@/app/actions/notes";
 import { createTask } from "@/app/actions/tasks";
 import { FormularioDeReuniao } from "@/components/reunioes/FormularioDeReuniao";
 import { Field } from "@/components/ui/Field";
+import { Acao } from "@/components/ui/Acao";
 import { FormFeedback } from "@/components/ui/FormFeedback";
 import type { FormState } from "@/lib/guard";
 
@@ -244,7 +245,7 @@ function LoseButton({ leadId }: { leadId: string }) {
   }
 
   return (
-    <form action={markLeadLost} className="flex w-full items-end gap-2">
+    <Acao action={markLeadLost} mensagem="Não deu para marcar o lead como perdido." className="flex w-full items-end gap-2">
       <input type="hidden" name="id" value={leadId} />
       <div className="flex-1">
         <Field label="Motivo da perda">
@@ -257,6 +258,6 @@ function LoseButton({ leadId }: { leadId: string }) {
       <button type="button" onClick={() => setConfirming(false)} className="btn-ghost">
         Cancelar
       </button>
-    </form>
+    </Acao>
   );
 }

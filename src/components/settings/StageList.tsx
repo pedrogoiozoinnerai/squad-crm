@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, Loader2, Lock, Plus, Trash2 } from "lucide-react";
 
 import { criarEtapa, excluirEtapa, moverEtapa, salvarEtapa } from "@/app/actions/settings";
 import { Field } from "@/components/ui/Field";
+import { Acao } from "@/components/ui/Acao";
 import { FormFeedback } from "@/components/ui/FormFeedback";
 import type { FormState } from "@/lib/guard";
 
@@ -87,7 +88,7 @@ export function StageList({ stages }: { stages: StageRow[] }) {
                 key={stage.id}
                 className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-3 last:border-b-0 sm:px-5"
               >
-                <form action={moverEtapa} className="flex shrink-0 flex-col gap-0.5">
+                <Acao action={moverEtapa} mensagem="Não deu para mudar a etapa de lugar." className="flex shrink-0 flex-col gap-0.5">
                   <input type="hidden" name="id" value={stage.id} />
                   <OrderButton name="dir" value="up" disabled={i === 0} label={`Subir ${stage.name}`}>
                     <ArrowUp className="size-3" />
@@ -100,7 +101,7 @@ export function StageList({ stages }: { stages: StageRow[] }) {
                   >
                     <ArrowDown className="size-3" />
                   </OrderButton>
-                </form>
+                </Acao>
 
                 <span
                   className="size-7 shrink-0 rounded-lg"
@@ -140,6 +141,10 @@ export function StageList({ stages }: { stages: StageRow[] }) {
                   </button>
 
                   {stage._count.deals > 0 || stages.length === 1 ? (
+                    // O rótulo diz o que FAZER, não só que não dá. "Não
+                    // removível" com a saída escondida num `title` não chega a
+                    // quem está no toque nem a quem navega pelo teclado — e a
+                    // saída é a única parte acionável da frase.
                     <span
                       className="chip cursor-not-allowed bg-surface-2 text-muted"
                       title={
@@ -149,10 +154,10 @@ export function StageList({ stages }: { stages: StageRow[] }) {
                       }
                     >
                       <Lock className="size-3" />
-                      Não removível
+                      {stage._count.deals > 0 ? "Mova os negócios antes" : "Única etapa do funil"}
                     </span>
                   ) : confirmando === stage.id ? (
-                    <form action={excluirEtapa} className="flex items-center gap-1.5">
+                    <Acao action={excluirEtapa} mensagem="Não deu para excluir a etapa." className="flex items-center gap-1.5">
                       <input type="hidden" name="id" value={stage.id} />
                       <button type="submit" className="chip bg-red-600 text-white hover:bg-red-700">
                         Confirmar
@@ -164,7 +169,7 @@ export function StageList({ stages }: { stages: StageRow[] }) {
                       >
                         Cancelar
                       </button>
-                    </form>
+                    </Acao>
                   ) : (
                     <button
                       type="button"

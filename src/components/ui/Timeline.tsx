@@ -26,6 +26,13 @@ export type TimelineItem = {
   author: { name: string } | null;
 };
 
+/// O que desenhar quando o tipo é desconhecido.
+///
+/// `ICON[item.kind] ?? PADRAO` sem isto derrubava a gaveta inteira com "Cannot read
+/// properties of undefined" no dia em que um `ActivityKind` novo fosse gravado
+/// — e o enum cresce com o produto.
+const PADRAO = { icon: FilePlus2, tone: "bg-surface-2 text-muted" };
+
 const ICON: Record<Kind, { icon: React.ElementType; tone: string }> = {
   LEAD_CREATED: { icon: UserPlus, tone: "bg-surface-2 text-muted" },
   LEAD_UPDATED: { icon: FilePlus2, tone: "bg-surface-2 text-muted" },
@@ -53,7 +60,7 @@ export function Timeline({ items }: { items: TimelineItem[] }) {
   return (
     <ol className="flex flex-col gap-3">
       {items.map((item) => {
-        const { icon: Icon, tone } = ICON[item.kind];
+        const { icon: Icon, tone } = ICON[item.kind] ?? PADRAO;
 
         return (
           <li key={item.id} className="flex gap-3">

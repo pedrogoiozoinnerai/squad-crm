@@ -93,7 +93,7 @@ export function RegraDePresenca({
           veredicto dele. A nova vale a partir da próxima reconciliação.
         </p>
 
-        <FormFeedback state={estado} />
+        <FormFeedback state={estado} sucesso="Regra de presença salva." />
         <SubmitRow>
           <button type="submit" disabled={salvando} className="btn-primary">
             {salvando ? "Salvando…" : "Salvar régua"}

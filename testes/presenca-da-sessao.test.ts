@@ -264,3 +264,69 @@ describe("quantas pessoas ouviram a oferta", () => {
     assert.equal(minutoDaCall(em("2026-09-17T13:45:00Z"), INICIO), 0);
   });
 });
+
+// ── A sala que ninguém fechou ────────────────────────────────────────────────
+
+import { salasVencidas, tetoDaPresenca } from "../src/lib/presenca";
+
+/**
+ * O teto que o LiveKit parecia ter não existe.
+ *
+ * `emptyTimeout` é o quanto a sala espera alguém entrar; `departureTimeout`, o
+ * quanto ela espera depois que o último sai. Nenhum dos dois fecha uma sala com
+ * gente dentro — ou com um cliente reconectando em laço, que é o caso que
+ * aconteceu: a "All Hands" de 45 minutos ficou aberta dez horas, 998 eventos,
+ * 300 ciclos de entrar/sair, e virou 322 e 366 minutos de presença.
+ */
+describe("que sala já passou da hora", () => {
+  const FIM = em("2026-09-17T15:00:00Z");
+  const sala = (nome: string, meetingId: string | null) => ({ nome, meetingId });
+  const fins = new Map([["m1", FIM]]);
+
+  it("dentro da folga, a sala fica — call que emenda não é derrubada", () => {
+    const quase = new Date(tetoDaPresenca(FIM).getTime() - 60_000);
+    assert.deepEqual(salasVencidas([sala("reuniao-m1", "m1")], fins, quase), []);
+  });
+
+  it("passada a folga, fecha", () => {
+    const depois = new Date(tetoDaPresenca(FIM).getTime() + 1000);
+    assert.deepEqual(salasVencidas([sala("reuniao-m1", "m1")], fins, depois), ["reuniao-m1"]);
+  });
+
+  it("a folga é a MESMA que a da contagem — um prazo só", () => {
+    // Se divergissem, existiria uma faixa em que a sala está aberta e o que
+    // acontece nela não conta: presença some sem ninguém saber por quê.
+    assert.deepEqual(salasVencidas([sala("reuniao-m1", "m1")], fins, tetoDaPresenca(FIM)), []);
+  });
+
+  it("sala de reunião que sumiu do banco fecha", () => {
+    // Sem horário e sem dono, nenhum outro caminho fecharia esta sala — e ela é
+    // justamente a que pode ficar aberta para sempre.
+    assert.deepEqual(
+      salasVencidas([sala("reuniao-apagada", "apagada")], fins, em("2026-09-17T15:01:00Z")),
+      ["reuniao-apagada"],
+    );
+  });
+
+  it("sala com nome que não é nosso também fecha", () => {
+    assert.deepEqual(salasVencidas([sala("teste-do-painel", null)], fins, FIM), ["teste-do-painel"]);
+  });
+
+  it("uma vencida no meio de várias vivas não leva as outras junto", () => {
+    const agora = new Date(tetoDaPresenca(FIM).getTime() + 1000);
+    const maisTarde = new Date(FIM.getTime() + 4 * 60 * 60_000);
+    const varias = new Map([["m1", FIM], ["m2", maisTarde], ["m3", maisTarde]]);
+    assert.deepEqual(
+      salasVencidas(
+        [sala("reuniao-m2", "m2"), sala("reuniao-m1", "m1"), sala("reuniao-m3", "m3")],
+        varias,
+        agora,
+      ),
+      ["reuniao-m1"],
+    );
+  });
+
+  it("nenhuma sala no ar não quebra", () => {
+    assert.deepEqual(salasVencidas([], fins, FIM), []);
+  });
+});

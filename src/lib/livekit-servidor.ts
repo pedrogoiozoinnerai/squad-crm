@@ -3,7 +3,9 @@ import "server-only";
 import { chavesDoArmazenamento } from "@/lib/armazenamento";
 import { env } from "@/lib/env";
 import { caminhoDaGravacao, pedidoDeEgress } from "@/lib/gravacao";
-import { salaDaReuniao, tokenDeServico, urlHttpDoLiveKit } from "@/lib/livekit";
+import { reuniaoDaSala, salaDaReuniao, tokenDeServico, urlHttpDoLiveKit } from "@/lib/livekit";
+import { salasVencidas } from "@/lib/presenca";
+import { prisma } from "@/lib/prisma";
 
 /**
  * As chaves do LiveKit, lidas num lugar só.
@@ -106,8 +108,11 @@ export async function criarSala(
       // Fecha a sala 5 min depois de esvaziar — é o que dispara o
       // `room_finished` de que a presença depende para fechar quem não saiu.
       emptyTimeout: 5 * 60,
-      // Teto duro: a duração marcada mais uma hora de folga. Sem isso uma sala
-      // esquecida aberta fica consumindo minutos a noite inteira.
+      // Quanto a sala espera DEPOIS que o último participante sai. Não é teto
+      // de duração — o `CreateRoom` do LiveKit não tem campo para isso, e o
+      // comentário que antes prometia aqui "teto duro: a duração marcada mais
+      // uma hora" descrevia uma proteção que nunca existiu. Quem fecha a sala
+      // vencida é `fecharSalasVencidas`, abaixo.
       departureTimeout: 60,
       maxParticipants: opcoes.maxParticipantes ?? 0,
       metadata: JSON.stringify({ meetingId, duracaoMin: opcoes.duracaoMin }),
@@ -120,4 +125,65 @@ export async function criarSala(
   );
 
   return { sala: nome, gravando: !!egress };
+}
+
+/**
+ * Fecha as salas cuja janela já passou.
+ *
+ * Existe porque o teto que o `CreateRoom` parecia ter não existe: `emptyTimeout`
+ * é o quanto a sala espera alguém entrar, `departureTimeout` o quanto ela espera
+ * depois que o último sai, e nenhum dos dois fecha uma sala que continua tendo
+ * gente dentro — ou um cliente reconectando em laço, que é o caso real.
+ *
+ * O preço está medido no banco. A "All Hands" de 45 minutos ficou aberta dez
+ * horas: 998 eventos, `room_started` e `room_finished` 56 vezes cada, 300 ciclos
+ * de entrar/sair — um convidado sozinho fez 163. Isso virou 322 e 366 minutos em
+ * `Presence.seconds`, que alimenta `attended`, a taxa de presença e o
+ * `Deal.attendance`. Com gravação ligada, seriam dez horas faturadas.
+ *
+ * `consolidar` já para de CONTAR em `endsAt + 30 min`. Isto é a outra metade:
+ * depois do mesmo prazo, a sala deixa de EXISTIR — e o laço não tem mais onde
+ * acontecer.
+ *
+ * Varre o que o LiveKit diz estar no ar, e não o que o banco diz que devia
+ * estar: sala é recurso do LiveKit, e uma sala órfã (reunião apagada, id que não
+ * decodifica) é exatamente a que ninguém vai fechar por outro caminho.
+ */
+export async function fecharSalasVencidas(agora = new Date()) {
+  const resposta = (await chamarLiveKit("livekit.RoomService/ListRooms", {}, { roomList: true })) as {
+    rooms?: { name?: string }[];
+  };
+  const nomes = (resposta.rooms ?? []).map((r) => r.name).filter((n): n is string => !!n);
+  if (nomes.length === 0) return { salasNoAr: 0, fechadas: 0, falhas: 0 };
+
+  const comId = nomes.map((nome) => ({ nome, meetingId: reuniaoDaSala(nome) }));
+  const ids = comId.map((s) => s.meetingId).filter((id): id is string => !!id);
+
+  const reunioes = await prisma.meeting.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, endsAt: true },
+  });
+  const aFechar = salasVencidas(
+    comId,
+    new Map(reunioes.map((r) => [r.id, r.endsAt])),
+    agora,
+  );
+
+  let fechadas = 0;
+  let falhas = 0;
+  for (const nome of aFechar) {
+    try {
+      // `roomCreate`, e não `roomAdmin`: destruir a sala é do mesmo grupo que
+      // criá-la. Com `roomAdmin` o LiveKit responde 401.
+      await chamarLiveKit("livekit.RoomService/DeleteRoom", { room: nome }, { roomCreate: true });
+      fechadas++;
+    } catch (erro) {
+      // Uma sala que recusa fechar não pode impedir as outras — e some do log
+      // se ninguém contar, que foi como a All Hands passou dez horas despercebida.
+      falhas++;
+      console.error(`[livekit] não consegui fechar a sala ${nome}:`, erro);
+    }
+  }
+
+  return { salasNoAr: nomes.length, fechadas, falhas };
 }
